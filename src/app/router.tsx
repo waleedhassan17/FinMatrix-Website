@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
+import { createBrowserRouter, Navigate, Outlet, useRouteError } from 'react-router-dom';
 
 import {
   RedirectIfAuthenticated,
@@ -87,6 +87,51 @@ function RouteFallback() {
 }
 
 /**
+ * Rendered when a route throws — in practice, almost always a lazy chunk that
+ * could not be fetched.
+ *
+ * Without an `errorElement`, React Router falls back to its built-in developer
+ * screen: the raw TypeError, a stack, and a note addressed to "Hey developer 👋".
+ * That is the correct default for a page nobody has shipped yet, and the wrong
+ * thing to show an accountant mid-invoice.
+ *
+ * lazyWithReload has already retried and already spent its one reload by the time
+ * anything reaches here, so this screen means automatic recovery failed —
+ * offline, a blocked request, a genuinely broken deploy. The manual Reload button
+ * is kept anyway: it costs nothing, and the user's own connection is the most
+ * likely thing to have changed since.
+ */
+function RouteError() {
+  const error = useRouteError();
+
+  // Only ever visible to us, in the console. The card itself stays plain — a
+  // stack trace tells the person at the keyboard nothing they can act on.
+  console.error('[router] route failed to render', error);
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background p-6">
+      <div className="w-full max-w-sm rounded-lg border border-border bg-background-alt p-6 text-center">
+        <h1 className="text-h4 text-text-primary">Something went wrong</h1>
+        <p className="mt-2 text-body-sm text-text-secondary">
+          This page could not be loaded. Check your connection and try again.
+        </p>
+        {/* Deliberately a plain button rather than <Button>. Nothing else in the
+            eager router chunk imports it, and this screen is not worth adding
+            the component (and cva) to the bundle every visitor downloads. The
+            classes are Button's own `primary` variant. */}
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="mt-5 w-full rounded-md bg-primary px-4 py-2 text-body-md text-text-inverse hover:bg-primary-hover"
+        >
+          Reload
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
  * SessionGate wraps every route so boot runs once and the axios client's
  * session events have a handler no matter where the user landed.
  */
@@ -119,10 +164,16 @@ export const router = createBrowserRouter([
   // 'unknown' without the gate to resolve it), so LandingPage reads hasSession()
   // from storage instead. Providers sit above RouterProvider, so Redux and
   // TanStack Query are still available — only session BOOT is skipped.
-  { path: '/', element: <LandingPage /> },
+  //
+  // Being a sibling also means it does not inherit Root's errorElement, so it
+  // carries its own — this is the page a first-time visitor sees.
+  { path: '/', element: <LandingPage />, errorElement: <RouteError /> },
 
   {
     element: <Root />,
+    // Catches every lazy route outside AppLayout, mirroring the <Suspense> in
+    // Root: the same boundary that shows the spinner needs one for the failure.
+    errorElement: <RouteError />,
     children: [
       // ── Public ────────────────────────────────────────────────────
       { path: '/get-started', element: <RoleSelectPage /> },
@@ -227,6 +278,12 @@ export const router = createBrowserRouter([
             </RequireActiveCompany>
           </RequireAuth>
         ),
+        // Its own boundary, matching AppLayout's own <Suspense>. Note this
+        // REPLACES AppLayout rather than rendering inside it — an errorElement
+        // stands in for its own route's element, so the sidebar goes with it.
+        // Keeping the shell would mean an errorElement on all ~50 children for a
+        // screen the user is meant to leave immediately; not worth it.
+        errorElement: <RouteError />,
         children: [
           // The dashboard lives at /dashboard, not at the index. `/` now belongs
           // to the public landing page, and an index route here would fight it

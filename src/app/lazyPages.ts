@@ -22,7 +22,11 @@
 // the critical path for someone who has no session, and a loading flicker on the
 // way to a sign-in form is a worse trade than a slightly larger first chunk.
 
-import { lazy } from 'react';
+// lazyWithReload, not React.lazy: these chunks are fetched on navigation, which
+// can be long after index.html loaded, and a deploy in between deletes the hashed
+// files this module graph is holding. The wrapper retries, then reloads once for
+// a fresh index.html. See src/app/lazyWithReload.ts.
+import { lazyWithReload } from '@/app/lazyWithReload';
 
 // The auth screens. Deferred too, even though they are public: they are the only
 // thing that pulls zod, react-hook-form and the resolvers, and a first-time
@@ -31,131 +35,131 @@ import { lazy } from 'react';
 // decides whether there is a click at all.
 //
 // LandingPage is the ONE page that stays eagerly imported in router.tsx.
-export const RoleSelectPage = lazy(() => import('@/pages/auth/RoleSelectPage'));
-export const LoginPage = lazy(() => import('@/pages/auth/LoginPage'));
-export const RegisterPage = lazy(() => import('@/pages/auth/RegisterPage'));
-export const ForgotPasswordPage = lazy(() => import('@/pages/auth/ForgotPasswordPage'));
-export const VerifyEmailPage = lazy(() => import('@/pages/auth/VerifyEmailPage'));
-export const AccountStatusPage = lazy(() => import('@/pages/auth/AccountStatusPage'));
+export const RoleSelectPage = lazyWithReload(() => import('@/pages/auth/RoleSelectPage'));
+export const LoginPage = lazyWithReload(() => import('@/pages/auth/LoginPage'));
+export const RegisterPage = lazyWithReload(() => import('@/pages/auth/RegisterPage'));
+export const ForgotPasswordPage = lazyWithReload(() => import('@/pages/auth/ForgotPasswordPage'));
+export const VerifyEmailPage = lazyWithReload(() => import('@/pages/auth/VerifyEmailPage'));
+export const AccountStatusPage = lazyWithReload(() => import('@/pages/auth/AccountStatusPage'));
 
-export const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
-export const ModulePlaceholder = lazy(() => import('@/pages/ModulePlaceholder'));
-export const MyRequestsPage = lazy(() => import('@/pages/approvals/MyRequestsPage'));
+export const DashboardPage = lazyWithReload(() => import('@/pages/DashboardPage'));
+export const ModulePlaceholder = lazyWithReload(() => import('@/pages/ModulePlaceholder'));
+export const MyRequestsPage = lazyWithReload(() => import('@/pages/approvals/MyRequestsPage'));
 
 // Customers
-export const CustomerListPage = lazy(() => import('@/pages/customers/CustomerListPage'));
-export const CustomerFormPage = lazy(() => import('@/pages/customers/CustomerFormPage'));
-export const CustomerDetailPage = lazy(() => import('@/pages/customers/CustomerDetailPage'));
+export const CustomerListPage = lazyWithReload(() => import('@/pages/customers/CustomerListPage'));
+export const CustomerFormPage = lazyWithReload(() => import('@/pages/customers/CustomerFormPage'));
+export const CustomerDetailPage = lazyWithReload(() => import('@/pages/customers/CustomerDetailPage'));
 
 // Invoices
-export const InvoiceListPage = lazy(() => import('@/pages/invoices/InvoiceListPage'));
-export const InvoiceFormPage = lazy(() => import('@/pages/invoices/InvoiceFormPage'));
-export const InvoiceDetailPage = lazy(() => import('@/pages/invoices/InvoiceDetailPage'));
+export const InvoiceListPage = lazyWithReload(() => import('@/pages/invoices/InvoiceListPage'));
+export const InvoiceFormPage = lazyWithReload(() => import('@/pages/invoices/InvoiceFormPage'));
+export const InvoiceDetailPage = lazyWithReload(() => import('@/pages/invoices/InvoiceDetailPage'));
 
 // Estimates
-export const EstimateListPage = lazy(() => import('@/pages/estimates/EstimateListPage'));
-export const EstimateFormPage = lazy(() => import('@/pages/estimates/EstimateFormPage'));
-export const EstimateDetailPage = lazy(() => import('@/pages/estimates/EstimateDetailPage'));
+export const EstimateListPage = lazyWithReload(() => import('@/pages/estimates/EstimateListPage'));
+export const EstimateFormPage = lazyWithReload(() => import('@/pages/estimates/EstimateFormPage'));
+export const EstimateDetailPage = lazyWithReload(() => import('@/pages/estimates/EstimateDetailPage'));
 
 // Sales orders
-export const SalesOrderListPage = lazy(() => import('@/pages/salesOrders/SalesOrderListPage'));
-export const SalesOrderFormPage = lazy(() => import('@/pages/salesOrders/SalesOrderFormPage'));
-export const SalesOrderDetailPage = lazy(
+export const SalesOrderListPage = lazyWithReload(() => import('@/pages/salesOrders/SalesOrderListPage'));
+export const SalesOrderFormPage = lazyWithReload(() => import('@/pages/salesOrders/SalesOrderFormPage'));
+export const SalesOrderDetailPage = lazyWithReload(
   () => import('@/pages/salesOrders/SalesOrderDetailPage'),
 );
 
 // Payments
-export const PaymentListPage = lazy(() => import('@/pages/payments/PaymentListPage'));
-export const ReceivePaymentPage = lazy(() => import('@/pages/payments/ReceivePaymentPage'));
-export const PaymentDetailPage = lazy(() => import('@/pages/payments/PaymentDetailPage'));
+export const PaymentListPage = lazyWithReload(() => import('@/pages/payments/PaymentListPage'));
+export const ReceivePaymentPage = lazyWithReload(() => import('@/pages/payments/ReceivePaymentPage'));
+export const PaymentDetailPage = lazyWithReload(() => import('@/pages/payments/PaymentDetailPage'));
 
 // Credit memos
-export const CreditMemoListPage = lazy(() => import('@/pages/creditMemos/CreditMemoListPage'));
-export const CreditMemoFormPage = lazy(() => import('@/pages/creditMemos/CreditMemoFormPage'));
-export const CreditMemoDetailPage = lazy(
+export const CreditMemoListPage = lazyWithReload(() => import('@/pages/creditMemos/CreditMemoListPage'));
+export const CreditMemoFormPage = lazyWithReload(() => import('@/pages/creditMemos/CreditMemoFormPage'));
+export const CreditMemoDetailPage = lazyWithReload(
   () => import('@/pages/creditMemos/CreditMemoDetailPage'),
 );
 
 // Vendors
-export const VendorListPage = lazy(() => import('@/pages/vendors/VendorListPage'));
-export const VendorFormPage = lazy(() => import('@/pages/vendors/VendorFormPage'));
-export const VendorDetailPage = lazy(() => import('@/pages/vendors/VendorDetailPage'));
+export const VendorListPage = lazyWithReload(() => import('@/pages/vendors/VendorListPage'));
+export const VendorFormPage = lazyWithReload(() => import('@/pages/vendors/VendorFormPage'));
+export const VendorDetailPage = lazyWithReload(() => import('@/pages/vendors/VendorDetailPage'));
 
 // Bills
-export const BillListPage = lazy(() => import('@/pages/bills/BillListPage'));
-export const BillFormPage = lazy(() => import('@/pages/bills/BillFormPage'));
-export const BillDetailPage = lazy(() => import('@/pages/bills/BillDetailPage'));
-export const PayBillsPage = lazy(() => import('@/pages/bills/PayBillsPage'));
-export const PaymentReceiptPage = lazy(() => import('@/pages/bills/PaymentReceiptPage'));
+export const BillListPage = lazyWithReload(() => import('@/pages/bills/BillListPage'));
+export const BillFormPage = lazyWithReload(() => import('@/pages/bills/BillFormPage'));
+export const BillDetailPage = lazyWithReload(() => import('@/pages/bills/BillDetailPage'));
+export const PayBillsPage = lazyWithReload(() => import('@/pages/bills/PayBillsPage'));
+export const PaymentReceiptPage = lazyWithReload(() => import('@/pages/bills/PaymentReceiptPage'));
 
 // Purchase orders
-export const POListPage = lazy(() => import('@/pages/purchaseOrders/POListPage'));
-export const POFormPage = lazy(() => import('@/pages/purchaseOrders/POFormPage'));
-export const PODetailPage = lazy(() => import('@/pages/purchaseOrders/PODetailPage'));
+export const POListPage = lazyWithReload(() => import('@/pages/purchaseOrders/POListPage'));
+export const POFormPage = lazyWithReload(() => import('@/pages/purchaseOrders/POFormPage'));
+export const PODetailPage = lazyWithReload(() => import('@/pages/purchaseOrders/PODetailPage'));
 
 // Vendor credits
-export const VendorCreditListPage = lazy(
+export const VendorCreditListPage = lazyWithReload(
   () => import('@/pages/vendorCredits/VendorCreditListPage'),
 );
-export const VendorCreditFormPage = lazy(
+export const VendorCreditFormPage = lazyWithReload(
   () => import('@/pages/vendorCredits/VendorCreditFormPage'),
 );
-export const VendorCreditDetailPage = lazy(
+export const VendorCreditDetailPage = lazyWithReload(
   () => import('@/pages/vendorCredits/VendorCreditDetailPage'),
 );
 
 // Chart of accounts — admin only, so staff never download these chunks either.
-export const AccountListPage = lazy(() => import('@/pages/accounts/AccountListPage'));
-export const AccountFormPage = lazy(() => import('@/pages/accounts/AccountFormPage'));
-export const AccountDetailPage = lazy(
+export const AccountListPage = lazyWithReload(() => import('@/pages/accounts/AccountListPage'));
+export const AccountFormPage = lazyWithReload(() => import('@/pages/accounts/AccountFormPage'));
+export const AccountDetailPage = lazyWithReload(
   () => import('@/pages/accounts/AccountDetailPage'),
 );
 
 // Journal entries
-export const JournalEntryListPage = lazy(
+export const JournalEntryListPage = lazyWithReload(
   () => import('@/pages/journalEntries/JournalEntryListPage'),
 );
-export const JournalEntryFormPage = lazy(
+export const JournalEntryFormPage = lazyWithReload(
   () => import('@/pages/journalEntries/JournalEntryFormPage'),
 );
-export const JournalEntryDetailPage = lazy(
+export const JournalEntryDetailPage = lazyWithReload(
   () => import('@/pages/journalEntries/JournalEntryDetailPage'),
 );
-export const OpeningBalancePage = lazy(
+export const OpeningBalancePage = lazyWithReload(
   () => import('@/pages/journalEntries/OpeningBalancePage'),
 );
 
 // Reports. Lazy matters more here than anywhere: four of these pull in recharts,
 // and nobody reaches a report in the first few seconds of a session.
-export const ReportsHubPage = lazy(() => import('@/pages/reports/ReportsHubPage'));
-export const ProfitLossPage = lazy(() => import('@/pages/reports/ProfitLossPage'));
-export const BalanceSheetPage = lazy(() => import('@/pages/reports/BalanceSheetPage'));
-export const TrialBalancePage = lazy(() => import('@/pages/reports/TrialBalancePage'));
-export const CashFlowPage = lazy(() => import('@/pages/reports/CashFlowPage'));
-export const GeneralLedgerPage = lazy(
+export const ReportsHubPage = lazyWithReload(() => import('@/pages/reports/ReportsHubPage'));
+export const ProfitLossPage = lazyWithReload(() => import('@/pages/reports/ProfitLossPage'));
+export const BalanceSheetPage = lazyWithReload(() => import('@/pages/reports/BalanceSheetPage'));
+export const TrialBalancePage = lazyWithReload(() => import('@/pages/reports/TrialBalancePage'));
+export const CashFlowPage = lazyWithReload(() => import('@/pages/reports/CashFlowPage'));
+export const GeneralLedgerPage = lazyWithReload(
   () => import('@/pages/reports/GeneralLedgerPage'),
 );
-export const ArAgingPage = lazy(() => import('@/pages/reports/ArAgingPage'));
-export const ApAgingPage = lazy(() => import('@/pages/reports/ApAgingPage'));
-export const InventoryValuationPage = lazy(
+export const ArAgingPage = lazyWithReload(() => import('@/pages/reports/ArAgingPage'));
+export const ApAgingPage = lazyWithReload(() => import('@/pages/reports/ApAgingPage'));
+export const InventoryValuationPage = lazyWithReload(
   () => import('@/pages/reports/InventoryValuationPage'),
 );
-export const AnalyticsPage = lazy(() => import('@/pages/reports/AnalyticsPage'));
+export const AnalyticsPage = lazyWithReload(() => import('@/pages/reports/AnalyticsPage'));
 
 // Onboarding and renewal. Behind sign-in, and reached minutes after the landing
 // page at the earliest — no reason for a first-time visitor to download the plan
 // grid, the bank-transfer panel and the company form before reading the pitch.
-export const CompanySetupPage = lazy(
+export const CompanySetupPage = lazyWithReload(
   () => import('@/pages/onboarding/CompanySetupPage'),
 );
-export const PlanSelectPage = lazy(() => import('@/pages/onboarding/PlanSelectPage'));
-export const PaySubscriptionPage = lazy(
+export const PlanSelectPage = lazyWithReload(() => import('@/pages/onboarding/PlanSelectPage'));
+export const PaySubscriptionPage = lazyWithReload(
   () => import('@/pages/onboarding/PaySubscriptionPage'),
 );
-export const RenewSubscriptionPage = lazy(
+export const RenewSubscriptionPage = lazyWithReload(
   () => import('@/pages/account/RenewSubscriptionPage'),
 );
 
 // The token proof sheet — not linked from the product, so never worth shipping
 // in the first chunk.
-export const DesignTokens = lazy(() => import('@/pages/DesignTokens'));
+export const DesignTokens = lazyWithReload(() => import('@/pages/DesignTokens'));
