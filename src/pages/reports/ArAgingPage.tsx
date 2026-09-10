@@ -12,6 +12,7 @@ export default function ArAgingPage() {
       csvName="ar-aging"
       emptyTitle="No outstanding receivables"
       emptyHint="Every customer invoice is settled."
+      documentNoun="invoice"
       query={query}
     />
   );

@@ -10,7 +10,7 @@ import { ReportTitleBlock } from '@/features/reports/ReportTitleBlock';
 import { StatementTable } from '@/features/reports/StatementTable';
 import { isoToday } from '@/models/document';
 import { csvAmount, csvFilename, downloadCsv, toCsv, type CsvRow } from '@/models/reportCsv';
-import { asOfLabel } from '@/models/reportPeriod';
+import { asOfLabel, formatReportDate } from '@/models/reportPeriod';
 import {
   ASSET_GROUPS,
   bucketStatementLines,
@@ -223,9 +223,9 @@ export default function BalanceSheetPage() {
         </Card>
 
         <p className="text-caption text-text-tertiary">
-          Balances are cumulative through {asOfLabel(asOfDate).toLowerCase()}. The
-          current period’s earnings are carried into equity as Net Income, which
-          matches the figure on the Profit &amp; Loss for the same period.
+          Balances are cumulative through {formatReportDate(asOfDate)}. The current
+          period’s earnings are carried into equity as Net Income, which matches the
+          figure on the Profit &amp; Loss for the same period.
         </p>
       </div>
     </ReportShell>

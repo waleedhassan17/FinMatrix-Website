@@ -36,6 +36,8 @@ export interface AgingReportViewProps {
   csvName: string;
   emptyTitle: string;
   emptyHint: string;
+  /** What an unsent document is called here — "invoice" or "bill". */
+  documentNoun: string;
   query: UseQueryResult<AgingReport, Error>;
 }
 
@@ -60,6 +62,7 @@ export function AgingReportView({
   csvName,
   emptyTitle,
   emptyHint,
+  documentNoun,
   query,
 }: AgingReportViewProps) {
   const report = query.data;
@@ -113,9 +116,10 @@ export function AgingReportView({
         <div className="flex items-start gap-sm rounded-md bg-surface-2 p-md print:hidden">
           <Info className="mt-[2px] size-4 shrink-0 text-text-secondary" />
           <p className="text-body-sm text-text-secondary">
-            Aged as of today. This report has no date control because the figures
-            are always current — buckets are measured against each document’s own
-            due date.
+            Aged as of today, with buckets measured against each document’s own due
+            date — which is why there is no date to choose. Draft {documentNoun}s
+            are excluded, so this total can be lower than the dashboard’s figure:
+            nothing is owed until a {documentNoun} is issued.
           </p>
         </div>
 

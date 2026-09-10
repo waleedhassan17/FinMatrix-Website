@@ -23,7 +23,7 @@ describe('classifyAccount', () => {
     expect(classifyAccount('1200')).toBe('otherCurrentAsset');
     expect(classifyAccount('1500')).toBe('fixedAsset');
     expect(classifyAccount('2000')).toBe('currentLiability');
-    expect(classifyAccount('2400')).toBe('longTermLiability');
+    expect(classifyAccount('2700')).toBe('longTermLiability');
     expect(classifyAccount('3000')).toBe('equity');
     expect(classifyAccount('4000')).toBe('income');
     expect(classifyAccount('5000')).toBe('cogs');
@@ -38,8 +38,8 @@ describe('classifyAccount', () => {
     expect(classifyAccount('1499')).toBe('otherCurrentAsset');
     expect(classifyAccount('1500')).toBe('fixedAsset');
     expect(classifyAccount('1999')).toBe('fixedAsset');
-    expect(classifyAccount('2399')).toBe('currentLiability');
-    expect(classifyAccount('2400')).toBe('longTermLiability');
+    expect(classifyAccount('2699')).toBe('currentLiability');
+    expect(classifyAccount('2700')).toBe('longTermLiability');
     expect(classifyAccount('5999')).toBe('cogs');
     expect(classifyAccount('6000')).toBe('expense');
     expect(classifyAccount('7999')).toBe('expense');
@@ -52,6 +52,14 @@ describe('classifyAccount', () => {
     expect(classifyAccount('2050')).toBe('currentLiability');
     expect(classifyAccount('2300')).toBe('currentLiability');
     expect(classifyAccount('3900')).toBe('equity');
+  });
+
+  it('keeps Customer Advances (2400) a CURRENT liability', () => {
+    // Unearned revenue is a contract liability the server settles when the goods
+    // are delivered — inside the operating cycle. The app's map cuts current at
+    // 2399 and files this as long-term, which on a real company put 145,000 in
+    // the wrong half of the balance sheet.
+    expect(classifyAccount('2400')).toBe('currentLiability');
   });
 
   it('is other for a code outside every band', () => {
@@ -121,7 +129,7 @@ describe('bucketStatementLines', () => {
 
   it('buckets liabilities separately from assets', () => {
     const result = bucketStatementLines(
-      [line('2000'), line('2400')],
+      [line('2000'), line('2700')],
       LIABILITY_GROUPS,
     );
     expect(result.sections.map((s) => s.group)).toEqual([

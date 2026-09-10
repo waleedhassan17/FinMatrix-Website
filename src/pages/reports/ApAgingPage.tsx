@@ -15,6 +15,7 @@ export default function ApAgingPage() {
       csvName="ap-aging"
       emptyTitle="No outstanding payables"
       emptyHint="Every supplier bill is settled."
+      documentNoun="bill"
       query={query}
     />
   );

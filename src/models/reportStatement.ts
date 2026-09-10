@@ -36,11 +36,26 @@ export interface StatementLine {
 /**
  * Which part of a statement an account number belongs to.
  *
- * The bands come from the chart the server seeds, and two of them are wider than
- * they look: Inventory (1200) AND Goods in Transit (1250) are both current
- * assets, and Accounts Payable (2000) AND GRNI (2050) are both current
- * liabilities. Anything non-numeric, or outside every band, is `'other'` — which
- * is rendered, not dropped.
+ * The number is all there is to go on: `GET /reports/balance-sheet` sends each
+ * line as `{accountCode, accountName, amount}` with no type or sub-type, so the
+ * statement's shape has to be inferred from the chart's numbering convention.
+ *
+ * Several bands are wider than their names suggest. Inventory (1200), Goods in
+ * Transit (1250) and Sales Tax Recoverable (1300) are all current assets;
+ * Accounts Payable (2000), GRNI (2050), Sales Tax Payable (2300) and Customer
+ * Advances (2400) are all current liabilities.
+ *
+ * **The current-liability band runs to 2699, not 2399.** The app's version cuts
+ * at 2399 and files everything above as long-term, which puts account 2400 —
+ * `Customer Advances (Unearned Revenue)`, a contract liability the server settles
+ * when the goods are delivered — under "Long-Term Liabilities". It is money owed
+ * within the operating cycle, so that overstates long-term debt and understates
+ * current, which is exactly the distinction a reader checks a balance sheet for.
+ * No seeded account sits above 2400, so 2700+ is left free for the genuinely
+ * long-term items a user adds themselves.
+ *
+ * Anything non-numeric, or outside every band, is `'other'` — rendered under an
+ * "Other" heading, never dropped.
  */
 export const classifyAccount = (code: string): AccountGroup => {
   if (!/^\d+$/.test(code)) return 'other';
@@ -50,8 +65,8 @@ export const classifyAccount = (code: string): AccountGroup => {
   if (n >= 1100 && n <= 1199) return 'ar';
   if (n >= 1200 && n <= 1499) return 'otherCurrentAsset';
   if (n >= 1500 && n <= 1999) return 'fixedAsset';
-  if (n >= 2000 && n <= 2399) return 'currentLiability';
-  if (n >= 2400 && n <= 2999) return 'longTermLiability';
+  if (n >= 2000 && n <= 2699) return 'currentLiability';
+  if (n >= 2700 && n <= 2999) return 'longTermLiability';
   if (n >= 3000 && n <= 3999) return 'equity';
   if (n >= 4000 && n <= 4999) return 'income';
   if (n >= 5000 && n <= 5999) return 'cogs';

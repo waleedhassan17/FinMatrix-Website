@@ -1,0 +1,252 @@
+#!/usr/bin/env node
+// ═══════════════════════════════════════════════════════
+// FinMatrix Web — Report tie-out
+// ═══════════════════════════════════════════════════════
+// Asserts the accounting identities that have to hold BETWEEN reports. Unit tests
+// prove each serializer handles its own payload; only real data can prove the
+// statements agree with each other, and a statement that balances in isolation
+// while contradicting its neighbour is the failure mode that matters.
+//
+// Read-only: every request is a GET against a report endpoint. Nothing is created,
+// changed or deleted, so it is safe to point at production.
+//
+//   ADMIN_EMAIL=you@example.com ADMIN_PASSWORD=... node scripts/verify-reports.mjs
+//   API_BASE=http://localhost:3000/api/v1 ADMIN_EMAIL=... node scripts/verify-reports.mjs
+//
+// Exits non-zero if any tie fails.
+
+const API =
+  process.env.API_BASE ||
+  'https://finmatrix-api-prod-665c6b5cb6a1.herokuapp.com/api/v1';
+const EMAIL = process.env.ADMIN_EMAIL;
+const PASSWORD = process.env.ADMIN_PASSWORD;
+
+if (!EMAIL || !PASSWORD) {
+  console.error(
+    'ADMIN_EMAIL and ADMIN_PASSWORD are required.\n' +
+      '  ADMIN_EMAIL=you@example.com ADMIN_PASSWORD=... node scripts/verify-reports.mjs',
+  );
+  process.exit(2);
+}
+
+let token = '';
+let companyId = '';
+let passed = 0;
+const failures = [];
+
+const n = (v) => {
+  const x = parseFloat(String(v ?? '0'));
+  return Number.isFinite(x) ? x : 0;
+};
+
+/** A paisa of tolerance: the ledger carries four decimals and reports show two. */
+const ties = (a, b) => Math.abs(n(a) - n(b)) < 0.01;
+
+const check = (name, ok, detail) => {
+  if (ok) {
+    passed += 1;
+    console.log(`  ✓ ${name}`);
+  } else {
+    failures.push(name);
+    console.log(`  ✗ ${name}`);
+    if (detail !== undefined) console.log(`      ${JSON.stringify(detail)}`);
+  }
+};
+
+const get = async (path) => {
+  const res = await fetch(`${API}${path}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'x-company-id': companyId,
+    },
+  });
+  if (!res.ok) throw new Error(`GET ${path} -> ${res.status}`);
+  const body = await res.json();
+  // The statement reports are unenveloped; dashboard and analytics are not.
+  return body && body.success !== undefined && body.data !== undefined
+    ? body.data
+    : body;
+};
+
+const signIn = async () => {
+  const res = await fetch(`${API}/auth/signin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: EMAIL, password: PASSWORD }),
+  });
+  if (!res.ok) throw new Error(`sign-in failed: ${res.status}`);
+  const payload = await res.json();
+  const d = payload.data ?? payload;
+  token = d?.tokens?.accessToken ?? '';
+  companyId = d?.companyId ?? '';
+  if (!token || !companyId) throw new Error('sign-in returned no token or company');
+  return d;
+};
+
+const iso = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+    d.getDate(),
+  ).padStart(2, '0')}`;
+
+const main = async () => {
+  const session = await signIn();
+  const today = iso(new Date());
+  // All of history, so the P&L and the balance sheet describe the same window and
+  // their net-income figures are comparable. A narrower P&L would legitimately
+  // differ from the equity line and prove nothing.
+  const from = '1970-01-01';
+
+  console.log(`\n${session.company?.name ?? 'company'}  ·  as of ${today}`);
+  console.log(`${API}\n`);
+
+  const [pnl, bs, tb, cf, ledger, ar, ap, inv, dash] = await Promise.all([
+    get(`/reports/profit-loss?startDate=${from}&endDate=${today}`),
+    get(`/reports/balance-sheet?asOfDate=${today}`),
+    get(`/reports/trial-balance?startDate=${from}&endDate=${today}`),
+    get(`/reports/cash-flow?startDate=${from}&endDate=${today}`),
+    get(`/ledger?startDate=${from}&endDate=${today}`),
+    get('/reports/ar-aging'),
+    get('/reports/ap-aging'),
+    get('/reports/inventory-valuation'),
+    get('/reports/dashboard'),
+  ]);
+
+  console.log('Trial Balance');
+  check('debits equal credits', ties(tb.totalDebits, tb.totalCredits), {
+    debits: tb.totalDebits,
+    credits: tb.totalCredits,
+  });
+  check('the server agrees it balances', tb.isBalanced === true);
+  check('every row sits in exactly one column', (tb.rows ?? []).every(
+    (r) => n(r.debit) === 0 || n(r.credit) === 0,
+  ));
+
+  console.log('\nBalance Sheet');
+  const le = n(bs.totalLiabilities) + n(bs.totalEquity);
+  check('assets equal liabilities plus equity', ties(bs.totalAssets, le), {
+    assets: bs.totalAssets,
+    liabilitiesAndEquity: le,
+  });
+  check('the server agrees it balances', bs.isBalanced === true);
+
+  console.log('\nProfit & Loss');
+  check(
+    'gross profit less expenses equals net income',
+    ties(n(pnl.grossProfit) - n(pnl.expenses), pnl.netIncome),
+    { grossProfit: pnl.grossProfit, expenses: pnl.expenses, netIncome: pnl.netIncome },
+  );
+  // The real cross-report tie. The backend derives the equity line through the
+  // same rounded gross profit the P&L uses, specifically so these agree exactly.
+  const equityNetIncome = (bs.equity ?? []).find((e) =>
+    /net income/i.test(String(e.accountName)),
+  );
+  check(
+    'net income matches the balance sheet equity line',
+    equityNetIncome !== undefined && ties(equityNetIncome.amount, pnl.netIncome),
+    { pnl: pnl.netIncome, balanceSheet: equityNetIncome?.amount ?? null },
+  );
+
+  console.log('\nCash Flow');
+  check(
+    'beginning plus net change equals ending cash',
+    ties(n(cf.beginningCash) + n(cf.netChange), cf.endingCash),
+    {
+      beginning: cf.beginningCash,
+      netChange: cf.netChange,
+      ending: cf.endingCash,
+    },
+  );
+  // Cash and Bank occupy 1000-1099 in the seeded chart.
+  const bsCash = (bs.assets ?? [])
+    .filter((a) => /^\d+$/.test(String(a.accountCode)) && Number(a.accountCode) < 1100)
+    .reduce((s, a) => s + n(a.amount), 0);
+  check('ending cash matches balance sheet cash', ties(bsCash, cf.endingCash), {
+    balanceSheetCash: Math.round(bsCash * 100) / 100,
+    endingCash: cf.endingCash,
+  });
+
+  console.log('\nGeneral Ledger');
+  const entries = ledger.entries ?? [];
+  check('period debits equal period credits', ties(ledger.totals?.debit, ledger.totals?.credit), {
+    debit: ledger.totals?.debit,
+    credit: ledger.totals?.credit,
+  });
+  check(
+    'entries are oldest first',
+    entries.every((e, i) => i === 0 || String(e.date) >= String(entries[i - 1].date)),
+  );
+  check(
+    'every row can be drilled into',
+    entries.every((e) => Boolean(e.sourceId)),
+  );
+
+  console.log('\nAging');
+  for (const [label, report] of [
+    ['AR', ar],
+    ['AP', ap],
+  ]) {
+    const t = report.totals ?? {};
+    const bucketSum =
+      n(t.current) +
+      n(t.bucket1to30) +
+      n(t.bucket31to60) +
+      n(t.bucket61to90) +
+      n(t.bucket90Plus);
+    check(`${label} buckets sum to the total`, ties(bucketSum, t.total), {
+      buckets: Math.round(bucketSum * 100) / 100,
+      total: t.total,
+    });
+    const rowSum = (report.rows ?? []).reduce((s, r) => s + n(r.total), 0);
+    check(`${label} rows sum to the total`, ties(rowSum, t.total), {
+      rows: Math.round(rowSum * 100) / 100,
+      total: t.total,
+    });
+  }
+
+  // NOT a tie, and deliberately reported rather than asserted.
+  //
+  // The dashboard's outstandingAR sums every invoice balance whose status is not
+  // paid or void — DRAFTS INCLUDED. The aging report excludes drafts, because
+  // nothing is owed on an invoice that was never issued. The aging figure is the
+  // correct measure of receivables; the gap below should be exactly the drafts on
+  // file, and a non-zero gap is information, not a failure.
+  const arGap = n(dash.outstandingAR) - n(ar.totals?.total);
+  console.log('\nDashboard comparison (informational)');
+  console.log(
+    `  dashboard outstandingAR ${n(dash.outstandingAR).toFixed(2)}  ` +
+      `aging total ${n(ar.totals?.total).toFixed(2)}  ` +
+      `gap ${arGap.toFixed(2)} (expected: draft invoices)`,
+  );
+  check('AP aging agrees with the dashboard', ties(dash.pendingAP, ap.totals?.total), {
+    dashboard: dash.pendingAP,
+    aging: ap.totals?.total,
+  });
+
+  console.log('\nInventory');
+  const invRowSum = (inv.rows ?? []).reduce((s, r) => s + n(r.value), 0);
+  check('item values sum to the total', ties(invRowSum, inv.totalValue), {
+    rows: Math.round(invRowSum * 100) / 100,
+    total: inv.totalValue,
+  });
+  const catSum = (inv.byCategory ?? []).reduce((s, c) => s + n(c.totalValue), 0);
+  check('category values sum to the total', ties(catSum, inv.totalValue));
+  // Inventory is a subledger of account 1200; if they disagree, stock and the
+  // control account have drifted.
+  const bsInventory = (bs.assets ?? []).find((a) => String(a.accountCode) === '1200');
+  check(
+    'inventory total matches the balance sheet Inventory account',
+    bsInventory === undefined || ties(bsInventory.amount, inv.totalValue),
+    { balanceSheet: bsInventory?.amount ?? null, valuation: inv.totalValue },
+  );
+
+  console.log(
+    `\n${passed} passed, ${failures.length} failed` +
+      (failures.length ? `\n  ${failures.join('\n  ')}` : ''),
+  );
+  process.exit(failures.length === 0 ? 0 : 1);
+};
+
+main().catch((e) => {
+  console.error(`\nverification could not run: ${e.message}`);
+  process.exit(2);
+});
