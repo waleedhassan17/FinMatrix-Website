@@ -22,6 +22,9 @@ import {
   CustomerDetailPage,
   CustomerFormPage,
   CustomerListPage,
+  AccountDetailPage,
+  AccountFormPage,
+  AccountListPage,
   DashboardPage,
   DesignTokens,
   EstimateDetailPage,
@@ -295,6 +298,15 @@ export const router = createBrowserRouter([
             path: 'vendor-credits/:vendorCreditId',
             element: <VendorCreditDetailPage />,
           },
+
+          // ── Module 15: Chart of Accounts (admin only) ───────────
+          // No extra guard needed: `/accounts` is absent from STAFF_NAV, so
+          // `RequireRouteAccess` above redirects a staff member who types the
+          // URL rather than letting the page 403 on its first request.
+          { path: 'accounts', element: <AccountListPage /> },
+          { path: 'accounts/new', element: <AccountFormPage /> },
+          { path: 'accounts/:accountId', element: <AccountDetailPage /> },
+          { path: 'accounts/:accountId/edit', element: <AccountFormPage /> },
 
           // A slice of module 18: staff cannot verify that a submitted invoice
           // became a request without somewhere to see it.

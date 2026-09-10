@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
+import type { AccountFormData } from '@/models/account';
+import { emptyAccountForm } from '@/models/account';
 import type { VendorCreditFormData } from '@/models/vendorCredit';
 import { freshVendorCreditLine } from '@/models/vendorCredit';
+import {
+  accountDetailSerializer,
+  accountFormToCreatePayload,
+  accountFormToUpdatePayload,
+  accountListSerializer,
+  mapAccount,
+} from '@/serializers/accountSerializer';
 import {
   mapVendorCredit,
   vendorCreditFormToPayload,
@@ -227,5 +236,250 @@ describe('vendorCreditSingleSerializer', () => {
   it('is null for an empty payload', () => {
     expect(vendorCreditSingleSerializer(null)).toBe(null);
     expect(vendorCreditSingleSerializer({})).toBe(null);
+  });
+});
+
+// ═══════════════════════════════════════════════════════
+// Chart of accounts
+// ═══════════════════════════════════════════════════════
+
+const accountForm = (over: Partial<AccountFormData> = {}): AccountFormData => ({
+  ...emptyAccountForm('expense'),
+  accountNumber: '6500',
+  name: 'Packaging Materials',
+  subType: 'Operating',
+  ...over,
+});
+
+describe('accountFormToCreatePayload', () => {
+  it('sends the DTO’s field names, not the mobile app’s', () => {
+    expect(accountFormToCreatePayload(accountForm())).toEqual({
+      accountNumber: '6500',
+      name: 'Packaging Materials',
+      type: 'expense',
+      subType: 'Operating',
+    });
+  });
+
+  it('never sends the five fields the DTO would strip', () => {
+    // The app sends code/balance/normalBalance/isSystemAccount/companyId. None
+    // is on CreateAccountDto, whitelist:true drops them all, and that is why
+    // the app's opening balances never posted.
+    const payload = accountFormToCreatePayload(accountForm()) as unknown as Record<string, unknown>;
+    expect('code' in payload).toBe(false);
+    expect('balance' in payload).toBe(false);
+    expect('normalBalance' in payload).toBe(false);
+    expect('isSystemAccount' in payload).toBe(false);
+    expect('companyId' in payload).toBe(false);
+  });
+
+  it('sends subType as the human label the server compares against', () => {
+    expect(accountFormToCreatePayload(accountForm()).subType).toBe('Operating');
+  });
+
+  it('omits parentId rather than sending an empty string', () => {
+    // @IsOptional() @IsUUID() — "" is present and fails.
+    const payload = accountFormToCreatePayload(accountForm({ parentId: '' }));
+    expect('parentId' in payload).toBe(false);
+  });
+
+  it('sends parentId when one is chosen', () => {
+    expect(
+      accountFormToCreatePayload(accountForm({ parentId: 'acct-6000' })).parentId,
+    ).toBe('acct-6000');
+  });
+
+  it('omits a blank description', () => {
+    const payload = accountFormToCreatePayload(accountForm({ description: '  ' }));
+    expect('description' in payload).toBe(false);
+  });
+
+  it('omits a blank or zero opening balance', () => {
+    // Zero posts no journal entry server-side, so omitting says what was meant.
+    expect('openingBalance' in accountFormToCreatePayload(accountForm())).toBe(false);
+    expect(
+      'openingBalance' in accountFormToCreatePayload(accountForm({ openingBalance: '0' })),
+    ).toBe(false);
+  });
+
+  it('sends a real opening balance as a 2-dp string', () => {
+    expect(
+      accountFormToCreatePayload(accountForm({ openingBalance: '1500' }))
+        .openingBalance,
+    ).toBe('1500.00');
+  });
+
+  it('keeps a negative opening balance negative', () => {
+    expect(
+      accountFormToCreatePayload(accountForm({ openingBalance: '-250.5' }))
+        .openingBalance,
+    ).toBe('-250.50');
+  });
+
+  it('trims the number and name', () => {
+    const payload = accountFormToCreatePayload(
+      accountForm({ accountNumber: ' 6500 ', name: '  Packaging  ' }),
+    );
+    expect(payload.accountNumber).toBe('6500');
+    expect(payload.name).toBe('Packaging');
+  });
+});
+
+describe('accountFormToUpdatePayload', () => {
+  it('leaves out the fields update() ignores', () => {
+    // PartialType would ACCEPT all three, but update() never reads them — so
+    // sending them looks like an edit that silently does nothing.
+    const payload = accountFormToUpdatePayload(
+      accountForm({ openingBalance: '999' }),
+    ) as unknown as Record<string, unknown>;
+    expect('accountNumber' in payload).toBe(false);
+    expect('type' in payload).toBe(false);
+    expect('openingBalance' in payload).toBe(false);
+  });
+
+  it('sends the mutable fields', () => {
+    expect(
+      accountFormToUpdatePayload(
+        accountForm({ parentId: 'acct-6000', description: 'Boxes and tape' }),
+      ),
+    ).toEqual({
+      name: 'Packaging Materials',
+      subType: 'Operating',
+      parentId: 'acct-6000',
+      description: 'Boxes and tape',
+      isActive: true,
+    });
+  });
+
+  it('sends parentId as null to clear it, never undefined', () => {
+    // undefined disappears from the JSON, so the service would never see the
+    // key and a sub-account could never be detached. null hits the ?? branch.
+    expect(accountFormToUpdatePayload(accountForm({ parentId: '' })).parentId).toBe(
+      null,
+    );
+  });
+
+  it('sends an empty description so it can be cleared', () => {
+    expect(
+      accountFormToUpdatePayload(accountForm({ description: '' })).description,
+    ).toBe('');
+  });
+});
+
+describe('mapAccount', () => {
+  it('reads the real field names', () => {
+    const account = mapAccount({
+      id: 'a-1',
+      accountNumber: '1010',
+      name: 'Business Checking',
+      type: 'asset',
+      subType: 'Bank',
+      parentId: null,
+      openingBalance: '5000.0000',
+      balance: '7250.5000',
+      isActive: true,
+      isSystemAccount: true,
+    });
+    expect(account.accountNumber).toBe('1010');
+    expect(account.openingBalance).toBe(5000);
+    expect(account.balance).toBe(7250.5);
+    expect(account.isSystemAccount).toBe(true);
+  });
+
+  it('falls back to `code` when accountNumber is absent', () => {
+    // A blank account number breaks sorting, grouping and the duplicate check
+    // all at once, so both spellings are read.
+    expect(mapAccount({ code: '6000' }).accountNumber).toBe('6000');
+  });
+
+  it('leaves parentId null rather than an empty string', () => {
+    expect(mapAccount({ id: 'a-1' }).parentId).toBe(null);
+  });
+
+  it('treats a missing isActive as active', () => {
+    expect(mapAccount({ id: 'a-1' }).isActive).toBe(true);
+  });
+
+  it('treats a missing isSystemAccount as false', () => {
+    expect(mapAccount({ id: 'a-1' }).isSystemAccount).toBe(false);
+  });
+});
+
+describe('accountListSerializer', () => {
+  it('reads the nested {accounts, summary} shape', () => {
+    const { accounts, summary } = accountListSerializer({
+      accounts: [{ id: 'a', accountNumber: '1000' }, { id: 'b', accountNumber: '2000' }],
+      summary: {
+        totals: { asset: '1000.0000', liability: '500.0000', equity: '0', revenue: '0', expense: '0' },
+        counts: { asset: 1, liability: 1, equity: 0, revenue: 0, expense: 0 },
+        totalAccounts: 2,
+      },
+    });
+
+    expect(accounts).toHaveLength(2);
+    expect(summary.totals.asset).toBe(1000);
+    expect(summary.counts.liability).toBe(1);
+    expect(summary.totalAccounts).toBe(2);
+  });
+
+  it('falls back to the row count when the summary is missing', () => {
+    // A missing summary must not make a populated chart read as empty.
+    const { summary } = accountListSerializer({
+      accounts: [{ id: 'a' }, { id: 'b' }],
+    });
+    expect(summary.totalAccounts).toBe(2);
+  });
+
+  it('zeroes every type in a missing summary rather than leaving holes', () => {
+    const { summary } = accountListSerializer({ accounts: [] });
+    expect(summary.totals).toEqual({
+      asset: 0,
+      liability: 0,
+      equity: 0,
+      revenue: 0,
+      expense: 0,
+    });
+  });
+
+  it('tolerates a bare array', () => {
+    expect(accountListSerializer([{ id: 'a' }]).accounts).toHaveLength(1);
+  });
+
+  it('is empty for a malformed payload', () => {
+    expect(accountListSerializer(null).accounts).toEqual([]);
+  });
+});
+
+describe('accountDetailSerializer', () => {
+  it('reads {account, recentEntries}', () => {
+    const { account, recentEntries } = accountDetailSerializer({
+      account: { id: 'a-1', accountNumber: '1000', balance: '500.0000' },
+      recentEntries: [
+        {
+          id: 'gl-1',
+          date: '2026-03-01',
+          reference: 'JE-2026-0001',
+          debit: '500.0000',
+          credit: '0.0000',
+          balance: '500.0000',
+          memo: 'Opening balance',
+        },
+      ],
+    });
+
+    expect(account?.accountNumber).toBe('1000');
+    expect(recentEntries).toHaveLength(1);
+    expect(recentEntries[0].debit).toBe(500);
+    expect(recentEntries[0].balance).toBe(500);
+  });
+
+  it('reads a bare account with no wrapper', () => {
+    expect(accountDetailSerializer({ id: 'a-1' }).account?.id).toBe('a-1');
+  });
+
+  it('is null with no entries for an empty payload', () => {
+    const result = accountDetailSerializer({});
+    expect(result.account).toBe(null);
+    expect(result.recentEntries).toEqual([]);
   });
 });

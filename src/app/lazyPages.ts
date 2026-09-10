@@ -104,6 +104,13 @@ export const VendorCreditDetailPage = lazy(
   () => import('@/pages/vendorCredits/VendorCreditDetailPage'),
 );
 
+// Chart of accounts — admin only, so staff never download these chunks either.
+export const AccountListPage = lazy(() => import('@/pages/accounts/AccountListPage'));
+export const AccountFormPage = lazy(() => import('@/pages/accounts/AccountFormPage'));
+export const AccountDetailPage = lazy(
+  () => import('@/pages/accounts/AccountDetailPage'),
+);
+
 // Onboarding and renewal. Behind sign-in, and reached minutes after the landing
 // page at the earliest — no reason for a first-time visitor to download the plan
 // grid, the bank-transfer panel and the company form before reading the pitch.
