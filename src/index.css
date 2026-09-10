@@ -1,0 +1,461 @@
+@import 'tailwindcss';
+
+/* Roboto — the face the app renders on Android, which is the build users have.
+   Latin subset only: the unscoped entrypoints pull cyrillic, greek, math and
+   symbols too, which emitted 80 font files for an app that ships no such text. */
+@import '@fontsource/roboto/latin-400.css';
+@import '@fontsource/roboto/latin-500.css';
+@import '@fontsource/roboto/latin-600.css';
+@import '@fontsource/roboto/latin-700.css';
+@import '@fontsource/roboto/latin-800.css';
+
+/* ═══════════════════════════════════════════════════════
+   Design tokens → Tailwind theme
+   ═══════════════════════════════════════════════════════
+   Every value here is mirrored in src/theme/tokens.ts, which is the module
+   TypeScript reads. Keep the two in step: tokens.ts is the source of truth,
+   this file is its CSS projection.
+
+   These OVERRIDE Tailwind's default palette on purpose. The shadcn/ui default
+   is a black/grey system; FinMatrix is navy on a cool tinted canvas. */
+
+@theme {
+  /* ── Font ─────────────────────────────────────────── */
+  --font-sans: Roboto, Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* ── Action colour ────────────────────────────────── */
+  --color-primary: #1f4e79;
+  --color-primary-dark: #163a5c;
+  --color-primary-light: #eaf0f6;
+  --color-primary-lighter: #eaf0f6;
+  --color-primary-tint: #eaf0f6;
+  --color-primary-hover: #163a5c;
+
+  /* ── Secondary (category colour, never decoration) ── */
+  --color-secondary: #7c3aed;
+  --color-secondary-light: #efe9fd;
+
+  /* ── Staff portal accent ──────────────────────────────
+     Navy is the owner's colour. The staff sign-in page is a different door to a
+     different surface, so it takes the brand teal — wayfinding, not decoration. */
+  --color-accent-teal: #0f766e;
+  --color-accent-teal-dark: #0b5c56;
+  --color-accent-teal-tint: #e4f2f0;
+  --color-accent-teal-950: #042f2c;
+
+  /* ── Navy ramp ────────────────────────────────────────
+     primary-light, -lighter and -tint are all #eaf0f6: three names for one
+     value, and nothing between it and #1f4e79. Tinted bands, gradient stops and
+     the dark surfaces need real steps. These sit beside the old names — nothing
+     is renamed, nothing that uses them moves. */
+  --color-primary-50: #f3f7fb;
+  --color-primary-100: #e3ecf5;
+  --color-primary-200: #c7d9e9;
+  --color-primary-300: #9db9d4;
+  --color-primary-600: #24598a;
+  --color-primary-800: #12365a;
+  --color-primary-900: #0c2440;
+  --color-primary-950: #071726;
+
+  /* On-dark positive. palette.emerald400 — the green SummaryPanel already uses on
+     its near-black ground. `success` (#16a34a) goes muddy against navy. */
+  --color-success-bright: #34d399;
+
+  /* ── Semantic ─────────────────────────────────────── */
+  --color-success: #16a34a;
+  --color-success-light: #d8f3e1;
+  --color-success-lighter: #effbf3;
+  --color-success-hover: #15803d;
+
+  --color-warning: #d97706;
+  --color-warning-light: #fbead0;
+  --color-warning-lighter: #fdf6ea;
+  --color-warning-hover: #b45309;
+
+  --color-danger: #dc2626;
+  --color-danger-light: #fbdcdc;
+  --color-danger-lighter: #fdf0f0;
+  --color-danger-hover: #b91c1c;
+
+  --color-info: #2563eb;
+  --color-info-light: #dce7fe;
+
+  /* ── Neutral ramp (cool slate) ────────────────────── */
+  --color-neutral-0: #ffffff;
+  --color-neutral-25: #fcfcfd;
+  --color-neutral-50: #f7f9fb;
+  --color-neutral-100: #eef2f6;
+  --color-neutral-200: #e2e8f0;
+  --color-neutral-300: #cbd5e1;
+  --color-neutral-400: #94a3b8;
+  --color-neutral-500: #64748b;
+  --color-neutral-600: #475569;
+  --color-neutral-700: #334155;
+  --color-neutral-800: #1e293b;
+  --color-neutral-900: #0f172a;
+
+  /* ── Surfaces ─────────────────────────────────────── */
+  --color-background: #f4f6f9;
+  --color-background-alt: #fcfcfd;
+  --color-surface: #ffffff;
+  --color-surface-2: #f9fafb;
+  --color-surface-hover: #fcfcfd;
+
+  /* ── Hairlines ────────────────────────────────────── */
+  --color-border: #d3dae3;
+  --color-border-strong: #c1cad5;
+  --color-border-light: #eef2f6;
+  --color-border-focus: #0e8c80;
+
+  /* ── Text ─────────────────────────────────────────── */
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-tertiary: #94a3b8;
+  --color-text-disabled: #cbd5e1;
+  --color-text-inverse: #ffffff;
+  --color-text-link: #0f766e;
+
+  /* ── Header / sidebar ─────────────────────────────── */
+  --color-header: #111d28;
+  --color-sidebar-from: #1a365d;
+  --color-sidebar-to: #0f2544;
+
+  /* ── Type scale ───────────────────────────────────────
+     Name a role, never a size and weight: `text-h2`, not
+     `text-[22px] font-bold`. scripts/check-design-tokens.js enforces this. */
+  /* The hero role. display-lg (36px) was the ceiling, and a marketing hero at
+     36px on a 1440px screen reads as a subheading. */
+  --text-display-xl: 56px;
+  --text-display-xl--line-height: 62px;
+  --text-display-xl--font-weight: 800;
+  --text-display-xl--letter-spacing: -1.4px;
+
+  --text-display-lg: 36px;
+  --text-display-lg--line-height: 44px;
+  --text-display-lg--font-weight: 800;
+  --text-display-lg--letter-spacing: -0.5px;
+
+  --text-display-md: 32px;
+  --text-display-md--line-height: 40px;
+  --text-display-md--font-weight: 800;
+  --text-display-md--letter-spacing: -0.5px;
+
+  --text-display-sm: 24px;
+  --text-display-sm--line-height: 30px;
+  --text-display-sm--font-weight: 700;
+  --text-display-sm--letter-spacing: -0.3px;
+
+  --text-h1: 28px;
+  --text-h1--line-height: 34px;
+  --text-h1--font-weight: 800;
+  --text-h1--letter-spacing: -0.4px;
+
+  --text-h2: 22px;
+  --text-h2--line-height: 28px;
+  --text-h2--font-weight: 700;
+  --text-h2--letter-spacing: -0.3px;
+
+  --text-h3: 19px;
+  --text-h3--line-height: 26px;
+  --text-h3--font-weight: 700;
+  --text-h3--letter-spacing: -0.2px;
+
+  --text-h4: 16px;
+  --text-h4--line-height: 22px;
+  --text-h4--font-weight: 600;
+  --text-h4--letter-spacing: -0.1px;
+
+  --text-h5: 14px;
+  --text-h5--line-height: 20px;
+  --text-h5--font-weight: 600;
+  --text-h5--letter-spacing: 0px;
+
+  --text-body-lg: 16px;
+  --text-body-lg--line-height: 24px;
+  --text-body-lg--font-weight: 400;
+  --text-body-lg--letter-spacing: 0px;
+
+  --text-body-md: 15px;
+  --text-body-md--line-height: 22px;
+  --text-body-md--font-weight: 400;
+  --text-body-md--letter-spacing: 0px;
+
+  --text-body-sm: 13px;
+  --text-body-sm--line-height: 19px;
+  --text-body-sm--font-weight: 400;
+  --text-body-sm--letter-spacing: 0px;
+
+  --text-label-lg: 15px;
+  --text-label-lg--line-height: 20px;
+  --text-label-lg--font-weight: 600;
+  --text-label-lg--letter-spacing: 0px;
+
+  --text-label-md: 13px;
+  --text-label-md--line-height: 18px;
+  --text-label-md--font-weight: 600;
+  --text-label-md--letter-spacing: 0.1px;
+
+  --text-label-sm: 12px;
+  --text-label-sm--line-height: 16px;
+  --text-label-sm--font-weight: 500;
+  --text-label-sm--letter-spacing: 0.1px;
+
+  --text-caption: 12px;
+  --text-caption--line-height: 16px;
+  --text-caption--font-weight: 400;
+  --text-caption--letter-spacing: 0.1px;
+
+  --text-overline: 11px;
+  --text-overline--line-height: 14px;
+  --text-overline--font-weight: 600;
+  --text-overline--letter-spacing: 0.6px;
+
+  /* ── Shape ────────────────────────────────────────── */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 24px;
+
+  /* ── Elevation ────────────────────────────────────────
+     `card` is THE elevation. Nothing needs a 28 or 38px blur, and stacking
+     several depths is most of what makes an interface look synthetic. */
+  --shadow-card: 0 2px 8px rgba(16, 24, 40, 0.06);
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 6px 18px rgba(15, 23, 42, 0.09);
+  --shadow-lg: 0 12px 28px rgba(15, 23, 42, 0.12);
+  --shadow-xl: 0 20px 38px rgba(15, 23, 42, 0.16);
+
+  /* ── Spacing ──────────────────────────────────────────
+     Not a strict 4px grid — 12 and 20 are deliberate, and preserved so web
+     and mobile lay out identically. */
+  --spacing-xxs: 4px;
+  --spacing-xs: 8px;
+  --spacing-sm: 12px;
+  --spacing-md: 16px;
+  --spacing-lg: 20px;
+  --spacing-xl: 24px;
+  --spacing-xxl: 32px;
+  --spacing-xxxl: 40px;
+  --spacing-xxxxl: 48px;
+
+  /* Section rhythm. The scale above tops out at 48px, which is a card's padding,
+     not a page section's — marketing sections need 88–120px to breathe. */
+  --spacing-section: 88px;
+  --spacing-section-lg: 120px;
+
+  /* ── Motion ─────────────────────────────────────────── */
+  --animate-float: float 7s ease-in-out infinite;
+  --animate-float-late: float 7s ease-in-out 1.8s infinite;
+
+  @keyframes float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-8px);
+    }
+  }
+}
+
+/* `overline` is uppercase by role; Tailwind's type scale cannot express
+   text-transform, so it is applied here. */
+@utility text-overline {
+  text-transform: uppercase;
+}
+
+/* Money is always right-aligned with lining, fixed-width figures so columns of
+   figures line up. Used by every amount cell in the app. */
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Surfaces & texture
+   ═══════════════════════════════════════════════════════
+   The depth layer for the public and auth screens. It lives here, not in
+   components, for two reasons: a gradient is a design value and this file is
+   where design values live; and scripts/check-design-tokens.js gates .ts/.tsx
+   only, so this is the one place raw colour stops are legitimate.
+
+   Every name uses a prefix Tailwind does not own (surface-mesh-, glow-,
+   pattern-, texture-, glass-, fade-mask-, gradient-text-) so none can be taken
+   for one of its bg-*, mask-* or text-* utilities — and none starts with
+   `text-`, which tailwind-merge would file as a colour. */
+
+/* Navy mesh: hero, pricing band, auth brand panel. The glows are radial
+   gradients rather than blurred elements — the same look, with no filter pass
+   for a mid-range phone to pay for. */
+@utility surface-mesh-navy {
+  background-color: var(--color-primary-900);
+  background-image:
+    radial-gradient(
+      55% 60% at 88% 6%,
+      color-mix(in oklab, var(--color-primary-600) 78%, transparent) 0%,
+      transparent 70%
+    ),
+    radial-gradient(
+      42% 52% at 2% 98%,
+      color-mix(in oklab, var(--color-accent-teal) 34%, transparent) 0%,
+      transparent 72%
+    ),
+    radial-gradient(
+      38% 38% at 58% 42%,
+      color-mix(in oklab, var(--color-primary) 30%, transparent) 0%,
+      transparent 70%
+    ),
+    linear-gradient(
+      165deg,
+      var(--color-primary-800) 0%,
+      var(--color-primary-900) 48%,
+      var(--color-primary-950) 100%
+    );
+}
+
+/* The staff door's panel: the same construction, turned teal. */
+@utility surface-mesh-teal {
+  background-color: var(--color-accent-teal-950);
+  background-image:
+    radial-gradient(
+      55% 60% at 88% 6%,
+      color-mix(in oklab, var(--color-accent-teal) 82%, transparent) 0%,
+      transparent 70%
+    ),
+    radial-gradient(
+      42% 52% at 2% 98%,
+      color-mix(in oklab, var(--color-primary-600) 42%, transparent) 0%,
+      transparent 72%
+    ),
+    linear-gradient(
+      165deg,
+      var(--color-accent-teal-dark) 0%,
+      var(--color-accent-teal-950) 55%,
+      var(--color-primary-950) 100%
+    );
+}
+
+/* A soft pool of light, for sitting behind a floating card on a dark ground. */
+@utility glow-primary {
+  background-image: radial-gradient(
+    closest-side,
+    color-mix(in oklab, var(--color-primary-600) 60%, transparent),
+    transparent
+  );
+}
+
+@utility pattern-grid {
+  background-image:
+    linear-gradient(
+      to right,
+      color-mix(in oklab, var(--color-primary) 8%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--color-primary) 8%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 56px 56px;
+}
+
+@utility pattern-grid-dark {
+  background-image:
+    linear-gradient(to right, rgb(255 255 255 / 0.07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(255 255 255 / 0.07) 1px, transparent 1px);
+  background-size: 56px 56px;
+}
+
+@utility pattern-dots {
+  background-image: radial-gradient(
+    color-mix(in oklab, var(--color-primary) 20%, transparent) 1px,
+    transparent 1.5px
+  );
+  background-size: 22px 22px;
+}
+
+@utility pattern-dots-dark {
+  background-image: radial-gradient(rgb(255 255 255 / 0.14) 1px, transparent 1.5px);
+  background-size: 22px 22px;
+}
+
+/* Film grain: one 160px tile of fractal noise. It is what separates a gradient
+   that reads as a surface from one that reads as a screen fill. Use one faint
+   layer per dark surface — cheap to tile, not free to composite twice. */
+@utility texture-grain {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+}
+
+/* Frosted surfaces. */
+@utility glass-dark {
+  background-color: rgb(255 255 255 / 0.06);
+  border-color: rgb(255 255 255 / 0.12);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+@utility glass-light {
+  background-color: color-mix(in oklab, var(--color-surface) 84%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(14px) saturate(1.4);
+}
+
+/* Fade a pattern out instead of letting it stop at a hard edge. */
+@utility fade-mask-b {
+  -webkit-mask-image: linear-gradient(to bottom, #000 15%, transparent 92%);
+  mask-image: linear-gradient(to bottom, #000 15%, transparent 92%);
+}
+
+@utility fade-mask-radial {
+  -webkit-mask-image: radial-gradient(ellipse 75% 65% at 50% 35%, #000 20%, transparent 78%);
+  mask-image: radial-gradient(ellipse 75% 65% at 50% 35%, #000 20%, transparent 78%);
+}
+
+/* One phrase of a heading picked out in light. The clip is the only part Tailwind
+   cannot say in a class. Under forced colours the gradient is dropped so the
+   text never becomes invisible. */
+@utility gradient-text-light {
+  background-image: linear-gradient(
+    100deg,
+    var(--color-surface) 5%,
+    var(--color-primary-200) 55%,
+    var(--color-success-bright) 120%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+
+  @media (forced-colors: active) {
+    background-image: none;
+    color: CanvasText;
+  }
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+    font-size: var(--text-body-md);
+    line-height: var(--text-body-md--line-height);
+  }
+
+  /* The canvas is a faint cool tint, not pure white — cards read as surfaces
+     lifted off it rather than as boxes drawn on white. */
+  #root {
+    min-height: 100vh;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+}
