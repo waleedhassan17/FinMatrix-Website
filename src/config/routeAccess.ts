@@ -17,8 +17,14 @@ import type { UserRole } from '@/types';
  * Paths staff may reach that are not themselves nav destinations — detail
  * routes, `/new` forms, and the like. Nav gives us `/invoices`; a staff member
  * also needs `/invoices/new` and `/invoices/:id`.
+ *
+ * `/reports` is here because the prefix list below is built from nav GROUPS' own
+ * `path` plus their items' paths, and the Reports group has items but no path of
+ * its own — every report is `/reports/something`. Without this entry the reports
+ * hub is the one page in the module staff cannot open, and they would be bounced
+ * to the dashboard from a link the sidebar happily shows them.
  */
-const STAFF_EXTRA_PREFIXES: string[] = ['/dev/'];
+const STAFF_EXTRA_PREFIXES: string[] = ['/dev/', '/reports'];
 
 const collectStaffPrefixes = (): string[] => {
   const paths: string[] = [];

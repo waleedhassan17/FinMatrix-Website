@@ -49,7 +49,18 @@ const ALLOWED = [
   '/journal-entries/new',
   '/journal-entries/opening-balance',
   '/tax/liability',
+  // The hub is not a nav item — the Reports group has no path of its own — so it
+  // relies on STAFF_EXTRA_PREFIXES rather than on the nav-derived list.
+  '/reports',
   '/reports/profit-loss',
+  '/reports/balance-sheet',
+  '/reports/trial-balance',
+  '/reports/cash-flow',
+  '/reports/general-ledger',
+  '/reports/ar-aging',
+  '/reports/ap-aging',
+  '/reports/inventory-valuation',
+  '/reports/analytics',
   '/account',
 ];
 

@@ -125,6 +125,23 @@ export const OpeningBalancePage = lazy(
   () => import('@/pages/journalEntries/OpeningBalancePage'),
 );
 
+// Reports. Lazy matters more here than anywhere: four of these pull in recharts,
+// and nobody reaches a report in the first few seconds of a session.
+export const ReportsHubPage = lazy(() => import('@/pages/reports/ReportsHubPage'));
+export const ProfitLossPage = lazy(() => import('@/pages/reports/ProfitLossPage'));
+export const BalanceSheetPage = lazy(() => import('@/pages/reports/BalanceSheetPage'));
+export const TrialBalancePage = lazy(() => import('@/pages/reports/TrialBalancePage'));
+export const CashFlowPage = lazy(() => import('@/pages/reports/CashFlowPage'));
+export const GeneralLedgerPage = lazy(
+  () => import('@/pages/reports/GeneralLedgerPage'),
+);
+export const ArAgingPage = lazy(() => import('@/pages/reports/ArAgingPage'));
+export const ApAgingPage = lazy(() => import('@/pages/reports/ApAgingPage'));
+export const InventoryValuationPage = lazy(
+  () => import('@/pages/reports/InventoryValuationPage'),
+);
+export const AnalyticsPage = lazy(() => import('@/pages/reports/AnalyticsPage'));
+
 // Onboarding and renewal. Behind sign-in, and reached minutes after the landing
 // page at the earliest — no reason for a first-time visitor to download the plan
 // grid, the bank-transfer panel and the company form before reading the pitch.

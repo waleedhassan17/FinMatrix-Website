@@ -459,3 +459,95 @@
     outline-offset: 2px;
   }
 }
+
+/* ═══════════════════════════════════════════════════════
+   Print — financial statements
+   ═══════════════════════════════════════════════════════
+   A printed statement is the page's whole purpose, so everything that is
+   navigation or chrome goes, and what remains is laid out for paper.
+
+   Components opt in by marking their own chrome `print:hidden`; the rules here
+   handle the shell they sit inside and the things Tailwind utilities cannot reach
+   — page margins, break behaviour, and forcing the browser to print the
+   backgrounds it strips by default.
+
+   Literal colours are fine in this file: the design-token gate scans only
+   .ts/.tsx, and `#000` on white is the point rather than a theme decision. */
+@media print {
+  /* Ink on paper. A navy-on-tint statement wastes toner and photocopies badly. */
+  :root {
+    --color-background: #fff;
+    --color-surface: #fff;
+    --color-surface-2: #fff;
+    --color-text-primary: #000;
+    --color-text-secondary: #333;
+    --color-text-tertiary: #555;
+  }
+
+  @page {
+    margin: 14mm;
+  }
+
+  body {
+    background: #fff !important;
+  }
+
+  /* The app shell: sidebar, top bar, and anything a page marked as chrome. */
+  aside,
+  header,
+  nav,
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* The layout is a sidebar grid on screen; on paper it is one column. */
+  main {
+    display: block !important;
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* Cards become plain sections — a drop shadow prints as a grey smudge. */
+  .shadow-card,
+  [class*='shadow-'] {
+    box-shadow: none !important;
+  }
+
+  /* A statement that scrolls on screen must not clip on paper. */
+  [class*='overflow-'] {
+    overflow: visible !important;
+  }
+
+  /* Keep a section's heading with its figures, and never split a row. */
+  table {
+    page-break-inside: auto;
+  }
+
+  tr,
+  th,
+  td {
+    page-break-inside: avoid;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tfoot {
+    display: table-footer-group;
+  }
+
+  /* The totals row's rule is load-bearing: it is how a reader finds the bottom
+     line. Browsers drop borders and backgrounds when printing unless told. */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* A dimmed refetch must not print as washed-out figures. */
+  [aria-busy='true'] {
+    opacity: 1 !important;
+  }
+}

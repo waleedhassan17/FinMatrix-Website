@@ -25,14 +25,21 @@ import {
   AccountDetailPage,
   AccountFormPage,
   AccountListPage,
+  AnalyticsPage,
+  ApAgingPage,
+  ArAgingPage,
+  BalanceSheetPage,
+  CashFlowPage,
   DashboardPage,
   DesignTokens,
+  GeneralLedgerPage,
   EstimateDetailPage,
   ForgotPasswordPage,
   EstimateFormPage,
   EstimateListPage,
   InvoiceDetailPage,
   InvoiceFormPage,
+  InventoryValuationPage,
   InvoiceListPage,
   JournalEntryDetailPage,
   JournalEntryFormPage,
@@ -41,6 +48,9 @@ import {
   ModulePlaceholder,
   MyRequestsPage,
   OpeningBalancePage,
+  ProfitLossPage,
+  ReportsHubPage,
+  TrialBalancePage,
   PODetailPage,
   POFormPage,
   POListPage,
@@ -326,6 +336,21 @@ export const router = createBrowserRouter([
             path: 'journal-entries/:journalEntryId',
             element: <JournalEntryDetailPage />,
           },
+
+          // ── Module 17: Reports ──────────────────────────────────
+          // `/reports` itself is not a nav item, so it is not in the staff
+          // prefix list that routeAccess derives from the nav — see
+          // STAFF_EXTRA_PREFIXES there, which is what lets staff reach the hub.
+          { path: 'reports', element: <ReportsHubPage /> },
+          { path: 'reports/profit-loss', element: <ProfitLossPage /> },
+          { path: 'reports/balance-sheet', element: <BalanceSheetPage /> },
+          { path: 'reports/trial-balance', element: <TrialBalancePage /> },
+          { path: 'reports/cash-flow', element: <CashFlowPage /> },
+          { path: 'reports/general-ledger', element: <GeneralLedgerPage /> },
+          { path: 'reports/ar-aging', element: <ArAgingPage /> },
+          { path: 'reports/ap-aging', element: <ApAgingPage /> },
+          { path: 'reports/inventory-valuation', element: <InventoryValuationPage /> },
+          { path: 'reports/analytics', element: <AnalyticsPage /> },
 
           // A slice of module 18: staff cannot verify that a submitted invoice
           // became a request without somewhere to see it.
