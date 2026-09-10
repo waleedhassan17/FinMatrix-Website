@@ -111,6 +111,20 @@ export const AccountDetailPage = lazy(
   () => import('@/pages/accounts/AccountDetailPage'),
 );
 
+// Journal entries
+export const JournalEntryListPage = lazy(
+  () => import('@/pages/journalEntries/JournalEntryListPage'),
+);
+export const JournalEntryFormPage = lazy(
+  () => import('@/pages/journalEntries/JournalEntryFormPage'),
+);
+export const JournalEntryDetailPage = lazy(
+  () => import('@/pages/journalEntries/JournalEntryDetailPage'),
+);
+export const OpeningBalancePage = lazy(
+  () => import('@/pages/journalEntries/OpeningBalancePage'),
+);
+
 // Onboarding and renewal. Behind sign-in, and reached minutes after the landing
 // page at the earliest — no reason for a first-time visitor to download the plan
 // grid, the bank-transfer panel and the company form before reading the pitch.

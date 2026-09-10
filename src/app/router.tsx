@@ -34,9 +34,13 @@ import {
   InvoiceDetailPage,
   InvoiceFormPage,
   InvoiceListPage,
+  JournalEntryDetailPage,
+  JournalEntryFormPage,
+  JournalEntryListPage,
   LoginPage,
   ModulePlaceholder,
   MyRequestsPage,
+  OpeningBalancePage,
   PODetailPage,
   POFormPage,
   POListPage,
@@ -307,6 +311,21 @@ export const router = createBrowserRouter([
           { path: 'accounts/new', element: <AccountFormPage /> },
           { path: 'accounts/:accountId', element: <AccountDetailPage /> },
           { path: 'accounts/:accountId/edit', element: <AccountFormPage /> },
+
+          // ── Module 16: Journal Entries ──────────────────────────
+          // `new` and `opening-balance` both precede `:journalEntryId` so
+          // neither is captured as an id. No `/edit`: an entry is immutable
+          // once created, and a wrong one is voided and re-entered.
+          { path: 'journal-entries', element: <JournalEntryListPage /> },
+          { path: 'journal-entries/new', element: <JournalEntryFormPage /> },
+          {
+            path: 'journal-entries/opening-balance',
+            element: <OpeningBalancePage />,
+          },
+          {
+            path: 'journal-entries/:journalEntryId',
+            element: <JournalEntryDetailPage />,
+          },
 
           // A slice of module 18: staff cannot verify that a submitted invoice
           // became a request without somewhere to see it.

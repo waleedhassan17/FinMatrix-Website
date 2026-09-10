@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import type { AccountFormData } from '@/models/account';
 import { emptyAccountForm } from '@/models/account';
+import type { JournalFormData } from '@/models/journalEntry';
+import { freshJournalLine } from '@/models/journalEntry';
 import type { VendorCreditFormData } from '@/models/vendorCredit';
 import { freshVendorCreditLine } from '@/models/vendorCredit';
 import {
@@ -11,6 +13,12 @@ import {
   accountListSerializer,
   mapAccount,
 } from '@/serializers/accountSerializer';
+import {
+  journalEntryListSerializer,
+  journalEntrySingleSerializer,
+  journalFormToPayload,
+  mapJournalEntry,
+} from '@/serializers/journalEntrySerializer';
 import {
   mapVendorCredit,
   vendorCreditFormToPayload,
@@ -481,5 +489,198 @@ describe('accountDetailSerializer', () => {
     const result = accountDetailSerializer({});
     expect(result.account).toBe(null);
     expect(result.recentEntries).toEqual([]);
+  });
+});
+
+// ═══════════════════════════════════════════════════════
+// Journal entries
+// ═══════════════════════════════════════════════════════
+
+const journalForm = (over: Partial<JournalFormData> = {}): JournalFormData => ({
+  date: '2026-03-01',
+  memo: '',
+  lines: [
+    { ...freshJournalLine(), accountId: 'acct-1000', debit: '1000', credit: '' },
+    { ...freshJournalLine(), accountId: 'acct-4000', debit: '', credit: '1000' },
+  ],
+  ...over,
+});
+
+describe('journalFormToPayload', () => {
+  it('sends debit and credit as strings, with "0" on the unused side', () => {
+    // Both are @IsNumberString() and both REQUIRED. Omitting a side fails, and
+    // so does sending the number 0.
+    const payload = journalFormToPayload(journalForm(), { status: 'posted' });
+    expect(payload.lines[0]).toEqual({
+      accountId: 'acct-1000',
+      debit: '1000.00',
+      credit: '0.00',
+      lineOrder: 0,
+    });
+    expect(payload.lines[1]).toEqual({
+      accountId: 'acct-4000',
+      debit: '0.00',
+      credit: '1000.00',
+      lineOrder: 1,
+    });
+  });
+
+  it('never sends one signed amount', () => {
+    const payload = journalFormToPayload(journalForm(), { status: 'posted' });
+    for (const line of payload.lines) {
+      expect(typeof line.debit).toBe('string');
+      expect(typeof line.credit).toBe('string');
+      expect(line.debit.startsWith('-')).toBe(false);
+      expect(line.credit.startsWith('-')).toBe(false);
+    }
+  });
+
+  it('numbers lineOrder sequentially over the lines actually sent', () => {
+    // A dropped blank row in the middle must not leave a gap.
+    const form = journalForm();
+    form.lines = [
+      { ...freshJournalLine(), accountId: 'acct-1000', debit: '600', credit: '' },
+      freshJournalLine(),
+      { ...freshJournalLine(), accountId: 'acct-1010', debit: '400', credit: '' },
+      { ...freshJournalLine(), accountId: 'acct-4000', debit: '', credit: '1000' },
+    ];
+
+    const payload = journalFormToPayload(form, { status: 'posted' });
+    expect(payload.lines.map((l) => l.lineOrder)).toEqual([0, 1, 2]);
+  });
+
+  it('carries the status through', () => {
+    expect(journalFormToPayload(journalForm(), { status: 'draft' }).status).toBe(
+      'draft',
+    );
+    expect(journalFormToPayload(journalForm(), { status: 'posted' }).status).toBe(
+      'posted',
+    );
+  });
+
+  it('omits isOpeningBalance unless it is set', () => {
+    const plain = journalFormToPayload(journalForm(), { status: 'posted' });
+    expect('isOpeningBalance' in plain).toBe(false);
+
+    const opening = journalFormToPayload(journalForm(), {
+      status: 'posted',
+      isOpeningBalance: true,
+    });
+    expect(opening.isOpeningBalance).toBe(true);
+  });
+
+  it('omits a blank memo and a blank line description', () => {
+    const payload = journalFormToPayload(journalForm({ memo: '  ' }), {
+      status: 'posted',
+    });
+    expect('memo' in payload).toBe(false);
+    expect('description' in payload.lines[0]).toBe(false);
+  });
+
+  it('sends a memo and descriptions when given', () => {
+    const form = journalForm({ memo: 'Depreciation for March' });
+    form.lines[0].description = 'Machinery';
+    const payload = journalFormToPayload(form, { status: 'posted' });
+    expect(payload.memo).toBe('Depreciation for March');
+    expect(payload.lines[0].description).toBe('Machinery');
+  });
+
+  it('never sends a reference — the server assigns it', () => {
+    expect(
+      journalFormToPayload(journalForm(), { status: 'posted' }),
+    ).not.toHaveProperty('reference');
+  });
+
+  it('rounds amounts to two decimals', () => {
+    const form = journalForm();
+    form.lines[0].debit = '1000.005';
+    expect(journalFormToPayload(form, { status: 'posted' }).lines[0].debit).toBe(
+      '1000.01',
+    );
+  });
+});
+
+describe('mapJournalEntry', () => {
+  it('reads the enriched lines the detail route returns', () => {
+    const entry = mapJournalEntry({
+      id: 'je-1',
+      reference: 'JE-2026-0001',
+      date: '2026-03-01',
+      status: 'posted',
+      totalDebits: '1000.0000',
+      totalCredits: '1000.0000',
+      lines: [
+        {
+          id: 'l-2',
+          accountId: 'acct-4000',
+          accountNumber: '4000',
+          accountName: 'Sales Revenue',
+          debit: '0.00',
+          credit: '1000.00',
+          lineOrder: 1,
+        },
+        {
+          id: 'l-1',
+          accountId: 'acct-1000',
+          accountNumber: '1000',
+          accountName: 'Cash',
+          debit: '1000.00',
+          credit: '0.00',
+          lineOrder: 0,
+        },
+      ],
+    });
+
+    expect(entry.totalDebits).toBe(1000);
+    // Sorted by lineOrder — a debit/credit pair read out of order is confusing,
+    // and the list route supplies no order at all.
+    expect(entry.lines.map((l) => l.lineOrder)).toEqual([0, 1]);
+    expect(entry.lines[0].accountNumber).toBe('1000');
+  });
+
+  it('leaves reversalOfId null rather than an empty string', () => {
+    expect(mapJournalEntry({ id: 'je-1' }).reversalOfId).toBe(null);
+  });
+
+  it('defaults a missing status to draft', () => {
+    expect(mapJournalEntry({ id: 'je-1' }).status).toBe('draft');
+  });
+});
+
+describe('journalEntryListSerializer', () => {
+  it('reads the {entries} envelope', () => {
+    const rows = journalEntryListSerializer({
+      entries: [{ id: 'je-1' }, { id: 'je-2' }],
+    });
+    expect(rows.map((r) => r.id)).toEqual(['je-1', 'je-2']);
+  });
+
+  it('gives each list row an empty lines array', () => {
+    // The list query loads no relations, so a column reading lines would render
+    // nothing — the totals have to come from the entry itself.
+    const [row] = journalEntryListSerializer({
+      entries: [{ id: 'je-1', totalDebits: '500.0000' }],
+    });
+    expect(row.lines).toEqual([]);
+    expect(row.totalDebits).toBe(500);
+  });
+
+  it('tolerates a bare array', () => {
+    expect(journalEntryListSerializer([{ id: 'je-1' }])).toHaveLength(1);
+  });
+
+  it('is empty for a malformed payload', () => {
+    expect(journalEntryListSerializer(null)).toEqual([]);
+  });
+});
+
+describe('journalEntrySingleSerializer', () => {
+  it('reads a bare entry', () => {
+    expect(journalEntrySingleSerializer({ id: 'je-1' })?.id).toBe('je-1');
+  });
+
+  it('is null for an empty payload', () => {
+    expect(journalEntrySingleSerializer(null)).toBe(null);
+    expect(journalEntrySingleSerializer({})).toBe(null);
   });
 });

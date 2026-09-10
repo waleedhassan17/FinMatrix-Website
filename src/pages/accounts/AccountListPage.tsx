@@ -63,7 +63,9 @@ export default function AccountListPage() {
     placeholderData: keepPreviousData,
   });
 
-  const accounts = data?.accounts ?? [];
+  // Memoised off `data` rather than a `?? []` fallback: that fallback is a new
+  // array on every render, so the tree would be rebuilt each time.
+  const accounts = useMemo(() => data?.accounts ?? [], [data]);
 
   // Built from the filtered list, so a search flattens the tree to what matched
   // rather than hiding a match whose parent was filtered away.
