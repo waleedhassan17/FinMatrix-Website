@@ -93,6 +93,17 @@ export const POListPage = lazy(() => import('@/pages/purchaseOrders/POListPage')
 export const POFormPage = lazy(() => import('@/pages/purchaseOrders/POFormPage'));
 export const PODetailPage = lazy(() => import('@/pages/purchaseOrders/PODetailPage'));
 
+// Vendor credits
+export const VendorCreditListPage = lazy(
+  () => import('@/pages/vendorCredits/VendorCreditListPage'),
+);
+export const VendorCreditFormPage = lazy(
+  () => import('@/pages/vendorCredits/VendorCreditFormPage'),
+);
+export const VendorCreditDetailPage = lazy(
+  () => import('@/pages/vendorCredits/VendorCreditDetailPage'),
+);
+
 // Onboarding and renewal. Behind sign-in, and reached minutes after the landing
 // page at the earliest — no reason for a first-time visitor to download the plan
 // grid, the bank-transfer panel and the company form before reading the pitch.

@@ -50,6 +50,9 @@ import {
   SalesOrderDetailPage,
   SalesOrderFormPage,
   SalesOrderListPage,
+  VendorCreditDetailPage,
+  VendorCreditFormPage,
+  VendorCreditListPage,
   VendorDetailPage,
   VendorFormPage,
   VendorListPage,
@@ -282,6 +285,16 @@ export const router = createBrowserRouter([
           { path: 'purchase-orders/new', element: <POFormPage /> },
           { path: 'purchase-orders/:poId', element: <PODetailPage /> },
           { path: 'purchase-orders/:poId/edit', element: <POFormPage /> },
+
+          // ── Module 14: Vendor Credits ───────────────────────────
+          // No `/edit`: there is no PATCH route. A vendor credit is immutable
+          // once created, and a wrong one is voided and re-entered.
+          { path: 'vendor-credits', element: <VendorCreditListPage /> },
+          { path: 'vendor-credits/new', element: <VendorCreditFormPage /> },
+          {
+            path: 'vendor-credits/:vendorCreditId',
+            element: <VendorCreditDetailPage />,
+          },
 
           // A slice of module 18: staff cannot verify that a submitted invoice
           // became a request without somewhere to see it.

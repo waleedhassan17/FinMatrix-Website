@@ -135,3 +135,19 @@ export const getBillableAccounts = async (): Promise<Account[]> => {
     ),
   ].sort((a, b) => a.accountNumber.localeCompare(b.accountNumber));
 };
+
+/**
+ * Accounts a vendor-credit line may be coded to: the billable set, **minus
+ * Inventory**.
+ *
+ * Inventory is reachable on a bill but refused here. A credit line that names
+ * an item credits 1200 and relieves the stock in the same transaction; a
+ * money-only line pointed at 1200 would credit the control account while the
+ * subledger stayed put, so the server rejects it outright with
+ * `INVENTORY_LINE_NEEDS_ITEM`. Filtering the picker means the user never gets
+ * to choose the option that cannot work.
+ */
+export const getVendorCreditAccounts = async (): Promise<Account[]> => {
+  const accounts = await getBillableAccounts();
+  return accounts.filter((a) => a.subType !== 'Inventory');
+};
