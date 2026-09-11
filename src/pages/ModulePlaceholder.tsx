@@ -28,10 +28,9 @@ const MODULE_OF: Array<[string, string]> = [
   ['/bills/pay', 'Pay Bills — module 12'],
   ['/bills', 'Bills — module 11'],
   ['/purchase-orders', 'Purchase Orders — module 13'],
-  // Modules 14-17 (vendor credits, chart of accounts, journal entries, reports)
-  // are built and routed, so they never reach this screen. Their entries are gone
-  // rather than left to tell a future reader they are still to do.
-  ['/inventory', 'Inventory — module 19'],
+  // Modules 14-20 and 22-23 are built and routed, so they never reach this
+  // screen. Their entries are gone rather than left to tell a future reader they
+  // are still to do.
   ['/employees', 'Payroll — module 21'],
   ['/payroll', 'Payroll — module 21'],
   ['/budgets', 'Budgets — module 21'],

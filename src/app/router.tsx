@@ -42,6 +42,10 @@ import {
   InvoiceDetailPage,
   InvoiceFormPage,
   InventoryValuationPage,
+  InventoryDetailPage,
+  InventoryFormPage,
+  InventoryListPage,
+  AdjustStockPage,
   InvoiceListPage,
   JournalEntryDetailPage,
   JournalEntryFormPage,
@@ -378,6 +382,15 @@ export const router = createBrowserRouter([
             path: 'vendor-credits/:vendorCreditId',
             element: <VendorCreditDetailPage />,
           },
+
+          // ── Module 19: Inventory ────────────────────────────────
+          // `new` precedes `:itemId`. Both roles reach all four; the owner-only
+          // actions (deactivate, opening stock) are gated inside the detail page.
+          { path: 'inventory', element: <InventoryListPage /> },
+          { path: 'inventory/new', element: <InventoryFormPage /> },
+          { path: 'inventory/:itemId', element: <InventoryDetailPage /> },
+          { path: 'inventory/:itemId/edit', element: <InventoryFormPage /> },
+          { path: 'inventory/:itemId/adjust', element: <AdjustStockPage /> },
 
           // ── Module 15: Chart of Accounts (admin only) ───────────
           // No extra guard needed: `/accounts` is absent from STAFF_NAV, so

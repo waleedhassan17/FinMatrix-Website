@@ -108,6 +108,14 @@ export const VendorCreditDetailPage = lazyWithReload(
   () => import('@/pages/vendorCredits/VendorCreditDetailPage'),
 );
 
+// Inventory — items, their stock ledger, and adjustments.
+export const InventoryListPage = lazyWithReload(() => import('@/pages/inventory/InventoryListPage'));
+export const InventoryFormPage = lazyWithReload(() => import('@/pages/inventory/InventoryFormPage'));
+export const InventoryDetailPage = lazyWithReload(
+  () => import('@/pages/inventory/InventoryDetailPage'),
+);
+export const AdjustStockPage = lazyWithReload(() => import('@/pages/inventory/AdjustStockPage'));
+
 // Chart of accounts — admin only, so staff never download these chunks either.
 export const AccountListPage = lazyWithReload(() => import('@/pages/accounts/AccountListPage'));
 export const AccountFormPage = lazyWithReload(() => import('@/pages/accounts/AccountFormPage'));
