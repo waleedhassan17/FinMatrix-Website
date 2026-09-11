@@ -1,0 +1,6 @@
+# The public site is the landing page; everything else sits behind sign-in.
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /account
+Disallow: /settings

@@ -87,8 +87,10 @@ export function PeriodToggle({
                 className={cn(
                   'rounded-full px-xs py-[1px] text-label-sm',
                   active && !dark && 'bg-surface/20 text-text-inverse',
-                  active && dark && 'bg-success-light text-success-hover',
-                  !active && !dark && 'bg-success-light text-success-hover',
+                  // success-hover on success-light is 4.3:1 — under the 4.5:1
+                  // small text needs. The lighter tint clears it (4.7:1).
+                  active && dark && 'bg-success-lighter text-success-hover',
+                  !active && !dark && 'bg-success-lighter text-success-hover',
                   !active && dark && 'bg-success-bright/15 text-success-bright',
                 )}
               >
