@@ -140,7 +140,7 @@ export default function JournalEntryListPage() {
         </div>
       </div>
 
-      <label className="relative block max-w-md">
+      <label className="relative block max-w-[28rem]">
         <Search className="pointer-events-none absolute top-1/2 left-sm size-4 -translate-y-1/2 text-text-tertiary" />
         <input
           value={searchInput}

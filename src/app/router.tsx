@@ -119,7 +119,7 @@ function RouteError() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-6">
-      <div className="w-full max-w-sm rounded-lg border border-border bg-background-alt p-6 text-center">
+      <div className="w-full max-w-[24rem] rounded-lg border border-border bg-background-alt p-6 text-center">
         <h1 className="text-h4 text-text-primary">Something went wrong</h1>
         <p className="mt-2 text-body-sm text-text-secondary">
           This page could not be loaded. Check your connection and try again.

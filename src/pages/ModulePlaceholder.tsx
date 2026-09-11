@@ -44,7 +44,7 @@ export default function ModulePlaceholder() {
   const match = MODULE_OF.find(([prefix]) => pathname.startsWith(prefix));
 
   return (
-    <Card className="mx-auto max-w-lg p-xxl text-center">
+    <Card className="mx-auto max-w-[32rem] p-xxl text-center">
       <Construction className="mx-auto size-10 text-text-tertiary" />
       <h1 className="mt-md text-h3 text-text-primary">
         {match ? match[1] : 'Not built yet'}

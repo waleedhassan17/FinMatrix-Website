@@ -63,7 +63,7 @@ export function ConfirmDialog({
         <AlertDialog.Overlay className={overlay} />
         <AlertDialog.Content
           className={cn(
-            'fixed left-1/2 top-1/2 z-50 w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2',
+            'fixed left-1/2 top-1/2 z-50 w-[calc(100vw-2rem)] max-w-[28rem] -translate-x-1/2 -translate-y-1/2',
             'rounded-lg bg-surface p-xl shadow-lg',
           )}
         >

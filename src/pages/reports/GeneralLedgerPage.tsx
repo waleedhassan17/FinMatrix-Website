@@ -146,7 +146,7 @@ export default function GeneralLedgerPage() {
             placeholder="All accounts"
             searchPlaceholder="Search by number or name…"
             emptyText="No accounts moved in this period."
-            containerClassName="max-w-lg"
+            containerClassName="max-w-[32rem]"
           />
         </div>
       }

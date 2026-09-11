@@ -79,7 +79,7 @@ export default function ApprovalsInboxPage() {
       }),
       columnHelper.accessor('summary', {
         header: 'Request',
-        cell: (c) => <span className="line-clamp-2 max-w-md">{c.getValue()}</span>,
+        cell: (c) => <span className="line-clamp-2 max-w-[28rem]">{c.getValue()}</span>,
       }),
       columnHelper.accessor('requester', { header: 'Requested by' }),
       columnHelper.accessor('amount', {

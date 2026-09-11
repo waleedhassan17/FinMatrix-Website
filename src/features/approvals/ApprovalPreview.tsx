@@ -269,7 +269,7 @@ function ApplyPreview({
           [
             isMemo ? 'Credit memo' : 'Vendor credit',
             creditId ? (
-              <DocLink to={`${isMemo ? '/credit-memos' : '/vendor-credits'}/${creditId}`}>Open credit</DocLink>
+              <DocLink key="credit" to={`${isMemo ? '/credit-memos' : '/vendor-credits'}/${creditId}`}>Open credit</DocLink>
             ) : (
               '—'
             ),
@@ -277,7 +277,7 @@ function ApplyPreview({
           [
             isMemo ? 'Against invoice' : 'Against bill',
             targetId ? (
-              <DocLink to={`${isMemo ? '/invoices' : '/bills'}/${targetId}`}>
+              <DocLink key="target" to={`${isMemo ? '/invoices' : '/bills'}/${targetId}`}>
                 Open {isMemo ? 'invoice' : 'bill'}
               </DocLink>
             ) : (
@@ -299,7 +299,7 @@ function RefundPreview({ request }: { request: ApprovalRequest }) {
         Pays the credit memo’s remaining balance back to the customer. Cash leaves the
         business.
       </p>
-      <Facts items={[['Credit memo', id ? <DocLink to={`/credit-memos/${id}`}>Open credit memo</DocLink> : '—']]} />
+      <Facts items={[['Credit memo', id ? <DocLink key="memo" to={`/credit-memos/${id}`}>Open credit memo</DocLink> : '—']]} />
     </PreviewCard>
   );
 }
@@ -532,7 +532,7 @@ function VoidPreview({ request }: { request: ApprovalRequest }) {
       </p>
       <Facts
         items={[
-          ['Document', link ? <DocLink to={link}>Open the {entity.toLowerCase()}</DocLink> : entity],
+          ['Document', link ? <DocLink key="doc" to={link}>Open the {entity.toLowerCase()}</DocLink> : entity],
           ['Reason given', text(p.reason) || '—'],
         ]}
       />

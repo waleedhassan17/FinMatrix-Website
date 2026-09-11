@@ -81,7 +81,7 @@ export default function ReconciliationListPage() {
 
   if (!enabled) {
     return (
-      <Card className="mx-auto max-w-lg p-xxl text-center">
+      <Card className="mx-auto max-w-[32rem] p-xxl text-center">
         <Landmark className="mx-auto size-8 text-text-tertiary" />
         <h1 className="mt-md text-h3 text-text-primary">Bank reconciliation</h1>
         <p className="mt-xs text-body-md text-text-secondary">

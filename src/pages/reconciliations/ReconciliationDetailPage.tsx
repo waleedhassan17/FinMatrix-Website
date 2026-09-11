@@ -64,7 +64,7 @@ export default function ReconciliationDetailPage() {
 
   if (!enabled) {
     return (
-      <Card className="mx-auto max-w-lg p-xxl text-center">
+      <Card className="mx-auto max-w-[32rem] p-xxl text-center">
         <p className="text-body-md text-text-secondary">
           Bank reconciliation is not included in your company’s plan.
         </p>

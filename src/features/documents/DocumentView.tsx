@@ -156,7 +156,7 @@ export function DocumentView({
       </div>
 
       <div className="mt-lg flex justify-end">
-        <div className="w-full max-w-xs">
+        <div className="w-full max-w-[20rem]">
           <TotalRow label="Subtotal" value={formatMoney(subtotal)} />
           {discountAmount > 0 && (
             <TotalRow

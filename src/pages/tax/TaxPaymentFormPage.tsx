@@ -112,7 +112,7 @@ export default function TaxPaymentFormPage() {
     return (
       <div className="flex flex-col gap-lg">
         <TaxTabs />
-        <Card className="mx-auto max-w-lg p-xxl text-center">
+        <Card className="mx-auto max-w-[32rem] p-xxl text-center">
           <Landmark className="mx-auto size-8 text-text-tertiary" />
           <h1 className="mt-md text-h3 text-text-primary">Add a tax rate first</h1>
           <p className="mt-xs text-body-md text-text-secondary">

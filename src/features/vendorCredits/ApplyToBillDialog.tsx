@@ -72,7 +72,7 @@ export function ApplyToBillDialog({
     <AlertDialog.Root open={open} onOpenChange={onOpenChange}>
       <AlertDialog.Portal>
         <AlertDialog.Overlay className="fixed inset-0 z-50 bg-[color:var(--color-overlay)]" />
-        <AlertDialog.Content className="fixed top-1/2 left-1/2 z-50 w-[calc(100vw-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg bg-surface p-xl shadow-lg">
+        <AlertDialog.Content className="fixed top-1/2 left-1/2 z-50 w-[calc(100vw-2rem)] max-w-[32rem] -translate-x-1/2 -translate-y-1/2 rounded-lg bg-surface p-xl shadow-lg">
           <AlertDialog.Title className="text-h4 text-text-primary">
             Apply credit to a bill
           </AlertDialog.Title>

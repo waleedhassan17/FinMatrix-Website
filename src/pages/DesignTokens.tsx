@@ -170,7 +170,7 @@ export default function DesignTokens() {
       </Section>
 
       <Section title="Form controls">
-        <div className="grid max-w-xl gap-md rounded-lg bg-surface p-lg shadow-card">
+        <div className="grid max-w-[36rem] gap-md rounded-lg bg-surface p-lg shadow-card">
           <Input label="Customer" placeholder="Search customers…" />
           <Input
             label="Invoice number"
@@ -188,7 +188,7 @@ export default function DesignTokens() {
 
       <Section title="Summary panel">
         <SummaryPanel
-          className="max-w-md"
+          className="max-w-[28rem]"
           total={{ label: 'Grand total', value: 135400 }}
         >
           <SummaryRow label="Subtotal" value={120000} />
