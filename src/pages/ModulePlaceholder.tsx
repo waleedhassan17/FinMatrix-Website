@@ -37,7 +37,6 @@ const MODULE_OF: Array<[string, string]> = [
   ['/employees', 'Payroll — module 21'],
   ['/payroll', 'Payroll — module 21'],
   ['/budgets', 'Budgets — module 21'],
-  ['/tax', 'Tax — module 23'],
   ['/settings', 'Settings & Users — module 24'],
   ['/account', 'My Account — module 24'],
 ];

@@ -206,7 +206,11 @@ export type AdminOnlyAction =
   | 'payment.delete'
   | 'purchaseOrder.delete'
   | 'account.delete'
-  | 'reconciliation.manage';
+  | 'reconciliation.manage'
+  // Tax: staff may READ the liability, rates and payments; recording or
+  // reversing a payment and changing a rate are @Roles('admin').
+  | 'tax.recordPayment'
+  | 'tax.manageRates';
 
 export const isAdminOnly = (
   role: UserRole | null | undefined,

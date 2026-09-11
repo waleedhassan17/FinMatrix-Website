@@ -24,6 +24,8 @@ interface ConfirmDialogProps {
   reason?: { label: string; placeholder?: string; minLength?: number };
   /** Extra controls rendered above the buttons — a date override, say. */
   children?: ReactNode;
+  /** Hold the confirm button, e.g. while a form in `children` is invalid. */
+  confirmDisabled?: boolean;
   onConfirm: (reason?: string) => void;
 }
 
@@ -41,6 +43,7 @@ export function ConfirmDialog({
   busy,
   reason,
   children,
+  confirmDisabled,
   onConfirm,
 }: ConfirmDialogProps) {
   const [text, setText] = useState('');
@@ -97,7 +100,7 @@ export function ConfirmDialog({
             </AlertDialog.Cancel>
             <Button
               variant={destructive ? 'danger' : 'primary'}
-              disabled={busy || tooShort}
+              disabled={busy || tooShort || confirmDisabled}
               onClick={() => onConfirm(reason ? text.trim() : undefined)}
             >
               {busy ? 'Working…' : confirmLabel}

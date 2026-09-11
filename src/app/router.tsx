@@ -70,6 +70,10 @@ import {
   SalesOrderDetailPage,
   SalesOrderFormPage,
   SalesOrderListPage,
+  TaxLiabilityPage,
+  TaxPaymentFormPage,
+  TaxPaymentsPage,
+  TaxRatesPage,
   VendorCreditDetailPage,
   VendorCreditFormPage,
   VendorCreditListPage,
@@ -425,6 +429,16 @@ export const router = createBrowserRouter([
             path: 'reconciliations/:reconciliationId',
             element: <ReconciliationDetailPage />,
           },
+
+          // ── Module 23: Tax ──────────────────────────────────────
+          // `/tax/liability` is a staff nav path — read-only for them. Payments
+          // and rates are owner-only by their absence from STAFF_NAV. `/tax`
+          // itself is not a staff path either, so staff never reach the redirect.
+          { path: 'tax', element: <Navigate to="/tax/liability" replace /> },
+          { path: 'tax/liability', element: <TaxLiabilityPage /> },
+          { path: 'tax/payments', element: <TaxPaymentsPage /> },
+          { path: 'tax/payments/new', element: <TaxPaymentFormPage /> },
+          { path: 'tax/rates', element: <TaxRatesPage /> },
 
           // A slice of module 18: staff cannot verify that a submitted invoice
           // became a request without somewhere to see it.

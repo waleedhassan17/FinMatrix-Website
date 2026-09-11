@@ -20,6 +20,12 @@ const FORBIDDEN = [
   '/reconciliations',
   '/reconciliations/reconcile/abc-123',
   '/reconciliations/abc-123',
+  // Staff read the liability only; recording a payment and managing rates are
+  // @Roles('admin') on the server.
+  '/tax',
+  '/tax/payments',
+  '/tax/payments/new',
+  '/tax/rates',
   '/employees',
   '/payroll/runs',
   '/budgets',

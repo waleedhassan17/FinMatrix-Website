@@ -157,6 +157,14 @@ export const ReconciliationDetailPage = lazyWithReload(
   () => import('@/pages/reconciliations/ReconciliationDetailPage'),
 );
 
+// Tax — the liability is shared with staff; payments and rates are owner only.
+export const TaxLiabilityPage = lazyWithReload(() => import('@/pages/tax/TaxLiabilityPage'));
+export const TaxPaymentsPage = lazyWithReload(() => import('@/pages/tax/TaxPaymentsPage'));
+export const TaxPaymentFormPage = lazyWithReload(
+  () => import('@/pages/tax/TaxPaymentFormPage'),
+);
+export const TaxRatesPage = lazyWithReload(() => import('@/pages/tax/TaxRatesPage'));
+
 // Onboarding and renewal. Behind sign-in, and reached minutes after the landing
 // page at the earliest — no reason for a first-time visitor to download the plan
 // grid, the bank-transfer panel and the company form before reading the pitch.
