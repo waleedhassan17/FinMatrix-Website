@@ -31,7 +31,7 @@ const FAQS = [
   },
   {
     q: 'Does it work on a phone?',
-    a: 'This console runs in any modern browser, including a phone browser. Delivery riders use the separate FinMatrix Android app, which is built for working in a vehicle rather than at a desk.',
+    a: 'Yes — two ways. FinMatrix has an Android app, and this website works in the browser on any phone, tablet, laptop or desktop, with nothing to install. Both use the same account and the same live data, so an invoice raised on your phone is on your desktop straight away. Delivery riders work from the Android app, which is built for use on the road.',
   },
   {
     q: 'What happens when a plan expires?',
