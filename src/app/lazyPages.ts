@@ -165,6 +165,14 @@ export const TaxPaymentFormPage = lazyWithReload(
 );
 export const TaxRatesPage = lazyWithReload(() => import('@/pages/tax/TaxRatesPage'));
 
+// Approvals — the owner's inbox, and the detail view both roles share.
+export const ApprovalsInboxPage = lazyWithReload(
+  () => import('@/pages/approvals/ApprovalsInboxPage'),
+);
+export const ApprovalDetailPage = lazyWithReload(
+  () => import('@/pages/approvals/ApprovalDetailPage'),
+);
+
 // Onboarding and renewal. Behind sign-in, and reached minutes after the landing
 // page at the earliest — no reason for a first-time visitor to download the plan
 // grid, the bank-transfer panel and the company form before reading the pitch.

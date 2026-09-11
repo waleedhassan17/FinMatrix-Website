@@ -27,6 +27,8 @@ import {
   AccountListPage,
   AnalyticsPage,
   ApAgingPage,
+  ApprovalDetailPage,
+  ApprovalsInboxPage,
   ArAgingPage,
   BalanceSheetPage,
   CashFlowPage,
@@ -440,9 +442,14 @@ export const router = createBrowserRouter([
           { path: 'tax/payments/new', element: <TaxPaymentFormPage /> },
           { path: 'tax/rates', element: <TaxRatesPage /> },
 
-          // A slice of module 18: staff cannot verify that a submitted invoice
-          // became a request without somewhere to see it.
+          // ── Module 18: Approvals ────────────────────────────────
+          // One data source, two views. `/approvals` is owner-only by absence
+          // from STAFF_NAV; `/my-requests` is the staff side. The detail page is
+          // mounted under both, because staff cannot reach `/approvals/*`.
+          { path: 'approvals', element: <ApprovalsInboxPage /> },
+          { path: 'approvals/:approvalId', element: <ApprovalDetailPage /> },
           { path: 'my-requests', element: <MyRequestsPage /> },
+          { path: 'my-requests/:approvalId', element: <ApprovalDetailPage /> },
 
           // Everything modules 6-24 will build. Inside the guard above, so a
           // staff member reaching an admin-only path is redirected rather than

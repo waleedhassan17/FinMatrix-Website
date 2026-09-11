@@ -45,6 +45,8 @@ const FORBIDDEN = [
 const ALLOWED = [
   '/dashboard',
   '/my-requests',
+  // Staff read their own request's detail here — they cannot reach /approvals/*.
+  '/my-requests/abc-123',
   '/customers',
   '/customers/abc-123',
   '/invoices',

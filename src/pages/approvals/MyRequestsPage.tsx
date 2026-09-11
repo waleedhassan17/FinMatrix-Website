@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Clock, Inbox } from 'lucide-react';
+import { ChevronRight, Clock, Inbox } from 'lucide-react';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/Button';
@@ -9,37 +10,35 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { cn } from '@/lib/cn';
 import {
+  APPROVAL_FILTERS,
   APPROVAL_TYPE_EFFECTS,
   APPROVAL_TYPE_LABELS,
-  cancelApproval,
-  fetchApprovals,
+  approvalAmount,
+  statusDisplay,
   type ApprovalFilter,
-} from '@/networks/approvals/approvalsNetwork';
-
-const FILTERS: [ApprovalFilter, string][] = [
-  ['pending', 'Awaiting'],
-  ['approved', 'Approved'],
-  ['rejected', 'Rejected'],
-  ['all', 'All'],
-];
+} from '@/models/approval';
+import { formatReportDate } from '@/models/reportPeriod';
+import { cancelApproval, fetchApprovals } from '@/networks/approvals/approvalsNetwork';
+import { formatMoney } from '@/utils/money';
 
 /**
- * What a staff member has asked the owner to approve.
+ * What a staff member has asked the owner to approve, with live status.
  *
- * Same endpoint as the owner's inbox — the server scopes it to the caller —
- * but with no decide actions anywhere, because `approvals.decide` is `false`
- * for staff. The only thing you can do to your own request is withdraw it.
- *
- * The owner's inbox and the approval-review view are Module 18.
+ * Same endpoint as the owner's inbox — the server scopes it to the caller — but
+ * with no decide actions anywhere, because `approvals.decide` is `false` for
+ * staff. The only thing you can do to your own request is withdraw it while it
+ * is pending. Refetches every 30 seconds so an approval or rejection lands
+ * without a reload.
  */
 export default function MyRequestsPage() {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<ApprovalFilter>('pending');
   const [cancelId, setCancelId] = useState<string | null>(null);
 
-  const { data: requests = [], isLoading } = useQuery({
+  const { data: requests = [], isLoading, error } = useQuery({
     queryKey: ['approvals', 'mine', filter],
     queryFn: () => fetchApprovals({ status: filter }),
+    refetchInterval: 30_000,
   });
 
   const cancel = useMutation({
@@ -47,12 +46,9 @@ export default function MyRequestsPage() {
     onSuccess: () => {
       setCancelId(null);
       queryClient.invalidateQueries({ queryKey: ['approvals'] });
-      toast.success('Request withdrawn', {
-        description: 'Nothing was posted.',
-      });
+      toast.success('Request withdrawn', { description: 'Nothing was posted.' });
     },
-    onError: (e: Error) =>
-      toast.error('Could not withdraw request', { description: e.message }),
+    onError: (e: Error) => toast.error('Could not withdraw request', { description: e.message }),
   });
 
   return (
@@ -60,12 +56,13 @@ export default function MyRequestsPage() {
       <div>
         <h1 className="text-h2 text-text-primary">My requests</h1>
         <p className="text-body-sm text-text-secondary">
-          Everything you have sent to the owner for approval.
+          Everything you have sent to the owner for approval. Nothing posts until they
+          approve it.
         </p>
       </div>
 
       <div className="flex flex-wrap gap-xxs">
-        {FILTERS.map(([value, label]) => (
+        {APPROVAL_FILTERS.map(([value, label]) => (
           <button
             key={value}
             type="button"
@@ -82,6 +79,8 @@ export default function MyRequestsPage() {
         ))}
       </div>
 
+      {error && <p className="text-body-sm text-danger">{error.message}</p>}
+
       {isLoading ? (
         <Card className="p-lg">
           <div className="space-y-xs">
@@ -94,18 +93,14 @@ export default function MyRequestsPage() {
         <Card className="p-xxl text-center">
           <Inbox className="mx-auto size-8 text-text-tertiary" />
           <p className="mt-md text-body-md text-text-secondary">
-            {filter === 'pending'
-              ? 'Nothing is waiting on the owner.'
-              : 'No requests here.'}
+            {filter === 'pending' ? 'Nothing is waiting on the owner.' : 'No requests here.'}
           </p>
         </Card>
       ) : (
         <div className="flex flex-col gap-md">
           {requests.map((req) => {
-            // 'approving' is a transient claim taken while the server replays
-            // the payload. The list folds it under pending so a row never
-            // disappears mid-dispatch.
-            const isPending = req.status === 'pending' || req.status === 'approving';
+            const display = statusDisplay(req.status);
+            const amount = approvalAmount(req);
             return (
               <Card key={req.id} className="p-lg">
                 <div className="flex flex-wrap items-start justify-between gap-md">
@@ -114,67 +109,57 @@ export default function MyRequestsPage() {
                       <span className="text-label-lg text-text-primary">
                         {APPROVAL_TYPE_LABELS[req.type] ?? req.type}
                       </span>
-                      <StatusBadge
-                        status={req.status === 'approving' ? 'pending' : req.status}
-                        label={
-                          req.status === 'pending' || req.status === 'approving'
-                            ? 'Awaiting owner'
-                            : req.status === 'cancelled'
-                              ? 'Withdrawn'
-                              : undefined
-                        }
-                      />
+                      <StatusBadge status={display.badge} label={display.label} />
+                      {amount !== null && (
+                        <span className="text-label-md tabular text-text-primary">
+                          {formatMoney(amount)}
+                        </span>
+                      )}
                     </div>
 
-                    <p className="mt-xxs text-body-sm text-text-primary">
-                      {req.summary}
-                    </p>
+                    <p className="mt-xxs text-body-sm text-text-primary">{req.summary}</p>
 
-                    {/* State the ledger effect plainly — the point of the queue
-                        is that somebody understands what approving does. */}
+                    {/* The ledger effect, stated plainly — the point of the queue is
+                        that somebody understands what approving does. */}
                     <p className="mt-xxs text-caption text-text-tertiary">
                       {APPROVAL_TYPE_EFFECTS[req.type] ?? ''}
                     </p>
 
                     <p className="mt-xs flex items-center gap-xs text-caption text-text-tertiary">
                       <Clock className="size-3" />
-                      Submitted {req.createdAt.slice(0, 10)}
+                      Submitted {req.createdAt ? formatReportDate(req.createdAt.slice(0, 10)) : '—'}
                     </p>
 
                     {req.status === 'rejected' && req.reviewerComment && (
                       <div className="mt-sm rounded-md bg-danger-lighter p-sm">
-                        <p className="text-caption text-danger">
-                          Owner&rsquo;s reason
-                        </p>
-                        <p className="mt-xxs text-body-sm text-text-primary">
-                          {req.reviewerComment}
-                        </p>
+                        <p className="text-caption text-danger">Why it was rejected</p>
+                        <p className="mt-xxs text-body-sm text-text-primary">{req.reviewerComment}</p>
                       </div>
                     )}
 
-                    {/* A failed dispatch returns the request to pending and
-                        records why — the user needs that, not a silent retry. */}
-                    {isPending && req.lastError && (
+                    {/* A failed approval returns the request to pending and records
+                        why — the requester needs that, not a silent retry. */}
+                    {req.status === 'pending' && req.lastError && (
                       <div className="mt-sm rounded-md bg-warning-lighter p-sm">
-                        <p className="text-caption text-warning">
-                          Last attempt failed
-                        </p>
-                        <p className="mt-xxs text-body-sm text-text-primary">
-                          {req.lastError}
-                        </p>
+                        <p className="text-caption text-warning">Last approval attempt failed</p>
+                        <p className="mt-xxs text-body-sm text-text-primary">{req.lastError}</p>
                       </div>
                     )}
                   </div>
 
-                  {isPending && (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => setCancelId(req.id)}
-                    >
-                      Withdraw
+                  <div className="flex items-center gap-xs">
+                    {req.status === 'pending' && (
+                      <Button variant="secondary" size="sm" onClick={() => setCancelId(req.id)}>
+                        Withdraw
+                      </Button>
+                    )}
+                    <Button asChild variant="text" size="sm">
+                      <Link to={`/my-requests/${req.id}`}>
+                        View
+                        <ChevronRight className="size-4" />
+                      </Link>
                     </Button>
-                  )}
+                  </div>
                 </div>
               </Card>
             );
