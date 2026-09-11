@@ -146,6 +146,17 @@ export const InventoryValuationPage = lazyWithReload(
 );
 export const AnalyticsPage = lazyWithReload(() => import('@/pages/reports/AnalyticsPage'));
 
+// Bank reconciliation — owner only, so staff never download these chunks either.
+export const ReconciliationListPage = lazyWithReload(
+  () => import('@/pages/reconciliations/ReconciliationListPage'),
+);
+export const ReconcilePage = lazyWithReload(
+  () => import('@/pages/reconciliations/ReconcilePage'),
+);
+export const ReconciliationDetailPage = lazyWithReload(
+  () => import('@/pages/reconciliations/ReconciliationDetailPage'),
+);
+
 // Onboarding and renewal. Behind sign-in, and reached minutes after the landing
 // page at the earliest — no reason for a first-time visitor to download the plan
 // grid, the bank-transfer panel and the company form before reading the pitch.

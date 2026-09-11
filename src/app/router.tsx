@@ -61,6 +61,9 @@ import {
   PaySubscriptionPage,
   PaymentReceiptPage,
   ReceivePaymentPage,
+  ReconcilePage,
+  ReconciliationDetailPage,
+  ReconciliationListPage,
   RegisterPage,
   RenewSubscriptionPage,
   RoleSelectPage,
@@ -408,6 +411,20 @@ export const router = createBrowserRouter([
           { path: 'reports/ap-aging', element: <ApAgingPage /> },
           { path: 'reports/inventory-valuation', element: <InventoryValuationPage /> },
           { path: 'reports/analytics', element: <AnalyticsPage /> },
+
+          // ── Module 22: Bank Reconciliation (owner only) ─────────
+          // Absent from STAFF_NAV, so RequireRouteAccess redirects staff; every
+          // endpoint is also @Roles('admin') for segregation of duties. The
+          // literal `reconcile` segment precedes `:reconciliationId`.
+          { path: 'reconciliations', element: <ReconciliationListPage /> },
+          {
+            path: 'reconciliations/reconcile/:accountId',
+            element: <ReconcilePage />,
+          },
+          {
+            path: 'reconciliations/:reconciliationId',
+            element: <ReconciliationDetailPage />,
+          },
 
           // A slice of module 18: staff cannot verify that a submitted invoice
           // became a request without somewhere to see it.

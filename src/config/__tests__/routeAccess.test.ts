@@ -18,6 +18,8 @@ const FORBIDDEN = [
   '/approvals',
   '/approvals/abc-123',
   '/reconciliations',
+  '/reconciliations/reconcile/abc-123',
+  '/reconciliations/abc-123',
   '/employees',
   '/payroll/runs',
   '/budgets',
