@@ -53,6 +53,18 @@ const ALLOWED = [
   '/invoices/new',
   '/bills/pay',
   '/inventory',
+  '/inventory/new',
+  '/inventory/abc-123',
+  '/inventory/abc-123/adjust',
+  // Delivery operations are the staff working set too (Module 20).
+  '/deliveries',
+  '/deliveries/new',
+  '/deliveries/assign',
+  '/deliveries/completions',
+  '/deliveries/abc-123',
+  '/delivery-personnel',
+  '/delivery-personnel/new',
+  '/delivery-personnel/abc-123',
   '/vendor-credits',
   '/vendor-credits/new',
   '/journal-entries',
@@ -140,10 +152,16 @@ describe('nav configs', () => {
     }
   });
 
-  it('excludes delivery from both roles', () => {
-    // Out of scope for this console by decision — see the plan.
-    const all = [...pathsOf(ADMIN_NAV), ...pathsOf(STAFF_NAV as typeof ADMIN_NAV)];
-    expect(all.some((p) => p.startsWith('/deliver'))).toBe(false);
-    expect(all.some((p) => p.includes('personnel'))).toBe(false);
+  it('gives both roles the same delivery working set, gated on the feature', () => {
+    const group = (nav: typeof ADMIN_NAV) => nav.find((g) => g.title === 'Deliveries');
+    const admin = group(ADMIN_NAV);
+    const staff = group(STAFF_NAV as typeof ADMIN_NAV);
+    expect(admin?.feature).toBe('delivery');
+    expect(staff?.feature).toBe('delivery');
+    expect(staff?.items?.map((i) => i.path)).toEqual(admin?.items?.map((i) => i.path));
+    // Every item carries the gate too, so no row survives a tier without it.
+    for (const item of [...(admin?.items ?? []), ...(staff?.items ?? [])]) {
+      expect(item.feature).toBe('delivery');
+    }
   });
 });

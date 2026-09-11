@@ -70,6 +70,15 @@ export interface CreditMemoWritePayload {
   date: string;
   reason?: string;
   lines: DocumentLineWritePayload[];
+  // ── Reversing a delivery (see creditMemoReversalFields) ──
+  /** The invoice this credit reverses. */
+  originalInvoiceId?: string;
+  /** Settle that invoice with the credit in the same action. */
+  applyToInvoiceId?: string;
+  /** Refund what no invoice could absorb — a delivery already paid for. */
+  refundRemainderToCash?: boolean;
+  /** Recorded on the delivery so it cannot be reversed twice. */
+  reversesDeliveryRequestId?: string;
 }
 
 /**

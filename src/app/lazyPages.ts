@@ -116,6 +116,24 @@ export const InventoryDetailPage = lazyWithReload(
 );
 export const AdjustStockPage = lazyWithReload(() => import('@/pages/inventory/AdjustStockPage'));
 
+// Delivery operations — both roles, behind the `delivery` feature.
+export const DeliveryMonitorPage = lazyWithReload(
+  () => import('@/pages/deliveries/DeliveryMonitorPage'),
+);
+export const CreateDeliveryPage = lazyWithReload(
+  () => import('@/pages/deliveries/CreateDeliveryPage'),
+);
+export const AssignDeliveriesPage = lazyWithReload(
+  () => import('@/pages/deliveries/AssignDeliveriesPage'),
+);
+export const CompletionsPage = lazyWithReload(() => import('@/pages/deliveries/CompletionsPage'));
+export const DeliveryDetailPage = lazyWithReload(
+  () => import('@/pages/deliveries/DeliveryDetailPage'),
+);
+export const RidersListPage = lazyWithReload(() => import('@/pages/deliveries/RidersListPage'));
+export const RiderFormPage = lazyWithReload(() => import('@/pages/deliveries/RiderFormPage'));
+export const RiderDetailPage = lazyWithReload(() => import('@/pages/deliveries/RiderDetailPage'));
+
 // Chart of accounts — admin only, so staff never download these chunks either.
 export const AccountListPage = lazyWithReload(() => import('@/pages/accounts/AccountListPage'));
 export const AccountFormPage = lazyWithReload(() => import('@/pages/accounts/AccountFormPage'));

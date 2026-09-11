@@ -57,9 +57,9 @@ export type CapabilityOutcome = 'direct' | 'request' | false;
  * The owner column is 'direct' throughout by definition — they are the
  * approver, so nothing they do waits on anyone.
  *
- * The `delivery.*` rows are kept even though this console has no delivery view.
- * This file's job is to mirror the server matrix; pruning rows to match one
- * client's navigation is how the mirror stops being one.
+ * The `delivery.*` rows drive the delivery operations screens (Module 20): the
+ * Completions page reads approveCompletion / rejectCompletion / undo from here
+ * rather than branching on role, so the split lives in one place.
  */
 const STAFF_CAPABILITIES: Record<Capability, CapabilityOutcome> = {
   // Value in — staff run the day-to-day, and nothing waits on the owner.
@@ -205,6 +205,8 @@ export type AdminOnlyAction =
   | 'bill.delete'
   | 'payment.delete'
   | 'purchaseOrder.delete'
+  // Discarding a never-dispatched delivery; refused server-side once stock moved.
+  | 'delivery.delete'
   | 'account.delete'
   | 'reconciliation.manage'
   // Tax: staff may READ the liability, rates and payments; recording or

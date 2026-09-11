@@ -577,12 +577,21 @@ function AdjustmentPreview({ request }: { request: ApprovalRequest }) {
 }
 
 function DeliveryUndoPreview({ request }: { request: ApprovalRequest }) {
+  const completionId =
+    typeof request.payload?.requestId === 'string' ? request.payload.requestId : '';
   return (
     <PreviewCard title="Undo an approved delivery">
       <p className="text-body-sm text-text-secondary">
         Reverses the delivery’s recognised revenue with an entry dated today, and returns
         it to its pre-approval state.
       </p>
+      {completionId && (
+        <p className="mt-sm text-body-sm">
+          <DocLink to={`/deliveries/completions?focus=${completionId}`}>
+            Open the completion it undoes
+          </DocLink>
+        </p>
+      )}
       {request.reason && (
         <p className="mt-md text-body-sm text-text-primary">
           <span className="text-text-secondary">Why: </span>

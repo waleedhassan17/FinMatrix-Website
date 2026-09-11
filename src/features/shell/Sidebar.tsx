@@ -58,7 +58,7 @@ function NavLeaf({
     <li>
       <NavLink
         to={item.path}
-        end={item.path === '/dashboard'}
+        end={item.path === '/dashboard' || item.exact}
         onClick={onNavigate}
         className={({ isActive }) =>
           cn(
@@ -91,7 +91,10 @@ function NavGroupRow({
   badgeCount?: number;
 }) {
   const location = useLocation();
+  const featureOn = useFeature(group.feature);
   const Icon = group.icon;
+
+  if (!featureOn) return null;
 
   const badge =
     group.badge === 'approvals' && badgeCount && badgeCount > 0 ? (

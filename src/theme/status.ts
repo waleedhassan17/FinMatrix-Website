@@ -58,6 +58,10 @@ const STATUS_TIER_OF: Record<string, StatusTier> = {
   sent: 'info',
   submitted: 'info',
   new: 'info',
+  // A delivery on the road — live, and in the rider's hands.
+  picked_up: 'info',
+  in_transit: 'info',
+  arrived: 'info',
   // ── warning ──
   partial: 'warning',
   partially_received: 'warning',

@@ -46,6 +46,14 @@ import {
   InventoryFormPage,
   InventoryListPage,
   AdjustStockPage,
+  AssignDeliveriesPage,
+  CompletionsPage,
+  CreateDeliveryPage,
+  DeliveryDetailPage,
+  DeliveryMonitorPage,
+  RiderDetailPage,
+  RiderFormPage,
+  RidersListPage,
   InvoiceListPage,
   JournalEntryDetailPage,
   JournalEntryFormPage,
@@ -391,6 +399,18 @@ export const router = createBrowserRouter([
           { path: 'inventory/:itemId', element: <InventoryDetailPage /> },
           { path: 'inventory/:itemId/edit', element: <InventoryFormPage /> },
           { path: 'inventory/:itemId/adjust', element: <AdjustStockPage /> },
+
+          // ── Module 20: Delivery operations ──────────────────────
+          // Both roles; every page also gates on the `delivery` feature. The
+          // literal segments precede `:deliveryId` / `:userId`.
+          { path: 'deliveries', element: <DeliveryMonitorPage /> },
+          { path: 'deliveries/new', element: <CreateDeliveryPage /> },
+          { path: 'deliveries/assign', element: <AssignDeliveriesPage /> },
+          { path: 'deliveries/completions', element: <CompletionsPage /> },
+          { path: 'deliveries/:deliveryId', element: <DeliveryDetailPage /> },
+          { path: 'delivery-personnel', element: <RidersListPage /> },
+          { path: 'delivery-personnel/new', element: <RiderFormPage /> },
+          { path: 'delivery-personnel/:userId', element: <RiderDetailPage /> },
 
           // ── Module 15: Chart of Accounts (admin only) ───────────
           // No extra guard needed: `/accounts` is absent from STAFF_NAV, so

@@ -12,8 +12,10 @@
 // below does the same job — giving a staff nav item a forbidden path is a type
 // error, not a code review note.
 //
-// Delivery is absent from both configs: this console does not host the
-// delivery view. See the plan's "Consequences of excluding delivery".
+// Delivery operations appear for BOTH roles — staff run dispatch day to day —
+// and the whole group is gated on the company's `delivery` feature, as the
+// app's StaffMore does with isFeatureEnabled('delivery'). The rider's own
+// screens live in the rider app, not here.
 
 import {
   BarChart3,
@@ -26,6 +28,7 @@ import {
   Receipt,
   Settings,
   ShoppingCart,
+  Truck,
   UserCircle,
   Users,
   Wallet,
@@ -42,6 +45,11 @@ export interface NavItem<P extends string = string> {
   capability?: Capability;
   /** Hidden unless the company's tier includes this feature. */
   feature?: FeatureKey;
+  /**
+   * Active only on this exact path. For a list whose sibling items live under
+   * it (`/deliveries` vs `/deliveries/new`), so both are not lit at once.
+   */
+  exact?: boolean;
 }
 
 export interface NavGroup<P extends string = string> {
@@ -52,6 +60,11 @@ export interface NavGroup<P extends string = string> {
   items?: NavItem<P>[];
   /** Shows a live count badge. */
   badge?: 'approvals';
+  /**
+   * Hides the whole group when the tier lacks this feature — otherwise an
+   * accordion whose every item is hidden would still show an empty header.
+   */
+  feature?: FeatureKey;
 }
 
 /**
@@ -81,6 +94,11 @@ export type StaffNavPath =
   | '/purchase-orders'
   | '/vendor-credits'
   | '/inventory'
+  | '/deliveries'
+  | '/deliveries/new'
+  | '/deliveries/assign'
+  | '/deliveries/completions'
+  | '/delivery-personnel'
   | '/journal-entries'
   | '/tax/liability'
   | '/account'
@@ -141,6 +159,34 @@ const PURCHASE_ITEMS: NavItem<StaffNavPath>[] = [
   },
 ];
 
+/**
+ * Delivery operations — the same working set for both roles. What differs is
+ * one control on the Completions screen: the owner approves a completion (it
+ * recognises the sale); staff see "Waiting for Admin Approval" instead.
+ */
+const DELIVERY_ITEMS: NavItem<StaffNavPath>[] = [
+  { title: 'Delivery Monitor', path: '/deliveries', feature: 'delivery', exact: true },
+  {
+    title: 'New Delivery',
+    path: '/deliveries/new',
+    capability: 'delivery.create',
+    feature: 'delivery',
+  },
+  {
+    title: 'Assign Deliveries',
+    path: '/deliveries/assign',
+    capability: 'delivery.assign',
+    feature: 'delivery',
+  },
+  { title: 'Completions', path: '/deliveries/completions', feature: 'delivery' },
+  {
+    title: 'Riders',
+    path: '/delivery-personnel',
+    capability: 'personnel.manage',
+    feature: 'delivery',
+  },
+];
+
 const REPORT_ITEMS: NavItem<StaffNavPath>[] = [
   { title: 'Profit & Loss', path: '/reports/profit-loss' },
   { title: 'Balance Sheet', path: '/reports/balance-sheet' },
@@ -166,6 +212,7 @@ export const ADMIN_NAV: NavGroup[] = [
   { title: 'Customers & Sales', icon: Users, items: SALES_ITEMS },
   { title: 'Vendors & Purchases', icon: ShoppingCart, items: PURCHASE_ITEMS },
   { title: 'Inventory', icon: Package, path: '/inventory' },
+  { title: 'Deliveries', icon: Truck, items: DELIVERY_ITEMS, feature: 'delivery' },
   {
     title: 'Accounting',
     icon: BookOpen,
@@ -237,6 +284,7 @@ export const STAFF_NAV: NavGroup<StaffNavPath>[] = [
   { title: 'Customers & Sales', icon: Users, items: SALES_ITEMS },
   { title: 'Vendors & Purchases', icon: ShoppingCart, items: PURCHASE_ITEMS },
   { title: 'Inventory', icon: Package, path: '/inventory' },
+  { title: 'Deliveries', icon: Truck, items: DELIVERY_ITEMS, feature: 'delivery' },
   {
     title: 'Accounting',
     icon: BookOpen,
