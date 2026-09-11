@@ -1,6 +1,7 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, Building2, LogOut, Menu, Search } from 'lucide-react';
+import { Bell, Building2, LogOut, Menu, Search, UserCircle } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 import { cn } from '@/lib/cn';
 import { useSignOut } from '@/features/auth/useSignOut';
@@ -190,6 +191,16 @@ export function Topbar({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
               </div>
 
               <DropdownMenu.Separator className="my-xxs h-px bg-border-light" />
+
+              <DropdownMenu.Item
+                asChild
+                className="flex cursor-pointer items-center gap-xs rounded-md px-sm py-xs text-body-sm text-text-primary outline-none data-[highlighted]:bg-surface-hover"
+              >
+                <Link to="/account">
+                  <UserCircle className="size-4" />
+                  My account
+                </Link>
+              </DropdownMenu.Item>
 
               <DropdownMenu.Item
                 onSelect={signOut}

@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { StatTile } from '@/components/ui/StatTile';
 import { StatusBadge } from '@/components/ui/StatusBadge';
-import { CopyField, CredentialsDialog } from '@/features/delivery/CredentialsDialog';
+import { CopyField, CredentialsDialog } from '@/components/shared/CredentialsDialog';
 import { DeliveryStatusBadge, OnlineDot } from '@/features/delivery/DeliveryBadges';
 import { invalidateDeliveries } from '@/features/delivery/invalidateDeliveries';
 import { FeatureUnavailable } from '@/features/shell/FeatureUnavailable';

@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
-import { CredentialsDialog } from '@/features/delivery/CredentialsDialog';
+import { CredentialsDialog } from '@/components/shared/CredentialsDialog';
 import { invalidateDeliveries } from '@/features/delivery/invalidateDeliveries';
 import { FeatureUnavailable } from '@/features/shell/FeatureUnavailable';
 import { useFeature, useIsOwner } from '@/hooks/useCapability';

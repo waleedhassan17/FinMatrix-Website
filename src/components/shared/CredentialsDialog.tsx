@@ -3,32 +3,38 @@ import { useState } from 'react';
 
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import type { RiderCredentials } from '@/networks/delivery/personnelNetwork';
+
+export interface HandoverCredentials {
+  username: string;
+  password: string;
+}
 
 /**
- * A rider's sign-in, shown once after it is issued.
+ * A sign-in, shown once after it is issued — to a rider, to a staff member.
  *
- * Riders have no inbox and no self-service reset — the office hands these
- * over in person. The server keeps an encrypted copy that can be revealed
- * again later, and records every reveal.
+ * These accounts have no inbox and no self-service reset, so the person who
+ * created them hands the credentials over in person. The server keeps an
+ * encrypted copy that can be revealed again later, and records every reveal.
  */
 export function CredentialsDialog({
   open,
   title,
   credentials,
   onClose,
+  description = 'Pass these on in person — they are shown in full only here. You can show them again later; every time they are shown is recorded.',
 }: {
   open: boolean;
   title: string;
-  credentials: RiderCredentials | null;
+  credentials: HandoverCredentials | null;
   onClose: () => void;
+  description?: string;
 }) {
   return (
     <ConfirmDialog
       open={open}
       onOpenChange={(o) => !o && onClose()}
       title={title}
-      description="Pass these to the rider — they sign in to the rider app with them. You can show them again from the rider’s page; every time they are shown is recorded."
+      description={description}
       confirmLabel="Done"
       cancelLabel="Close"
       onConfirm={onClose}
@@ -40,8 +46,7 @@ export function CredentialsDialog({
         </div>
       ) : (
         <p className="text-body-sm text-text-secondary">
-          The server did not return the credentials. Use Reset password on the rider’s page
-          to issue new ones.
+          The server did not return the credentials. Reset the password to issue new ones.
         </p>
       )}
     </ConfirmDialog>
@@ -75,3 +80,5 @@ export function CopyField({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
+export default CredentialsDialog;

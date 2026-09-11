@@ -134,6 +134,23 @@ export const RidersListPage = lazyWithReload(() => import('@/pages/deliveries/Ri
 export const RiderFormPage = lazyWithReload(() => import('@/pages/deliveries/RiderFormPage'));
 export const RiderDetailPage = lazyWithReload(() => import('@/pages/deliveries/RiderDetailPage'));
 
+// Payroll and budgets — owner only, so staff never download these chunks.
+export const EmployeeListPage = lazyWithReload(() => import('@/pages/payroll/EmployeeListPage'));
+export const EmployeeFormPage = lazyWithReload(() => import('@/pages/payroll/EmployeeFormPage'));
+export const PayrollRunListPage = lazyWithReload(() => import('@/pages/payroll/PayrollRunListPage'));
+export const PayrollRunFormPage = lazyWithReload(() => import('@/pages/payroll/PayrollRunFormPage'));
+export const PayrollRunDetailPage = lazyWithReload(
+  () => import('@/pages/payroll/PayrollRunDetailPage'),
+);
+export const BudgetListPage = lazyWithReload(() => import('@/pages/budgets/BudgetListPage'));
+export const BudgetFormPage = lazyWithReload(() => import('@/pages/budgets/BudgetFormPage'));
+export const BudgetDetailPage = lazyWithReload(() => import('@/pages/budgets/BudgetDetailPage'));
+
+// Settings — owner only. My Account is both roles.
+export const CompanyProfilePage = lazyWithReload(() => import('@/pages/settings/CompanyProfilePage'));
+export const TeamPage = lazyWithReload(() => import('@/pages/settings/TeamPage'));
+export const MyAccountPage = lazyWithReload(() => import('@/pages/account/MyAccountPage'));
+
 // Chart of accounts — admin only, so staff never download these chunks either.
 export const AccountListPage = lazyWithReload(() => import('@/pages/accounts/AccountListPage'));
 export const AccountFormPage = lazyWithReload(() => import('@/pages/accounts/AccountFormPage'));

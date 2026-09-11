@@ -20,6 +20,7 @@
 import type { UserRole } from '@/types';
 import { capabilityFor, type CapabilityOutcome } from '@/utils/capabilities';
 import { Decimal, toDecimal } from '@/utils/money';
+import { generatePassword } from '@/utils/password';
 
 // ─── Status machine ─────────────────────────────────────
 
@@ -518,34 +519,8 @@ export const riderPayload = (form: RiderForm) => {
   return body;
 };
 
-const PASSWORD_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
-
-/**
- * A password to hand a rider. Riders have no inbox and no self-service reset,
- * so the office sets it — random, and without the characters people misread
- * aloud (0/O, 1/l/I). Guaranteed an upper, a lower and a digit.
- */
-export const generateRiderPassword = (length = 10): string => {
-  const pick = (set: string) => {
-    const buf = new Uint32Array(1);
-    crypto.getRandomValues(buf);
-    return set[buf[0] % set.length];
-  };
-  const chars = [
-    pick('ABCDEFGHJKLMNPQRSTUVWXYZ'),
-    pick('abcdefghijkmnpqrstuvwxyz'),
-    pick('23456789'),
-  ];
-  while (chars.length < length) chars.push(pick(PASSWORD_ALPHABET));
-  // Shuffle, so the guaranteed three are not always first.
-  for (let i = chars.length - 1; i > 0; i--) {
-    const buf = new Uint32Array(1);
-    crypto.getRandomValues(buf);
-    const j = buf[0] % (i + 1);
-    [chars[i], chars[j]] = [chars[j], chars[i]];
-  }
-  return chars.join('');
-};
+/** Riders get the same kind of password as any hand-issued account — see utils/password. */
+export const generateRiderPassword = generatePassword;
 
 // ─── Completions (rider returns awaiting sign-off) ──────
 

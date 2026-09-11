@@ -13,6 +13,8 @@ const FORBIDDEN = [
   '/accounts',
   '/accounts/new',
   '/accounts/abc-123',
+  // Settings and user management are the owner's (Module 24).
+  '/settings',
   '/settings/company',
   '/settings/users',
   '/approvals',
@@ -26,9 +28,17 @@ const FORBIDDEN = [
   '/tax/payments',
   '/tax/payments/new',
   '/tax/rates',
+  // Payroll and budgets are the owner's (Module 21).
   '/employees',
+  '/employees/new',
+  '/employees/abc-123/edit',
+  '/payroll',
   '/payroll/runs',
+  '/payroll/runs/new',
+  '/payroll/runs/abc-123',
   '/budgets',
+  '/budgets/new',
+  '/budgets/abc-123',
 
   // Buying and renewing a subscription is the owner's alone.
   //

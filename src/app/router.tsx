@@ -10,6 +10,7 @@ import {
   SessionGate,
 } from '@/features/auth/SessionGate';
 import LandingPage from '@/pages/LandingPage';
+import { reportError } from '@/app/observability';
 import {
   AccountStatusPage,
   BillDetailPage,
@@ -46,6 +47,17 @@ import {
   InventoryFormPage,
   InventoryListPage,
   AdjustStockPage,
+  BudgetDetailPage,
+  BudgetFormPage,
+  BudgetListPage,
+  CompanyProfilePage,
+  MyAccountPage,
+  TeamPage,
+  EmployeeFormPage,
+  EmployeeListPage,
+  PayrollRunDetailPage,
+  PayrollRunFormPage,
+  PayrollRunListPage,
   AssignDeliveriesPage,
   CompletionsPage,
   CreateDeliveryPage,
@@ -128,6 +140,7 @@ function RouteError() {
   // Only ever visible to us, in the console. The card itself stays plain — a
   // stack trace tells the person at the keyboard nothing they can act on.
   console.error('[router] route failed to render', error);
+  reportError(error, { boundary: 'route' });
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-6">
@@ -411,6 +424,30 @@ export const router = createBrowserRouter([
           { path: 'delivery-personnel', element: <RidersListPage /> },
           { path: 'delivery-personnel/new', element: <RiderFormPage /> },
           { path: 'delivery-personnel/:userId', element: <RiderDetailPage /> },
+
+          // ── Module 21: Payroll (owner only) ─────────────────────
+          // Absent from STAFF_NAV, so RequireRouteAccess redirects staff; every
+          // endpoint is @Roles('admin') too. `new` precedes `:runId`.
+          { path: 'employees', element: <EmployeeListPage /> },
+          { path: 'employees/new', element: <EmployeeFormPage /> },
+          { path: 'employees/:employeeId/edit', element: <EmployeeFormPage /> },
+          { path: 'payroll', element: <Navigate to="/payroll/runs" replace /> },
+          { path: 'payroll/runs', element: <PayrollRunListPage /> },
+          { path: 'payroll/runs/new', element: <PayrollRunFormPage /> },
+          { path: 'payroll/runs/:runId', element: <PayrollRunDetailPage /> },
+          { path: 'budgets', element: <BudgetListPage /> },
+          { path: 'budgets/new', element: <BudgetFormPage /> },
+          { path: 'budgets/:budgetId', element: <BudgetDetailPage /> },
+          { path: 'budgets/:budgetId/edit', element: <BudgetFormPage /> },
+
+          // ── Module 24: Settings (owner only) and My Account (both) ──
+          // /settings/* is absent from STAFF_NAV, so staff are redirected; the
+          // team routes are @Roles('admin') besides. /account is a staff nav
+          // path — /account/renew stays owner-only through STAFF_DENY_PREFIXES.
+          { path: 'settings', element: <Navigate to="/settings/company" replace /> },
+          { path: 'settings/company', element: <CompanyProfilePage /> },
+          { path: 'settings/users', element: <TeamPage /> },
+          { path: 'account', element: <MyAccountPage /> },
 
           // ── Module 15: Chart of Accounts (admin only) ───────────
           // No extra guard needed: `/accounts` is absent from STAFF_NAV, so
