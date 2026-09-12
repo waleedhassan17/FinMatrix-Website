@@ -18,7 +18,7 @@ import { Card } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Textarea } from '@/components/ui/Field';
 import { StatusBadge } from '@/components/ui/StatusBadge';
-import { ApprovalPreview, RawPayload } from '@/features/approvals/ApprovalPreview';
+import { ApprovalPreview } from '@/features/approvals/ApprovalPreview';
 import { useRequesterNames } from '@/features/approvals/useRequesterNames';
 import { useCapability } from '@/hooks/useCapability';
 import {
@@ -271,7 +271,6 @@ export default function ApprovalDetailPage() {
       )}
 
       <ApprovalPreview request={request} />
-      <RawPayload payload={request.payload} />
 
       {(mayDecide || mayWithdraw) && (
         <div className="sticky bottom-md z-10">

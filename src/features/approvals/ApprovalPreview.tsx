@@ -44,7 +44,8 @@ const discountTypeOf = (v: unknown): DiscountType =>
  * forms; the other seven are decided on a one-line summary. An owner approving a
  * journal entry or a bill payment without seeing the accounts or the bills it
  * touches is signing off something they have not read. Each type here renders
- * what its payload will actually do, with names resolved.
+ * what its payload will actually do, with names resolved — every field the
+ * request carries, so there is no raw JSON for anyone to fall back on.
  */
 export function ApprovalPreview({ request }: { request: ApprovalRequest }) {
   const action = text(request.payload.action) || 'create';
@@ -73,20 +74,6 @@ export function ApprovalPreview({ request }: { request: ApprovalRequest }) {
     case 'delivery_undo':
       return <DeliveryUndoPreview request={request} />;
   }
-}
-
-/** The request body exactly as it will be replayed — for anything not shown above. */
-export function RawPayload({ payload }: { payload: Raw }) {
-  return (
-    <details className="rounded-md border border-border-light bg-surface-2 p-md print:hidden">
-      <summary className="cursor-pointer text-label-md text-text-secondary">
-        Show the request exactly as it will be replayed
-      </summary>
-      <pre className="mt-sm max-h-80 overflow-auto whitespace-pre-wrap break-words font-mono text-caption text-text-primary">
-        {JSON.stringify(payload, null, 2)}
-      </pre>
-    </details>
-  );
 }
 
 // ─── Building blocks ────────────────────────────────────────────────────────
@@ -122,6 +109,11 @@ function PreviewCard({ title, children }: { title: string; children: ReactNode }
   );
 }
 
+/** The item or account a line books to — the document table shows only its description. */
+function LineName({ name }: { name: string }) {
+  return <span className="text-caption text-text-secondary">{name || '—'}</span>;
+}
+
 // ─── Per type ───────────────────────────────────────────────────────────────
 
 function SalesDocumentPreview({ request, title }: { request: ApprovalRequest; title: string }) {
@@ -148,8 +140,9 @@ function SalesDocumentPreview({ request, title }: { request: ApprovalRequest; ti
   );
 
   const meta: [string, string][] = [];
-  if (p.invoiceDate) meta.push(['Date', date(p.invoiceDate)]);
-  if (p.creditMemoDate) meta.push(['Date', date(p.creditMemoDate)]);
+  // An invoice sends `invoiceDate`; a credit memo sends plain `date`.
+  const docDate = p.invoiceDate ?? p.date ?? p.creditMemoDate;
+  if (docDate) meta.push(['Date', date(docDate)]);
   if (p.dueDate) meta.push(['Due', date(p.dueDate)]);
   if (p.status) meta.push(['On approval', p.status === 'draft' ? 'Saved as a draft — posts nothing yet' : 'Posted']);
 
@@ -174,11 +167,12 @@ function SalesDocumentPreview({ request, title }: { request: ApprovalRequest; ti
 function PurchaseOrderPreview({ request }: { request: ApprovalRequest }) {
   const p = request.payload;
   const { byId: vendors } = useVendorOptions();
+  const { items } = useInventoryOptions();
   const raw = rows(p.lines);
   const lines: DocumentLine[] = raw.map((l, i) => ({
     id: `line-${i}`,
     itemId: text(l.itemId),
-    itemName: '',
+    itemName: items.find((it) => it.id === text(l.itemId))?.name ?? '',
     description: text(l.description),
     quantity: num(l.orderedQty),
     unitPrice: num(l.unitCost),
@@ -208,6 +202,10 @@ function PurchaseOrderPreview({ request }: { request: ApprovalRequest }) {
       total={totals.total}
       quantityHeader="Ordered"
       priceHeader="Unit cost"
+      {...(lines.some((l) => l.itemName) && {
+        lineExtraHeader: 'Item',
+        lineExtra: (line: DocumentLine) => <LineName name={line.itemName} />,
+      })}
       notes={text(p.notes)}
     />
   );
@@ -216,17 +214,28 @@ function PurchaseOrderPreview({ request }: { request: ApprovalRequest }) {
 function VendorCreditPreview({ request }: { request: ApprovalRequest }) {
   const p = request.payload;
   const { byId: vendors } = useVendorOptions();
+  const { items } = useInventoryOptions();
+  const { data: accounts = [] } = useQuery({
+    queryKey: ['accounts', 'postable'],
+    queryFn: getPostableAccounts,
+  });
   const raw = rows(p.lines);
-  const lines: DocumentLine[] = raw.map((l, i) => ({
-    id: `line-${i}`,
-    itemId: text(l.itemId),
-    itemName: '',
-    description: text(l.description),
-    quantity: num(l.quantity),
-    unitPrice: 0,
-    taxRate: num(l.taxRate),
-    amount: num(l.amount),
-  }));
+  const lines: DocumentLine[] = raw.map((l, i) => {
+    const account = accounts.find((a) => a.id === text(l.accountId));
+    return {
+      id: `line-${i}`,
+      itemId: text(l.itemId),
+      // A line names an item or, failing that, the account it books to.
+      itemName:
+        items.find((it) => it.id === text(l.itemId))?.name ??
+        (account ? `${account.accountNumber} · ${account.name}` : ''),
+      description: text(l.description),
+      quantity: num(l.quantity),
+      unitPrice: 0,
+      taxRate: num(l.taxRate),
+      amount: num(l.amount),
+    };
+  });
   const totals = computeBillTotals(
     raw.map((l) => ({ amount: l.amount as never, taxRate: (l.taxRate ?? 0) as never })),
   );
@@ -245,6 +254,10 @@ function VendorCreditPreview({ request }: { request: ApprovalRequest }) {
       taxAmount={totals.taxAmount}
       total={totals.total}
       showQuantity={false}
+      {...(lines.some((l) => l.itemName) && {
+        lineExtraHeader: 'Item or account',
+        lineExtra: (line: DocumentLine) => <LineName name={line.itemName} />,
+      })}
       notes={text(p.reason)}
     />
   );
@@ -338,6 +351,12 @@ function AllocationTable({
 function CustomerPaymentPreview({ request }: { request: ApprovalRequest }) {
   const p = request.payload;
   const { byId: customers } = useCustomerOptions();
+  const { data: accounts = [] } = useQuery({
+    queryKey: ['accounts', 'deposit'],
+    queryFn: getDepositAccounts,
+  });
+  const bankAccountId = text(p.bankAccountId);
+  const bank = accounts.find((a) => a.id === bankAccountId);
   const apps = rows(p.applications);
   const amount = num(p.amount);
   const allocated = apps.reduce((s, a) => s.plus(toDecimal(a.amount as never)), toDecimal(0));
@@ -350,6 +369,15 @@ function CustomerPaymentPreview({ request }: { request: ApprovalRequest }) {
           ['Customer', customers.get(text(p.customerId))?.name ?? '—'],
           ['Received', date(p.paymentDate)],
           ['Method', humanize(p.paymentMethod)],
+          [
+            'Deposited to',
+            // Omitted, the server picks 1000 Cash for a cash payment, else 1010 Business Checking.
+            !bankAccountId
+              ? 'Automatic — Cash for cash payments, otherwise Business Checking'
+              : bank
+                ? `${bank.accountNumber} · ${bank.name}`
+                : '—',
+          ],
           ['Amount', formatMoney(amount)],
           ['Reference', text(p.reference) || '—'],
           ['Memo', text(p.memo) || '—'],
@@ -458,6 +486,7 @@ function JournalPreview({ request }: { request: ApprovalRequest }) {
         items={[
           ['Date', date(p.date)],
           ['Memo', text(p.memo) || '—'],
+          ['On approval', p.status === 'draft' ? 'Saved as a draft — posts nothing yet' : 'Posted to the ledger'],
           ...(p.isOpeningBalance ? ([['Kind', 'Opening balances']] as [string, string][]) : []),
         ]}
       />
@@ -561,6 +590,7 @@ function AdjustmentPreview({ request }: { request: ApprovalRequest }) {
       <Facts
         items={[
           ['Item', item?.name ?? '—'],
+          ...(p.date ? ([['Date', date(p.date)]] as [string, string][]) : []),
           ['Reason', ADJUSTMENT_REASONS[text(p.reason)] ?? humanize(p.reason)],
           ['On hand when requested', observed === null ? '—' : String(observed)],
           ['Set to', target === null ? '—' : String(target)],
