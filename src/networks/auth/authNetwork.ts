@@ -20,8 +20,13 @@ import {
   type CompanyMembership,
   type RawAuthPayload,
 } from '@/serializers/authSerializer';
+import {
+  isRoleAllowedOnWebPortal,
+  portalMismatch,
+} from '@/features/auth/portalAccess';
 import type { Identity } from '@/store/authSlice';
-import type { TokenPair } from '@/types';
+import type { TokenPair, UserRole } from '@/types';
+import type { PortalRole } from '@/utils/storage';
 
 /**
  * An auth failure carrying the server's code.
@@ -39,12 +44,18 @@ export class AuthError extends Error {
   email?: string;
   companyStatus?: string | null;
   rejectionReason?: string | null;
+  /** WRONG_PORTAL only: the role of the account that was refused. */
+  accountType?: UserRole | null;
 
   constructor(
     message: string,
     code?: string,
     email?: string,
-    extra?: { companyStatus?: string | null; rejectionReason?: string | null },
+    extra?: {
+      companyStatus?: string | null;
+      rejectionReason?: string | null;
+      accountType?: UserRole | null;
+    },
   ) {
     super(message);
     this.name = 'AuthError';
@@ -52,6 +63,7 @@ export class AuthError extends Error {
     this.email = email;
     this.companyStatus = extra?.companyStatus ?? null;
     this.rejectionReason = extra?.rejectionReason ?? null;
+    this.accountType = extra?.accountType ?? null;
   }
 }
 
@@ -76,10 +88,15 @@ interface RawErrorBody {
     email?: string;
     companyStatus?: string | null;
     rejectionReason?: string | null;
+    details?: { accountType?: string; portal?: string };
   };
   code?: string;
   email?: string;
 }
+
+const USER_ROLES: readonly UserRole[] = ['admin', 'staff', 'delivery', 'super_admin'];
+const asUserRole = (v: unknown): UserRole | null =>
+  USER_ROLES.includes(v as UserRole) ? (v as UserRole) : null;
 
 /** Re-throw an auth failure with its gate code intact. */
 function asAuthError(e: unknown): never {
@@ -93,6 +110,18 @@ function asAuthError(e: unknown): never {
       'Please verify your email before signing in.',
       'EMAIL_NOT_VERIFIED',
       email,
+    );
+  }
+
+  if (code === 'WRONG_PORTAL') {
+    const accountType = asUserRole('details' in err ? err.details?.accountType : undefined);
+    throw new AuthError(
+      accountType
+        ? portalMismatch(accountType).message
+        : (('message' in err ? err.message : undefined) ?? 'This account cannot sign in here.'),
+      'WRONG_PORTAL',
+      undefined,
+      { accountType },
     );
   }
 
@@ -119,6 +148,8 @@ export interface SignInPayload {
   /** Email OR username — owner-created staff accounts have no inbox. */
   identifier: string;
   password: string;
+  /** The door being used. Only accounts of that kind may sign in through it. */
+  portal: PortalRole;
 }
 
 interface SignInResponse extends Identity {
@@ -126,15 +157,19 @@ interface SignInResponse extends Identity {
 }
 
 /**
- * Sign in and persist the session.
+ * Sign in through one door and persist the session.
  *
  * `identifier` accepts a username or an email; `email` is sent alongside it so
- * a server predating username login keeps working. The SERVER decides the
- * role from the account — nothing the client sends influences it.
+ * a server predating username login keeps working. `portal` names the door: the
+ * server refuses an account that belongs on another one (WRONG_PORTAL) before
+ * issuing a token, so the owner's email on the team member door is an error,
+ * not the owner dashboard. The server still decides the role; the portal only
+ * decides whether that role may come in this way.
  */
 export const authLogin = async ({
   identifier,
   password,
+  portal,
 }: SignInPayload): Promise<SignInResponse> => {
   try {
     const trimmed = identifier.trim();
@@ -142,6 +177,7 @@ export const authLogin = async ({
       identifier: trimmed,
       email: trimmed,
       password,
+      portal,
     });
 
     const data = unwrapEnvelope<RawAuthPayload & { tokens?: TokenPair }>(
@@ -157,6 +193,19 @@ export const authLogin = async ({
     setTokens(tokens.accessToken, tokens.refreshToken);
 
     const identity = identitySerializer(data);
+
+    // The server enforces the portal, but the web is stricter than it has to
+    // be — no platform console and no rider app live here — and a server that
+    // predates the check would let any role through. Either way the session it
+    // just issued is revoked and nothing reaches the store.
+    if (!isRoleAllowedOnWebPortal(portal, identity.user.role)) {
+      await authSignOut();
+      clearTokens();
+      throw new AuthError(portalMismatch(identity.user.role).message, 'WRONG_PORTAL', undefined, {
+        accountType: identity.user.role,
+      });
+    }
+
     if (identity.companyId) {
       setStoredCompanyId(identity.companyId);
     }

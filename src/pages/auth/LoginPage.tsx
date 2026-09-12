@@ -5,10 +5,12 @@
 // as `?role=` → stored preference → 'admin', and it switches the identifier
 // field, the accent and which secondary links exist.
 //
-// WHAT THE ROLE DOES NOT DO: influence the request. Both portals post the same
-// body to the same endpoint — { identifier, email: identifier, password } — and
-// the SERVER decides the account and its role. Nothing the client sends changes
-// what it gets back. The role here shapes a form, not an outcome.
+// EACH DOOR ADMITS ITS OWN ACCOUNTS. The portal is sent with the credentials
+// ({ identifier, email: identifier, password, portal }) and the server refuses
+// an account that belongs on the other door with WRONG_PORTAL before issuing a
+// token — so the owner's email on the team member door is an error with a way
+// to the right door, never the owner dashboard. The server still decides the
+// role; the portal only decides whether that role may enter here.
 //
 // THE STAFF PORTAL IS LOGIN-ONLY, and that is the server's contract rather than a
 // layout preference: /auth/signup accepts role 'admin' or 'delivery' and REFUSES
@@ -28,6 +30,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { AuthShell } from '@/features/auth/AuthShell';
 import { makeLoginSchema, type LoginFormValues } from '@/features/auth/loginSchema';
+import { portalMismatch, switchLabel } from '@/features/auth/portalAccess';
 import { authLogin, AuthError } from '@/networks/auth/authNetwork';
 import { setIdentity, setSelectedRole, selectSelectedRole } from '@/store/authSlice';
 import { useAppDispatch, useAppSelector } from '@/store/store';
@@ -44,6 +47,8 @@ export default function LoginPage() {
   const storedRole = useAppSelector(selectSelectedRole);
 
   const [formError, setFormError] = useState('');
+  // Set with a WRONG_PORTAL error: the door this account actually belongs on.
+  const [switchTo, setSwitchTo] = useState<PortalRole | null>(null);
   const [showPassword, setShowPassword] = useState(false);
 
   // Same precedence as the app: an explicit link wins, then what the visitor
@@ -57,6 +62,7 @@ export default function LoginPage() {
   const {
     register,
     handleSubmit,
+    resetField,
     formState: { errors, isSubmitting },
   } = useForm<LoginFormValues>({
     resolver: zodResolver(schema),
@@ -68,14 +74,17 @@ export default function LoginPage() {
     '/dashboard';
 
   const switchPortal = (next: PortalRole) => {
+    setFormError('');
+    setSwitchTo(null);
     dispatch(setSelectedRole(next));
     navigate(`/login?role=${next}`, { replace: true });
   };
 
   const onSubmit = async (values: LoginFormValues) => {
     setFormError('');
+    setSwitchTo(null);
     try {
-      const result = await authLogin(values);
+      const result = await authLogin({ ...values, portal: role });
       dispatch(setIdentity(result));
 
       // A token was issued, but the company may still be gated. Sign-in only
@@ -89,6 +98,16 @@ export default function LoginPage() {
       navigate(redirectTo, { replace: true });
     } catch (e) {
       if (e instanceof AuthError) {
+        // The account is real and the password matched, but it belongs on the
+        // other door. Say which, offer the way there, and drop the password so
+        // it is not left sitting in a form that will not accept it.
+        if (e.code === 'WRONG_PORTAL') {
+          const target = e.accountType ? portalMismatch(e.accountType).switchTo : null;
+          setFormError(e.message);
+          setSwitchTo(target && target !== role ? target : null);
+          resetField('password');
+          return;
+        }
         // The server's code is the only thing worth branching on — the
         // exception filter strips every other field off the error body.
         //
@@ -154,7 +173,18 @@ export default function LoginPage() {
             className="flex items-start gap-xs rounded-md bg-danger-lighter p-sm"
           >
             <AlertCircle className="mt-[2px] size-4 shrink-0 text-danger" />
-            <span className="text-body-sm text-danger">{formError}</span>
+            <div className="min-w-0">
+              <span className="text-body-sm text-danger">{formError}</span>
+              {switchTo && (
+                <button
+                  type="button"
+                  onClick={() => switchPortal(switchTo)}
+                  className="mt-xxs block text-label-md text-danger underline underline-offset-2 hover:no-underline"
+                >
+                  {switchLabel(switchTo)}
+                </button>
+              )}
+            </div>
           </div>
         )}
 
