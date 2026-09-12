@@ -15,6 +15,7 @@ import {
 } from '@/networks/notifications/notificationsNetwork';
 import { selectCompany, selectUser } from '@/store/authSlice';
 import { useAppSelector } from '@/store/store';
+import { initialsOf } from '@/utils/initials';
 
 const menuPanel =
   'z-50 min-w-56 rounded-lg border border-border bg-surface p-xxs shadow-md';
@@ -49,12 +50,7 @@ export function Topbar({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
     onSuccess: invalidate,
   });
 
-  const initials = (user?.displayName ?? '?')
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase())
-    .join('');
+  const initials = initialsOf(user?.displayName || user?.username);
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-md border-b border-border bg-surface px-md lg:px-lg">

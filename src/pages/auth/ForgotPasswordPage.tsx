@@ -1,17 +1,20 @@
 import { AlertCircle } from 'lucide-react';
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { AuthShell } from '@/features/auth/AuthShell';
+import { useSignOut } from '@/features/auth/useSignOut';
 import {
   authForgotPassword,
   authResetPassword,
   authVerifyOtp,
 } from '@/networks/auth/authNetwork';
 import { ApiError } from '@/networks/network/apiHelpers';
+import { selectIsAuthenticated } from '@/store/authSlice';
+import { useAppSelector } from '@/store/store';
 
 /**
  * All three reset steps in one screen, as the app does it: request an OTP,
@@ -26,8 +29,13 @@ type Step = 'email' | 'otp' | 'password';
 
 export default function ForgotPasswordPage() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  // Opened from My account while signed in: the address is already known, and
+  // finishing the reset has to end this session rather than bounce off /login.
+  const signedIn = useAppSelector(selectIsAuthenticated);
+  const { signOut } = useSignOut();
   const [step, setStep] = useState<Step>('email');
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(() => params.get('email')?.trim() ?? '');
   const [otp, setOtp] = useState('');
   const [resetToken, setResetToken] = useState('');
   const [password, setPassword] = useState('');
@@ -88,7 +96,10 @@ export default function ForgotPasswordPage() {
     try {
       await authResetPassword({ email, resetToken, password });
       toast.success('Password changed. Sign in with your new password.');
-      navigate('/login', { replace: true });
+      // Signed in, /login would redirect straight back into the app on the old
+      // session. Signing out clears it and lands on /login itself.
+      if (signedIn) signOut();
+      else navigate('/login', { replace: true });
     } catch (err) {
       fail(err);
     } finally {
@@ -116,8 +127,8 @@ export default function ForgotPasswordPage() {
       title={COPY[step].title}
       subtitle={COPY[step].subtitle}
       footer={
-        <Link to="/login" className="text-primary hover:underline">
-          Back to sign in
+        <Link to={signedIn ? '/account' : '/login'} className="text-primary hover:underline">
+          {signedIn ? 'Back to my account' : 'Back to sign in'}
         </Link>
       }
     >
