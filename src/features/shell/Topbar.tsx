@@ -1,10 +1,12 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, Building2, LogOut, Menu, Search, UserCircle } from 'lucide-react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { cn } from '@/lib/cn';
 import { useSignOut } from '@/features/auth/useSignOut';
+import { GlobalSearch } from '@/features/search/GlobalSearch';
 import {
   fetchNotifications,
   fetchUnreadCount,
@@ -22,6 +24,7 @@ export function Topbar({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
   const company = useAppSelector(selectCompany);
   const { signOut } = useSignOut();
   const queryClient = useQueryClient();
+  const [mobileSearch, setMobileSearch] = useState(false);
 
   const { data: unread = 0 } = useQuery({
     queryKey: ['notifications', 'unread-count'],
@@ -64,16 +67,23 @@ export function Topbar({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
         <Menu className="size-5" />
       </button>
 
-      <div className="relative hidden max-w-[28rem] flex-1 sm:block">
-        <Search className="pointer-events-none absolute left-sm top-1/2 size-4 -translate-y-1/2 text-text-tertiary" />
-        <input
-          type="search"
-          placeholder="Search customers, invoices, bills…"
-          className="h-10 w-full rounded-md border border-border bg-background pl-[38px] pr-sm text-body-sm text-text-primary outline-none placeholder:text-text-tertiary focus:border-primary"
-        />
+      <div className="hidden max-w-[28rem] flex-1 sm:block">
+        <GlobalSearch shortcut />
       </div>
 
       <div className="ml-auto flex items-center gap-xs">
+        {/* Phones: the field does not fit beside the menu and avatar, so it
+            opens as a full-width row under the bar instead. */}
+        <button
+          type="button"
+          onClick={() => setMobileSearch((o) => !o)}
+          className="rounded-lg p-xs text-text-secondary hover:bg-surface-hover sm:hidden"
+          aria-label={mobileSearch ? 'Close search' : 'Search'}
+          aria-expanded={mobileSearch}
+        >
+          <Search className="size-5" />
+        </button>
+
         {/* The active company, read-only.
 
             There is no switcher here, and that is not an omission. The server
@@ -213,6 +223,16 @@ export function Topbar({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
           </DropdownMenu.Portal>
         </DropdownMenu.Root>
       </div>
+
+      {mobileSearch && (
+        <div className="absolute inset-x-0 top-full border-b border-border bg-surface px-md py-xs shadow-md sm:hidden">
+          <GlobalSearch
+            autoFocus
+            onNavigate={() => setMobileSearch(false)}
+            onDismiss={() => setMobileSearch(false)}
+          />
+        </div>
+      )}
     </header>
   );
 }

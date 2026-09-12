@@ -1,8 +1,9 @@
 import * as Popover from '@radix-ui/react-popover';
-import { Check, ChevronDown, Search } from 'lucide-react';
+import { Check, ChevronDown } from 'lucide-react';
 import { useId, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { cn } from '@/lib/cn';
+import { SearchInput } from '@/components/ui/SearchInput';
 import type { SelectOption } from '@/components/ui/Select';
 
 interface ComboboxProps<V extends string = string> {
@@ -113,13 +114,13 @@ export function Combobox<V extends string = string>({
               )?.focus();
             }}
           >
-            <div className="relative border-b border-border-light">
-              <Search className="pointer-events-none absolute left-sm top-1/2 size-4 -translate-y-1/2 text-text-tertiary" />
-              <input
+            <div className="border-b border-border-light">
+              <SearchInput
+                tone="bare"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onValueChange={setQuery}
                 placeholder={searchPlaceholder}
-                className="h-10 w-full bg-transparent pl-[34px] pr-sm text-body-sm text-text-primary outline-none placeholder:text-text-tertiary"
+                aria-label={searchPlaceholder}
                 onKeyDown={(e) => {
                   // Enter picks the only remaining match — the fast path when
                   // you have typed enough to be unambiguous.

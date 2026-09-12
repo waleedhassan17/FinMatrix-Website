@@ -1,12 +1,13 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { createColumnHelper } from '@tanstack/react-table';
-import { Plus, Search } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DataTable } from '@/components/ui/DataTable';
+import { SearchInput } from '@/components/ui/SearchInput';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { cn } from '@/lib/cn';
 import {
@@ -173,15 +174,13 @@ export default function POListPage() {
         }
         toolbar={
           <div className="flex flex-col gap-sm border-b border-border-light p-md">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-sm top-1/2 size-4 -translate-y-1/2 text-text-tertiary" />
-              <input
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="Search by order number or vendor…"
-                className="h-10 w-full rounded-md border border-border bg-background pl-[34px] pr-sm text-body-sm text-text-primary outline-none placeholder:text-text-tertiary focus:border-primary"
-              />
-            </div>
+            <SearchInput
+              value={searchInput}
+              onValueChange={setSearchInput}
+              placeholder="Search by order number, vendor or notes…"
+              aria-label="Search purchase orders"
+              tone="background"
+            />
 
             <div className="flex flex-wrap gap-xxs">
               {TABS.map(([t, label]) => (

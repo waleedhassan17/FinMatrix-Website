@@ -1,10 +1,11 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { ChevronRight, Lock, Plus, Search } from 'lucide-react';
+import { ChevronRight, Lock, Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { SearchInput } from '@/components/ui/SearchInput';
 import { Select } from '@/components/ui/Select';
 import { cn } from '@/lib/cn';
 import {
@@ -92,18 +93,14 @@ export default function AccountListPage() {
       </div>
 
       <div className="flex flex-wrap items-end gap-sm">
-        <label className="relative block min-w-56 flex-1">
-          <span className="mb-xxs block text-label-md text-text-secondary">
-            Search
-          </span>
-          <Search className="pointer-events-none absolute bottom-[14px] left-sm size-4 text-text-tertiary" />
-          <input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Number or name…"
-            className="h-12 w-full rounded-md border border-border bg-surface pr-sm pl-xl text-body-md text-text-primary outline-none transition-colors focus:border-[1.5px] focus:border-primary placeholder:text-text-tertiary"
-          />
-        </label>
+        <SearchInput
+          label="Search"
+          value={searchInput}
+          onValueChange={setSearchInput}
+          placeholder="Number or name…"
+          size="md"
+          containerClassName="min-w-56 flex-1"
+        />
 
         <Select
           label="Type"

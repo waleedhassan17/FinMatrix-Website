@@ -1,12 +1,13 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { createColumnHelper } from '@tanstack/react-table';
-import { BookOpen, Plus, Scale, Search } from 'lucide-react';
+import { BookOpen, Plus, Scale } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DataTable } from '@/components/ui/DataTable';
+import { SearchInput } from '@/components/ui/SearchInput';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { cn } from '@/lib/cn';
 import { isReversal, type JournalEntry } from '@/models/journalEntry';
@@ -140,16 +141,14 @@ export default function JournalEntryListPage() {
         </div>
       </div>
 
-      <label className="relative block max-w-[28rem]">
-        <Search className="pointer-events-none absolute top-1/2 left-sm size-4 -translate-y-1/2 text-text-tertiary" />
-        <input
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          placeholder="Search by reference or memo…"
-          aria-label="Search journal entries"
-          className="h-12 w-full rounded-md border border-border bg-surface pr-sm pl-xl text-body-md text-text-primary outline-none transition-colors focus:border-[1.5px] focus:border-primary placeholder:text-text-tertiary"
-        />
-      </label>
+      <SearchInput
+        value={searchInput}
+        onValueChange={setSearchInput}
+        placeholder="Search by reference or memo…"
+        aria-label="Search journal entries"
+        size="md"
+        containerClassName="max-w-[28rem]"
+      />
 
       <div className="flex flex-wrap gap-xs">
         {TABS.map(([value, label]) => (

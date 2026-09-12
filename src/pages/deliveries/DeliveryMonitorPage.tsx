@@ -1,12 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { createColumnHelper } from '@tanstack/react-table';
-import { MapPin, Plus, Search, Truck, UserPlus } from 'lucide-react';
+import { MapPin, Plus, Truck, UserPlus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DataTable, TablePager } from '@/components/ui/DataTable';
+import { SearchInput } from '@/components/ui/SearchInput';
 import { StatTile } from '@/components/ui/StatTile';
 import { DeliveryStatusBadge, OnlineDot, PriorityBadge } from '@/features/delivery/DeliveryBadges';
 import { useRiders } from '@/features/delivery/useRiders';
@@ -314,19 +315,16 @@ export default function DeliveryMonitorPage() {
             </button>
           ))}
         </div>
-        <label className="relative block w-72 max-w-full">
-          <Search className="pointer-events-none absolute top-1/2 left-sm size-4 -translate-y-1/2 text-text-tertiary" />
-          <input
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
-            placeholder="Reference, customer or rider…"
-            aria-label="Search deliveries"
-            className="h-10 w-full rounded-md border border-border bg-surface pr-sm pl-xl text-body-md text-text-primary outline-none transition-colors focus:border-primary placeholder:text-text-tertiary"
-          />
-        </label>
+        <SearchInput
+          value={search}
+          onValueChange={(v) => {
+            setSearch(v);
+            setPage(1);
+          }}
+          placeholder="Reference, customer or rider…"
+          aria-label="Search deliveries"
+          containerClassName="w-72 max-w-full"
+        />
       </div>
 
       {error && (

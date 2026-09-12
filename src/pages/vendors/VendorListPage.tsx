@@ -1,12 +1,13 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { createColumnHelper } from '@tanstack/react-table';
-import { Plus, Search } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DataTable, TablePager } from '@/components/ui/DataTable';
+import { SearchInput } from '@/components/ui/SearchInput';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { cn } from '@/lib/cn';
 import { PAYMENT_TERMS_LABELS } from '@/models/customer';
@@ -174,15 +175,14 @@ export default function VendorListPage() {
         }
         toolbar={
           <div className="flex flex-wrap items-center gap-sm border-b border-border-light p-md">
-            <div className="relative min-w-56 flex-1">
-              <Search className="pointer-events-none absolute left-sm top-1/2 size-4 -translate-y-1/2 text-text-tertiary" />
-              <input
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="Search by company, contact or email…"
-                className="h-10 w-full rounded-md border border-border bg-background pl-[34px] pr-sm text-body-sm text-text-primary outline-none placeholder:text-text-tertiary focus:border-primary"
-              />
-            </div>
+            <SearchInput
+              value={searchInput}
+              onValueChange={setSearchInput}
+              placeholder="Search by company, contact, email or phone…"
+              aria-label="Search vendors"
+              tone="background"
+              containerClassName="min-w-56 flex-1"
+            />
 
             <FilterChips
               value={status}

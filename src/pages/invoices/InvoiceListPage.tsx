@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { createColumnHelper } from '@tanstack/react-table';
-import { Clock, Plus, Search } from 'lucide-react';
+import { Clock, Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DataTable } from '@/components/ui/DataTable';
 import { DateField } from '@/components/ui/Field';
+import { SearchInput } from '@/components/ui/SearchInput';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useCapability } from '@/hooks/useCapability';
 import { cn } from '@/lib/cn';
@@ -209,15 +210,14 @@ export default function InvoiceListPage() {
         toolbar={
           <div className="flex flex-col gap-sm border-b border-border-light p-md">
             <div className="flex flex-wrap items-center gap-sm">
-              <div className="relative min-w-56 flex-1">
-                <Search className="pointer-events-none absolute left-sm top-1/2 size-4 -translate-y-1/2 text-text-tertiary" />
-                <input
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  placeholder="Search by invoice number or notes…"
-                  className="h-10 w-full rounded-md border border-border bg-background pl-[34px] pr-sm text-body-sm text-text-primary outline-none placeholder:text-text-tertiary focus:border-primary"
-                />
-              </div>
+              <SearchInput
+                value={searchInput}
+                onValueChange={setSearchInput}
+                placeholder="Search by invoice number, customer or notes…"
+                aria-label="Search invoices"
+                tone="background"
+                containerClassName="min-w-56 flex-1"
+              />
               {/* The server applies the range only when BOTH dates are set. */}
               <DateField
                 value={fromDate}

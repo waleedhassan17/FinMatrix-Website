@@ -1,12 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { createColumnHelper } from '@tanstack/react-table';
-import { ClipboardList, Plus, Search, Users, Wallet } from 'lucide-react';
+import { ClipboardList, Plus, Users, Wallet } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DataTable } from '@/components/ui/DataTable';
+import { SearchInput } from '@/components/ui/SearchInput';
 import { StatTile } from '@/components/ui/StatTile';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { KpiTile } from '@/features/reports/KpiTile';
@@ -203,16 +204,13 @@ export default function EmployeeListPage() {
             </button>
           ))}
         </div>
-        <label className="relative block w-72 max-w-full">
-          <Search className="pointer-events-none absolute top-1/2 left-sm size-4 -translate-y-1/2 text-text-tertiary" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Name, department or position…"
-            aria-label="Search employees"
-            className="h-10 w-full rounded-md border border-border bg-surface pr-sm pl-xl text-body-md text-text-primary outline-none transition-colors focus:border-primary placeholder:text-text-tertiary"
-          />
-        </label>
+        <SearchInput
+          value={search}
+          onValueChange={setSearch}
+          placeholder="Name, department or position…"
+          aria-label="Search employees"
+          containerClassName="w-72 max-w-full"
+        />
       </div>
 
       {query.error && (
