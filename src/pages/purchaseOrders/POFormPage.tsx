@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, ArrowLeft, Info, Plus, ShoppingCart } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
@@ -23,10 +23,12 @@ import {
   validateLines,
   type FormLineItem,
 } from '@/models/document';
+import { poPrefillLine } from '@/models/itemPurchaseOrders';
 import {
   isPOEditable,
   type PurchaseOrderFormData,
 } from '@/models/purchaseOrder';
+import { getItem } from '@/networks/inventory/inventoryNetwork';
 import {
   createPurchaseOrder,
   getPurchaseOrderById,
@@ -66,6 +68,11 @@ export default function POFormPage() {
   const [form, setForm] = useState<PurchaseOrderFormData>(emptyForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Raised from an inventory item's "Create PO": the form starts from that
+  // item and goes back to it.
+  const prefillItemId = isEditing ? '' : (searchParams.get('itemId') ?? '');
+  const prefilled = useRef(false);
+
   const { data: existing, isLoading } = useQuery({
     queryKey: ['purchase-orders', poId],
     queryFn: () => getPurchaseOrderById(poId!),
@@ -82,6 +89,24 @@ export default function POFormPage() {
     const v = vendorsById.get(preset);
     if (v) setForm((f) => ({ ...f, vendorId: v.id, vendorName: v.name }));
   }, [searchParams, vendorsById, isEditing]);
+
+  // The whole item — the picker's list carries no description or reorder
+  // quantity. Same key as the item page, so coming from there it is cached.
+  const { data: prefillItem } = useQuery({
+    queryKey: ['inventory', 'items', prefillItemId],
+    queryFn: () => getItem(prefillItemId),
+    enabled: Boolean(prefillItemId) && inventoryEnabled,
+  });
+
+  // Seed the first line the way the app does: the item, at its cost, for its
+  // reorder quantity. It runs once, so a later refetch never overwrites what
+  // the user has typed. The vendor stays blank — an item carries no supplier
+  // to guess from, and the API needs a real one.
+  useEffect(() => {
+    if (!prefillItem || prefilled.current) return;
+    prefilled.current = true;
+    setForm((f) => ({ ...f, lines: [poPrefillLine(prefillItem), ...f.lines.slice(1)] }));
+  }, [prefillItem]);
 
   // A purchase order has no discount, so 'none'/0 are constants here rather
   // than form state — computeTotals is otherwise the same arithmetic.
@@ -219,13 +244,18 @@ export default function POFormPage() {
   }
 
   const busy = save.isPending;
+  const backTo = isEditing
+    ? `/purchase-orders/${poId}`
+    : prefillItemId
+      ? `/inventory/${prefillItemId}`
+      : '/purchase-orders';
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-lg">
       <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to={isEditing ? `/purchase-orders/${poId}` : '/purchase-orders'}>
+        <Link to={backTo}>
           <ArrowLeft className="size-4" />
-          Back
+          {prefillItemId ? 'Back to item' : 'Back'}
         </Link>
       </Button>
 
@@ -374,9 +404,7 @@ export default function POFormPage() {
 
       <div className="flex flex-wrap justify-end gap-sm pb-xl">
         <Button asChild variant="secondary" disabled={busy}>
-          <Link to={isEditing ? `/purchase-orders/${poId}` : '/purchase-orders'}>
-            Cancel
-          </Link>
+          <Link to={backTo}>Cancel</Link>
         </Button>
         <Button
           onClick={() => {

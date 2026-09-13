@@ -21,6 +21,7 @@ import {
 import { asRaw, str } from '@/serializers/documentLines';
 import { mapBill } from '@/serializers/billSerializer';
 import type { Bill } from '@/models/bill';
+import { ITEM_PO_SEARCH_LIMIT } from '@/models/itemPurchaseOrders';
 import type {
   PurchaseOrder,
   PurchaseOrderStatus,
@@ -54,6 +55,27 @@ export const getPurchaseOrders = async (
   try {
     const response = await api.get('/purchase-orders', { params: query });
     return purchaseOrderListSerializer(unwrapEnvelope(response.data));
+  } catch (e) {
+    throw toApiError(e);
+  }
+};
+
+/**
+ * The most recent purchase orders, with how many the company has in all.
+ *
+ * For an inventory item's Purchase orders tab: the list has no item filter, so
+ * the tab filters these on their lines and needs the total to say when there
+ * were older orders it did not search.
+ */
+export const getRecentPurchaseOrders = async (
+  limit = ITEM_PO_SEARCH_LIMIT,
+): Promise<{ rows: PurchaseOrder[]; total: number }> => {
+  try {
+    const response = await api.get('/purchase-orders', { params: { limit } });
+    const payload = unwrapEnvelope<{ pagination?: { total?: unknown } } | null>(response.data);
+    const rows = purchaseOrderListSerializer(payload);
+    const total = Number(payload?.pagination?.total);
+    return { rows, total: Number.isFinite(total) ? Math.max(total, rows.length) : rows.length };
   } catch (e) {
     throw toApiError(e);
   }

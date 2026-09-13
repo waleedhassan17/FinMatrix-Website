@@ -1,6 +1,16 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createColumnHelper } from '@tanstack/react-table';
-import { History, Package, PackagePlus, Pencil, SlidersHorizontal, Undo2 } from 'lucide-react';
+import {
+  ChevronRight,
+  Clock,
+  Package,
+  PackagePlus,
+  Pencil,
+  RotateCw,
+  ShoppingCart,
+  SlidersHorizontal,
+  Undo2,
+} from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -11,8 +21,9 @@ import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { DataTable } from '@/components/ui/DataTable';
-import { DateField } from '@/components/ui/Field';
+import { DateField, Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Field';
 import { Input } from '@/components/ui/Input';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { StatTile } from '@/components/ui/StatTile';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { invalidateInventory } from '@/features/inventory/invalidateInventory';
@@ -36,7 +47,15 @@ import {
   type OpeningStockForm,
   type StockMovement,
 } from '@/models/inventory';
+import {
+  ITEM_PO_SEARCH_LIMIT,
+  itemLineQuantities,
+  onOrderForItem,
+  pendingPORequestsForItem,
+  purchaseOrdersForItem,
+} from '@/models/itemPurchaseOrders';
 import { formatReportDate } from '@/models/reportPeriod';
+import { fetchApprovals } from '@/networks/approvals/approvalsNetwork';
 import {
   getItem,
   getItemMovements,
@@ -44,6 +63,7 @@ import {
   setOpeningStock,
   toggleItem,
 } from '@/networks/inventory/inventoryNetwork';
+import { getRecentPurchaseOrders } from '@/networks/purchases/purchaseOrderNetwork';
 import { formatMoney, toDecimal } from '@/utils/money';
 
 const columnHelper = createColumnHelper<StockMovement>();
@@ -85,6 +105,43 @@ export default function InventoryDetailPage() {
     queryFn: () => getItemMovements(itemId),
     enabled,
   });
+
+  // Purchase orders, as the app's POs tab has them. Staff may raise one too —
+  // it files a request the owner approves — and the button says which.
+  const poCap = useCapability('purchaseOrder.create');
+  const posEnabled = useFeature('purchaseOrders');
+
+  // The recent list filtered on its lines: there is no per-item endpoint. Kept
+  // under the purchase-orders key, so creating, receiving or closing an order
+  // anywhere refreshes this tab too.
+  const posQuery = useQuery({
+    queryKey: ['purchase-orders', 'for-item', itemId],
+    queryFn: () => getRecentPurchaseOrders(),
+    enabled: enabled && posEnabled,
+    placeholderData: keepPreviousData,
+  });
+
+  // Staff only: their own requests for an order, still waiting on the owner.
+  // An owner's orders never wait. Failing soft — losing these rows beats
+  // failing a tab whose orders loaded fine.
+  const requestsQuery = useQuery({
+    queryKey: ['approvals', 'mine', 'po'],
+    queryFn: () => fetchApprovals({ status: 'pending', type: 'po' }).catch(() => []),
+    enabled: enabled && posEnabled && poCap.needsApproval,
+  });
+
+  const itemPOs = useMemo(
+    () => purchaseOrdersForItem(posQuery.data?.rows ?? [], itemId),
+    [posQuery.data, itemId],
+  );
+  const pendingRequests = useMemo(
+    () => pendingPORequestsForItem(requestsQuery.data ?? [], itemId),
+    [requestsQuery.data, itemId],
+  );
+  const onOrder = useMemo(() => onOrderForItem(itemPOs, itemId), [itemPOs, itemId]);
+  // Only one page was searched; an unqualified "none" would be a confident
+  // wrong answer to "is this already on order?".
+  const poTruncated = (posQuery.data?.total ?? 0) > (posQuery.data?.rows.length ?? 0);
 
   // The server orders by date only; within a day, newest-created first keeps a
   // same-day receipt and adjustment in the order they happened.
@@ -251,6 +308,12 @@ export default function InventoryDetailPage() {
           .toString()
       : null;
 
+  // The PO form's item picker lists active items only, so an inactive item
+  // could not be put on the order it opens.
+  const canRaisePO = posEnabled && poCap.allowed && item.isActive;
+  // Short on stock, ordering more is the likely next step — it leads.
+  const needsStock = status === 'out' || status === 'low';
+
   return (
     <div className="flex flex-col gap-lg">
       <PageHeader
@@ -272,7 +335,7 @@ export default function InventoryDetailPage() {
           item.unitOfMeasure ? `Sold by ${item.unitOfMeasure}` : null,
         ]}
         actions={
-          (canManage || canAdjust) && (
+          (canManage || canAdjust || canRaisePO) && (
             <>
               {canManage && (
                 <Button asChild variant="secondary" size="sm">
@@ -283,10 +346,18 @@ export default function InventoryDetailPage() {
                 </Button>
               )}
               {canAdjust && (
-                <Button asChild size="sm">
+                <Button asChild variant={canRaisePO && needsStock ? 'secondary' : 'primary'} size="sm">
                   <Link to={`/inventory/${item.id}/adjust`}>
                     <SlidersHorizontal className="size-4" />
                     Adjust stock
+                  </Link>
+                </Button>
+              )}
+              {canRaisePO && (
+                <Button asChild variant={needsStock || !canAdjust ? 'primary' : 'secondary'} size="sm">
+                  <Link to={`/purchase-orders/new?itemId=${item.id}`}>
+                    <ShoppingCart className="size-4" />
+                    {poCap.needsApproval ? 'Request PO' : 'Create PO'}
                   </Link>
                 </Button>
               )}
@@ -295,8 +366,10 @@ export default function InventoryDetailPage() {
         }
       />
 
-      {/* ── Figures ─────────────────────────────────────────────────── */}
-      <div className="grid gap-md sm:grid-cols-2 xl:grid-cols-5">
+      {/* ── Figures ─────────────────────────────────────────────────────
+          No "Committed": the server only ever writes zero there. On order is
+          counted from the item's open purchase orders for the same reason. */}
+      <div className={cn('grid gap-md sm:grid-cols-2', posEnabled ? 'xl:grid-cols-4' : 'xl:grid-cols-3')}>
         <StatTile
           label="On hand"
           value={`${formatQty(item.quantityOnHand)}${unit}`}
@@ -304,16 +377,18 @@ export default function InventoryDetailPage() {
         />
         <KpiTile label="Average unit cost" value={item.unitCost} hint="Weighted average" />
         <KpiTile label="Valuation" value={value} hint="On hand × average cost" />
-        <StatTile
-          label="Committed"
-          value={formatQty(item.quantityCommitted)}
-          hint="Reserved for open orders"
-        />
-        <StatTile
-          label="On order"
-          value={formatQty(item.quantityOnOrder)}
-          hint="On purchase orders not yet received"
-        />
+        {posEnabled && (
+          <StatTile
+            label="On order"
+            value={`${formatQty(onOrder.quantity)}${unit}`}
+            hint={
+              onOrder.orders === 0
+                ? 'Nothing waiting on a supplier'
+                : `Still to arrive on ${onOrder.orders} open purchase ${onOrder.orders === 1 ? 'order' : 'orders'}`
+            }
+            loading={posQuery.isLoading}
+          />
+        )}
       </div>
 
       {/* ── Opening stock ───────────────────────────────────────────── */}
@@ -388,31 +463,57 @@ export default function InventoryDetailPage() {
           )}
         </Card>
 
-        {/* ── Movements ───────────────────────────────────────────── */}
-        <section className="flex flex-col gap-sm lg:col-span-2">
-          <div className="flex items-center gap-xs">
-            <History className="size-4 text-text-secondary" />
-            <h2 className="text-h4 text-text-primary">Stock movements</h2>
-          </div>
-          {movesQuery.error && (
-            <p className="text-body-sm text-danger">{movesQuery.error.message}</p>
-          )}
-          <DataTable
-            columns={columns}
-            data={movements}
-            isLoading={movesQuery.isLoading}
-            empty={
-              <p className="p-lg text-center text-body-sm text-text-tertiary">
-                No movements yet. Receipts, sales, deliveries and adjustments appear
-                here as they happen.
-              </p>
-            }
-          />
-          {movesQuery.data?.truncated && (
-            <p className="text-caption text-text-tertiary">
-              Showing the latest {movements.length} movements.
-            </p>
-          )}
+        {/* ── Movements and purchase orders ───────────────────────── */}
+        <section className="min-w-0 lg:col-span-2">
+          <Tabs defaultValue="movements">
+            <TabsList>
+              <TabsTrigger value="movements">Stock movements</TabsTrigger>
+              {posEnabled && (
+                <TabsTrigger
+                  value="purchase-orders"
+                  count={posQuery.isLoading ? undefined : itemPOs.length + pendingRequests.length}
+                >
+                  Purchase orders
+                </TabsTrigger>
+              )}
+            </TabsList>
+
+            <TabsContent value="movements" className="flex flex-col gap-sm">
+              {movesQuery.error && (
+                <p className="text-body-sm text-danger">{movesQuery.error.message}</p>
+              )}
+              <DataTable
+                columns={columns}
+                data={movements}
+                isLoading={movesQuery.isLoading}
+                empty={
+                  <p className="p-lg text-center text-body-sm text-text-tertiary">
+                    No movements yet. Receipts, sales, deliveries and adjustments appear
+                    here as they happen.
+                  </p>
+                }
+              />
+              {movesQuery.data?.truncated && (
+                <p className="text-caption text-text-tertiary">
+                  Showing the latest {movements.length} movements.
+                </p>
+              )}
+            </TabsContent>
+
+            {posEnabled && (
+              <TabsContent value="purchase-orders">
+                <ItemPurchaseOrders
+                  itemId={item.id}
+                  orders={itemPOs}
+                  requests={pendingRequests}
+                  isLoading={posQuery.isLoading}
+                  error={posQuery.error}
+                  onRetry={() => posQuery.refetch()}
+                  truncated={poTruncated}
+                />
+              </TabsContent>
+            )}
+          </Tabs>
         </section>
       </div>
 
@@ -480,6 +581,136 @@ export default function InventoryDetailPage() {
         onConfirm={() => reversing && reverse.mutate(reversing.sourceId)}
       />
     </div>
+  );
+}
+
+/**
+ * The item's purchase orders, as the app's POs tab shows them: a staff member's
+ * own requests first — not orders yet, so they open My Requests — then every
+ * order with a line for this item, counting this item's lines only.
+ */
+function ItemPurchaseOrders({
+  itemId,
+  orders,
+  requests,
+  isLoading,
+  error,
+  onRetry,
+  truncated,
+}: {
+  itemId: string;
+  orders: ReturnType<typeof purchaseOrdersForItem>;
+  requests: ReturnType<typeof pendingPORequestsForItem>;
+  isLoading: boolean;
+  error: Error | null;
+  onRetry: () => void;
+  truncated: boolean;
+}) {
+  const hasRows = orders.length > 0 || requests.length > 0;
+
+  // Only a first load takes over the tab; a background refetch — coming back
+  // from a new order — keeps the rows on screen.
+  if (isLoading && !hasRows) {
+    return (
+      <Card className="flex flex-col gap-sm p-lg" aria-busy="true">
+        {[0, 1, 2].map((i) => (
+          <Skeleton key={i} className="h-12 w-full" />
+        ))}
+      </Card>
+    );
+  }
+
+  if (error && !hasRows) {
+    return (
+      <Card className="flex flex-col items-center gap-sm p-xl text-center">
+        <p className="text-body-sm text-danger">
+          {error.message || 'Could not load purchase orders.'}
+        </p>
+        <Button variant="secondary" size="sm" onClick={onRetry}>
+          <RotateCw className="size-4" />
+          Try again
+        </Button>
+      </Card>
+    );
+  }
+
+  if (!hasRows) {
+    return (
+      <Card className="p-xl text-center">
+        <p className="text-body-sm text-text-tertiary">
+          {truncated
+            ? `None in the ${ITEM_PO_SEARCH_LIMIT} most recent purchase orders — older ones are not searched.`
+            : 'No purchase orders for this item yet.'}
+        </p>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="overflow-hidden">
+      <ul className="divide-y divide-border-light">
+        {requests.map((req) => (
+          <li key={req.id}>
+            <Link
+              to="/my-requests"
+              className="flex items-center gap-sm px-lg py-md transition-colors hover:bg-surface-hover"
+            >
+              <Clock className="size-4 shrink-0 text-warning" aria-hidden="true" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-label-md text-text-primary">
+                  {req.summary || 'Purchase order request'}
+                </p>
+                <p className="text-caption text-text-secondary">
+                  Sent to the owner · not a purchase order yet
+                </p>
+              </div>
+              <StatusBadge status="pending" label="Awaiting owner" />
+              <ChevronRight className="hidden size-4 shrink-0 text-text-tertiary sm:block" aria-hidden="true" />
+            </Link>
+          </li>
+        ))}
+
+        {orders.map((po) => {
+          const { ordered, received } = itemLineQuantities(po, itemId);
+          return (
+            <li key={po.id}>
+              <Link
+                to={`/purchase-orders/${po.id}`}
+                className="flex items-center gap-sm px-lg py-md transition-colors hover:bg-surface-hover"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-label-md text-text-primary">
+                    {po.poNumber || 'Purchase order'}
+                  </p>
+                  <p className="truncate text-caption text-text-secondary">
+                    {[po.vendorName, po.orderDate ? formatReportDate(po.orderDate.slice(0, 10)) : '']
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="text-label-md tabular text-text-primary">
+                    {formatQty(ordered)} ordered
+                  </p>
+                  {/* Receipts show whenever there are any — including once the
+                      order is complete. */}
+                  <p className="text-caption tabular text-text-tertiary">
+                    {received > 0 ? `${formatQty(received)} received` : 'None received'}
+                  </p>
+                </div>
+                <StatusBadge status={po.status} />
+                <ChevronRight className="hidden size-4 shrink-0 text-text-tertiary sm:block" aria-hidden="true" />
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+      {truncated && (
+        <p className="border-t border-border-light bg-surface-2 px-lg py-sm text-caption text-text-tertiary">
+          Searched the {ITEM_PO_SEARCH_LIMIT} most recent purchase orders. Older ones are not shown.
+        </p>
+      )}
+    </Card>
   );
 }
 
