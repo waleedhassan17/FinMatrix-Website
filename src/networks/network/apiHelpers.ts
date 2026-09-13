@@ -326,12 +326,15 @@ export const isPendingApproval = (data: unknown): data is PendingApproval =>
 export const authedBlobUrl = async (
   path: string,
   config?: AxiosRequestConfig,
-): Promise<string> => {
+): Promise<string> => URL.createObjectURL(await authedBlob(path, config));
+
+/** The file itself, for printing, downloading or sharing it. */
+export const authedBlob = async (path: string, config?: AxiosRequestConfig): Promise<Blob> => {
   const response = await api.get<Blob>(path, {
     ...config,
     responseType: 'blob',
   });
-  return URL.createObjectURL(response.data);
+  return response.data;
 };
 
 // ─── Multipart upload ───────────────────────────────

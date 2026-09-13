@@ -3,6 +3,7 @@ import { ChevronRight, Lock, Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
+import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { SearchInput } from '@/components/ui/SearchInput';
@@ -76,21 +77,18 @@ export default function AccountListPage() {
 
   return (
     <div className="flex flex-col gap-lg">
-      <div className="flex flex-wrap items-start justify-between gap-md">
-        <div>
-          <h1 className="text-h2 text-text-primary">Chart of accounts</h1>
-          <p className="text-body-sm text-text-secondary">
-            Every account the business posts to. Invoices, bills and payments all
-            land here.
-          </p>
-        </div>
-        <Button asChild>
-          <Link to="/accounts/new">
-            <Plus className="size-4" />
-            New account
-          </Link>
-        </Button>
-      </div>
+      <PageHeader
+        title="Chart of accounts"
+        description="Every account the business posts to. Invoices, bills and payments all land here."
+        actions={
+          <Button asChild>
+            <Link to="/accounts/new">
+              <Plus className="size-4" />
+              New account
+            </Link>
+          </Button>
+        }
+      />
 
       <div className="flex flex-wrap items-end gap-sm">
         <SearchInput

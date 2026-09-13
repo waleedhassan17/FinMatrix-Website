@@ -4,6 +4,7 @@ import { BookOpen, Plus, Scale } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
+import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DataTable } from '@/components/ui/DataTable';
@@ -117,29 +118,26 @@ export default function JournalEntryListPage() {
 
   return (
     <div className="flex flex-col gap-lg">
-      <div className="flex flex-wrap items-start justify-between gap-md">
-        <div>
-          <h1 className="text-h2 text-text-primary">Journal entries</h1>
-          <p className="text-body-sm text-text-secondary">
-            Manual double-entry, for the corrections and adjustments no document
-            covers.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-xs">
-          <Button asChild variant="secondary">
-            <Link to="/journal-entries/opening-balance">
-              <Scale className="size-4" />
-              Opening balances
-            </Link>
-          </Button>
-          <Button asChild>
-            <Link to="/journal-entries/new">
-              <Plus className="size-4" />
-              New entry
-            </Link>
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Journal entries"
+        description="Manual double-entry, for the corrections and adjustments no document covers."
+        actions={
+          <>
+            <Button asChild variant="secondary">
+              <Link to="/journal-entries/opening-balance">
+                <Scale className="size-4" />
+                Opening balances
+              </Link>
+            </Button>
+            <Button asChild>
+              <Link to="/journal-entries/new">
+                <Plus className="size-4" />
+                New entry
+              </Link>
+            </Button>
+          </>
+        }
+      />
 
       <SearchInput
         value={searchInput}

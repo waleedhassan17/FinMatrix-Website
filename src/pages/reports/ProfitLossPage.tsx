@@ -6,6 +6,7 @@ import { Switch } from '@/components/ui/Field';
 import { KpiTile } from '@/features/reports/KpiTile';
 import { PeriodPicker } from '@/features/reports/PeriodPicker';
 import { ReportShell } from '@/features/reports/ReportShell';
+import { statementSection } from '@/features/reports/reportPdfTable';
 import { ReportTitleBlock } from '@/features/reports/ReportTitleBlock';
 import { StatementTable } from '@/features/reports/StatementTable';
 import { csvAmount, csvFilename, downloadCsv, toCsv, type CsvRow } from '@/models/reportCsv';
@@ -193,6 +194,18 @@ export default function ProfitLossPage() {
         />
       }
       onExportCsv={exportCsv}
+      pdf={{
+        periodLabel: rangeLabel(range.startDate, range.endDate),
+        basis: 'Accrual basis',
+        cacheKey: [range.startDate, range.endDate, comparing, current.dataUpdatedAt, comparison.dataUpdatedAt].join('|'),
+        build: () => [
+          statementSection(rows, {
+            comparing,
+            currentLabel: rangeLabel(range.startDate, range.endDate),
+            priorLabel: rangeLabel(prior.startDate, prior.endDate),
+          }),
+        ],
+      }}
       isLoading={current.isLoading}
       isRefetching={current.isFetching || (comparing && comparison.isFetching)}
       error={current.error as Error | null}

@@ -4,6 +4,7 @@ import { Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
+import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DataTable } from '@/components/ui/DataTable';
@@ -146,23 +147,23 @@ export default function BillListPage() {
 
   return (
     <div className="flex flex-col gap-lg">
-      <div className="flex flex-wrap items-center justify-between gap-md">
-        <div>
-          <h1 className="text-h2 text-text-primary">Bills</h1>
-          <p className="text-body-sm text-text-secondary">What you owe suppliers.</p>
-        </div>
-        <div className="flex gap-xs">
-          <Button asChild variant="secondary">
-            <Link to="/bills/pay">Pay bills</Link>
-          </Button>
-          <Button asChild>
-            <Link to="/bills/new">
-              <Plus className="size-4" />
-              New bill
-            </Link>
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Bills"
+        description="What you owe suppliers."
+        actions={
+          <>
+            <Button asChild variant="secondary">
+              <Link to="/bills/pay">Pay bills</Link>
+            </Button>
+            <Button asChild>
+              <Link to="/bills/new">
+                <Plus className="size-4" />
+                New bill
+              </Link>
+            </Button>
+          </>
+        }
+      />
 
       <div className="grid gap-md sm:grid-cols-2">
         <Card className="p-lg">

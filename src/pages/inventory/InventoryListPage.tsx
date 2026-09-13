@@ -4,6 +4,7 @@ import { Package, Plus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
+import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DataTable, TablePager } from '@/components/ui/DataTable';
@@ -176,23 +177,20 @@ export default function InventoryListPage() {
 
   return (
     <div className="flex flex-col gap-lg">
-      <div className="flex flex-wrap items-start justify-between gap-md">
-        <div>
-          <h1 className="text-h2 text-text-primary">Inventory</h1>
-          <p className="text-body-sm text-text-secondary">
-            Stock on hand, valued at weighted-average cost — the same figure the
-            Inventory Valuation report and the balance sheet carry.
-          </p>
-        </div>
-        {canManage && (
-          <Button asChild>
-            <Link to="/inventory/new">
-              <Plus className="size-4" />
-              New item
-            </Link>
-          </Button>
-        )}
-      </div>
+      <PageHeader
+        title="Inventory"
+        description="Stock on hand, valued at weighted-average cost — the same figure the Inventory Valuation report and the balance sheet carry."
+        actions={
+          canManage && (
+            <Button asChild>
+              <Link to="/inventory/new">
+                <Plus className="size-4" />
+                New item
+              </Link>
+            </Button>
+          )
+        }
+      />
 
       <div className="grid gap-md sm:grid-cols-2 xl:grid-cols-4">
         <StatTile

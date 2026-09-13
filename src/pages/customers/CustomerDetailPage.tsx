@@ -1,13 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, FilePlus2, Pencil } from 'lucide-react';
-import { useState } from 'react';
+import { Banknote, FilePlus2, Pencil } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { PageHeader } from '@/components/layout/PageHeader';
+import { DetailPageSkeleton, PageMessage } from '@/components/layout/PageState';
 import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { DateField, Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Field';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { reportPdfBlob } from '@/features/documents/documentPdf';
+import { customerStatementDocument } from '@/features/documents/statementBuilders';
+import { useDocumentCompany } from '@/features/documents/useDocumentContext';
+import { DocumentActions } from '@/features/share/DocumentActions';
 import { useAdminOnly } from '@/hooks/useCapability';
 import { cn } from '@/lib/cn';
 import { PAYMENT_TERMS_LABELS, type Customer, type CustomerAddress } from '@/models/customer';
@@ -31,7 +37,7 @@ export default function CustomerDetailPage() {
   const queryClient = useQueryClient();
   const canToggle = useAdminOnly('customer.toggleActive');
 
-  const { data, isLoading, isError, error } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['customers', customerId],
     queryFn: () => getCustomerById(customerId),
   });
@@ -46,21 +52,18 @@ export default function CustomerDetailPage() {
       toast.error('Could not update customer', { description: e.message }),
   });
 
-  if (isLoading) {
-    return <p className="text-body-sm text-text-secondary">Loading customer…</p>;
-  }
+  if (isLoading) return <DetailPageSkeleton rail={false} />;
 
   if (isError || !data) {
     return (
-      <Card className="p-xl">
-        <p className="text-label-lg text-text-primary">Customer not found</p>
-        <p className="mt-xxs text-body-sm text-text-secondary">
-          {error instanceof Error ? error.message : 'It may have been removed.'}
-        </p>
-        <Button asChild variant="secondary" className="mt-lg">
-          <Link to="/customers">Back to customers</Link>
-        </Button>
-      </Card>
+      <PageMessage
+        tone={isError ? 'error' : 'notFound'}
+        title={isError ? 'This customer could not be loaded' : 'Customer not found'}
+        description={error instanceof Error ? error.message : 'It may have been removed.'}
+        onRetry={isError ? () => refetch() : undefined}
+        backTo="/customers"
+        backLabel="Back to customers"
+      />
     );
   }
 
@@ -76,46 +79,45 @@ export default function CustomerDetailPage() {
 
   return (
     <div className="flex flex-col gap-lg">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to="/customers">
-          <ArrowLeft className="size-4" />
-          Customers
-        </Link>
-      </Button>
-
-      {/* ── Header ──────────────────────────────────────────────────── */}
-      <Card className="p-lg">
-        <div className="flex flex-wrap items-start justify-between gap-md">
-          <div className="min-w-0">
-            <div className="flex items-center gap-sm">
-              <h1 className="text-h2 text-text-primary">{customer.name}</h1>
-              <StatusBadge status={customer.isActive ? 'active' : 'inactive'} />
-            </div>
-            {customer.company && (
-              <p className="text-body-sm text-text-secondary">{customer.company}</p>
-            )}
-            <p className="mt-xxs text-body-sm text-text-secondary">
-              {[customer.email, customer.phone].filter(Boolean).join(' · ') || '—'}
-            </p>
-          </div>
-
-          <div className="flex gap-xs">
-            <Button asChild variant="secondary">
+      <PageHeader
+        back={{ to: '/customers', label: 'Customers' }}
+        title={customer.name}
+        status={<StatusBadge status={customer.isActive ? 'active' : 'inactive'} />}
+        meta={[
+          customer.company && customer.company !== customer.name ? customer.company : null,
+          customer.email ? (
+            <a key="email" href={`mailto:${customer.email}`} className="hover:text-primary hover:underline">
+              {customer.email}
+            </a>
+          ) : null,
+          customer.phone || null,
+        ]}
+        actions={
+          <>
+            <Button asChild variant="secondary" size="sm">
               <Link to={`/customers/${customer.id}/edit`}>
                 <Pencil className="size-4" />
                 Edit
               </Link>
             </Button>
-            <Button asChild>
+            <Button asChild variant="secondary" size="sm">
+              <Link to={`/payments/new?customerId=${customer.id}`}>
+                <Banknote className="size-4" />
+                Receive payment
+              </Link>
+            </Button>
+            <Button asChild size="sm">
               <Link to={`/invoices/new?customerId=${customer.id}`}>
                 <FilePlus2 className="size-4" />
                 New invoice
               </Link>
             </Button>
-          </div>
-        </div>
+          </>
+        }
+      />
 
-        <div className="mt-lg grid gap-md sm:grid-cols-3">
+      <Card className="p-lg">
+        <div className="grid gap-md sm:grid-cols-3">
           <Figure label="Outstanding balance" value={formatMoney(customer.balance)} />
           <Figure
             label="Total purchases"
@@ -169,7 +171,7 @@ export default function CustomerDetailPage() {
         </TabsContent>
 
         <TabsContent value="statement">
-          <StatementTab customerId={customerId} />
+          <StatementTab customer={customer} />
         </TabsContent>
       </Tabs>
     </div>
@@ -363,35 +365,50 @@ function PaymentsTab({ customerId }: { customerId: string }) {
   );
 }
 
-function StatementTab({ customerId }: { customerId: string }) {
+function StatementTab({ customer }: { customer: Customer }) {
   // Both dates are required by the server (@IsDateString), so there is no
   // "unbounded" option to offer. Year-to-date matches the app's hardcoded
   // range; unlike the app, it can be changed.
   const now = new Date();
   const [startDate, setStartDate] = useState(iso(new Date(now.getFullYear(), 0, 1)));
   const [endDate, setEndDate] = useState(iso(now));
+  const company = useDocumentCompany();
 
-  const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['customers', customerId, 'statement', startDate, endDate],
-    queryFn: () => getCustomerStatement(customerId, { startDate, endDate }),
+  const { data, isLoading, isError, error, dataUpdatedAt } = useQuery({
+    queryKey: ['customers', customer.id, 'statement', startDate, endDate],
+    queryFn: () => getCustomerStatement(customer.id, { startDate, endDate }),
     enabled: Boolean(startDate && endDate),
   });
 
+  const statement = useMemo(
+    () => (data ? customerStatementDocument(data, company, customer, { startDate, endDate }) : null),
+    [data, company, customer, startDate, endDate],
+  );
+
   return (
     <div className="flex flex-col gap-lg">
-      <Card className="flex flex-wrap items-end gap-md p-lg">
-        <DateField
-          label="From"
-          value={startDate}
-          onChange={setStartDate}
-          containerClassName="w-44"
-        />
-        <DateField
-          label="To"
-          value={endDate}
-          onChange={setEndDate}
-          containerClassName="w-44"
-        />
+      <Card className="flex flex-wrap items-end justify-between gap-md p-lg">
+        <div className="flex flex-wrap items-end gap-md">
+          <DateField
+            label="From"
+            value={startDate}
+            onChange={setStartDate}
+            containerClassName="w-44"
+          />
+          <DateField
+            label="To"
+            value={endDate}
+            onChange={setEndDate}
+            containerClassName="w-44"
+          />
+        </div>
+        {statement && (
+          <DocumentActions
+            document={statement.share}
+            getPdf={() => reportPdfBlob(statement.pdf)}
+            cacheKey={[customer.id, startDate, endDate, dataUpdatedAt, company.name, company.logo].join('|')}
+          />
+        )}
       </Card>
 
       {isLoading ? (

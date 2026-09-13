@@ -1,10 +1,12 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createColumnHelper } from '@tanstack/react-table';
-import { ArrowLeft, Lock, Pencil, Power, Trash2 } from 'lucide-react';
+import { Lock, Pencil, Power, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { MoreActionsMenu, PageHeader } from '@/components/layout/PageHeader';
+import { DetailPageSkeleton, PageMessage } from '@/components/layout/PageState';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -148,21 +150,17 @@ export default function AccountDetailPage() {
     // `ColumnDef<T, unknown>`; the same cast every other list page uses.
   ) as never;
 
-  if (isLoading) {
-    return <p className="text-body-sm text-text-secondary">Loading account…</p>;
-  }
+  if (isLoading) return <DetailPageSkeleton rail={false} />;
 
   if (isError || !account) {
     return (
-      <Card className="p-xl">
-        <p className="text-label-lg text-text-primary">Account not found</p>
-        <p className="mt-xxs text-body-sm text-text-secondary">
-          {error instanceof Error ? error.message : 'It may have been deleted.'}
-        </p>
-        <Button asChild variant="secondary" className="mt-lg">
-          <Link to="/accounts">Back to the chart of accounts</Link>
-        </Button>
-      </Card>
+      <PageMessage
+        tone={isError ? 'error' : 'notFound'}
+        title={isError ? 'This account could not be loaded' : 'Account not found'}
+        description={error instanceof Error ? error.message : 'It may have been deleted.'}
+        backTo="/accounts"
+        backLabel="Back to the chart of accounts"
+      />
     );
   }
 
@@ -175,20 +173,15 @@ export default function AccountDetailPage() {
 
   return (
     <div className="flex flex-col gap-lg">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to="/accounts">
-          <ArrowLeft className="size-4" />
-          Chart of accounts
-        </Link>
-      </Button>
-
-      <div className="flex flex-wrap items-start justify-between gap-md">
-        <div>
-          <div className="flex items-center gap-sm">
-            <h1 className="text-h2 tabular text-text-primary">
-              {account.accountNumber}
-            </h1>
-            <h2 className="text-h2 text-text-primary">{account.name}</h2>
+      <PageHeader
+        back={{ to: '/accounts', label: 'Chart of accounts' }}
+        title={
+          <>
+            <span className="tabular">{account.accountNumber}</span> · {account.name}
+          </>
+        }
+        status={
+          <>
             {account.isSystemAccount && (
               <span className="flex items-center gap-xxs rounded-full bg-neutral-100 px-sm py-xxs text-caption text-text-secondary">
                 <Lock className="size-3" />
@@ -200,46 +193,51 @@ export default function AccountDetailPage() {
                 Inactive
               </span>
             )}
-          </div>
-          <p className="mt-xxs text-body-sm text-text-secondary">
-            {ACCOUNT_TYPE_SINGULAR[account.type]} · {account.subType}
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-xs">
-          <Button asChild variant="secondary">
-            <Link to={`/accounts/${account.id}/edit`}>
-              <Pencil className="size-4" />
-              Edit
-            </Link>
-          </Button>
-
-          {/* Shown only when it can work. A system account or one still holding
-              money answers 400, so the control is replaced by the reason rather
-              than offered and then refused. */}
-          {deactivation.allowed ? (
-            <Button
-              variant={account.isActive ? 'danger' : 'secondary'}
-              onClick={() => setToggleOpen(true)}
-              disabled={toggle.isPending}
-            >
-              <Power className="size-4" />
-              {account.isActive ? 'Switch off' : 'Switch on'}
-            </Button>
-          ) : null}
-
-          {/* Delete only where the server would allow it: no history, no
-              children, not a system account. Anything else is a deactivation. */}
-          {!account.isSystemAccount &&
-            children.length === 0 &&
-            (ledger?.total ?? 0) === 0 && (
-              <Button variant="text" onClick={() => setDeleteOpen(true)}>
-                <Trash2 className="size-4" />
-                Delete
+          </>
+        }
+        meta={[ACCOUNT_TYPE_SINGULAR[account.type], account.subType || null]}
+        actions={
+          <>
+            {/* Switching an inactive account back on is the way out of that
+                state, so it stays in plain sight. */}
+            {deactivation.allowed && !account.isActive && (
+              <Button variant="secondary" size="sm" onClick={() => setToggleOpen(true)} disabled={toggle.isPending}>
+                <Power className="size-4" />
+                Switch on
               </Button>
             )}
-        </div>
-      </div>
+            <Button asChild variant="secondary" size="sm">
+              <Link to={`/accounts/${account.id}/edit`}>
+                <Pencil className="size-4" />
+                Edit
+              </Link>
+            </Button>
+            {/* Offered only when it can work. A system account or one still
+                holding money answers 400, so the control is replaced by the
+                reason below; delete needs no history, no children and not a
+                system account — anything else is a deactivation. */}
+            <MoreActionsMenu
+              actions={[
+                {
+                  label: 'Switch off',
+                  icon: Power,
+                  destructive: true,
+                  hidden: !(deactivation.allowed && account.isActive),
+                  disabled: toggle.isPending,
+                  onSelect: () => setToggleOpen(true),
+                },
+                {
+                  label: 'Delete account',
+                  icon: Trash2,
+                  destructive: true,
+                  hidden: !(!account.isSystemAccount && children.length === 0 && (ledger?.total ?? 0) === 0),
+                  onSelect: () => setDeleteOpen(true),
+                },
+              ]}
+            />
+          </>
+        }
+      />
 
       {!deactivation.allowed && account.isActive && (
         <p className="rounded-md bg-surface-2 p-md text-body-sm text-text-secondary">

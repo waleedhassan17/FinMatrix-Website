@@ -6,6 +6,7 @@ import { BalanceWarning } from '@/features/reports/BalanceWarning';
 import { KpiTile } from '@/features/reports/KpiTile';
 import { AsOfPicker } from '@/features/reports/PeriodPicker';
 import { ReportShell } from '@/features/reports/ReportShell';
+import { statementSection } from '@/features/reports/reportPdfTable';
 import { ReportTitleBlock } from '@/features/reports/ReportTitleBlock';
 import { StatementTable } from '@/features/reports/StatementTable';
 import { isoToday } from '@/models/document';
@@ -182,6 +183,15 @@ export default function BalanceSheetPage() {
       subtitle="What the business owns and owes on a given day."
       controls={<AsOfPicker value={asOfDate} onChange={setAsOfDate} />}
       onExportCsv={exportCsv}
+      pdf={{
+        periodLabel: asOfLabel(asOfDate),
+        basis: 'Accrual basis',
+        cacheKey: [asOfDate, query.dataUpdatedAt].join('|'),
+        build: () => [
+          statementSection(assetRows, { title: 'Assets' }),
+          statementSection(liabilityRows, { title: 'Liabilities and Equity' }),
+        ],
+      }}
       isLoading={query.isLoading}
       isRefetching={query.isFetching}
       error={query.error as Error | null}

@@ -77,6 +77,28 @@ export default function TaxLiabilityPage() {
           ) : undefined
         }
         onExportCsv={exportCsv}
+        back={null}
+        pdf={{
+          periodLabel: rangeLabel(range.startDate, range.endDate),
+          cacheKey: [range.startDate, range.endDate, query.dataUpdatedAt].join('|'),
+          build: () => [
+            {
+              columns: [
+                { header: 'Tax', flex: 3 },
+                { header: 'Collected', align: 'right', flex: 2 },
+                { header: 'Paid', align: 'right', flex: 2 },
+                { header: 'Net', align: 'right', flex: 2 },
+              ],
+              rows: [
+                ...(report?.rows ?? []).map((r) => ({ cells: [r.taxName, r.collected, r.paid, r.net] })),
+                {
+                  cells: ['Net', report?.totalCollected ?? 0, report?.totalPaid ?? 0, report?.totalNet ?? 0],
+                  grand: true,
+                },
+              ],
+            },
+          ],
+        }}
         isLoading={query.isLoading}
         isRefetching={query.isFetching}
         error={query.error as Error | null}

@@ -34,6 +34,8 @@ export interface CompanyProfile {
   fiscalYearStartMonth: number | null;
   /** ISO 4217, e.g. PKR. Stored; figures still display in Rs, like the app. */
   homeCurrency: string;
+  /** A URL or data URI. Printed on documents when it is a PNG or JPEG. */
+  logo: string;
 }
 
 export interface CompanyProfileForm {

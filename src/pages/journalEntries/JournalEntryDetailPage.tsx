@@ -1,13 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Ban, Scale, Send } from 'lucide-react';
-import { useState } from 'react';
+import { Ban, Plus, Scale, Send } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { DetailLayout, RailSection } from '@/components/layout/DetailLayout';
+import { MoreActionsMenu, PageHeader } from '@/components/layout/PageHeader';
+import { DetailPageSkeleton, PageMessage } from '@/components/layout/PageState';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { KeyValueList } from '@/components/ui/KeyValueList';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { AmountSummary } from '@/features/documents/AmountSummary';
+import { docDate } from '@/features/documents/documentModel';
+import { journalEntryPdfBlob } from '@/features/documents/documentPdf';
+import { journalEntryDocument } from '@/features/documents/receiptBuilders';
+import { useDocumentCompany } from '@/features/documents/useDocumentContext';
+import { DocumentActions } from '@/features/share/DocumentActions';
 import { useCapability } from '@/hooks/useCapability';
 import {
   canPost,
@@ -32,7 +42,7 @@ export default function JournalEntryDetailPage() {
   /**
    * Voiding is governed by a DIFFERENT capability from posting, and the
    * controller proves it: a staff void files an approval of type `'void'`, not
-   * `'journal'`. Both are `request` for staff, so neither button is hidden —
+   * `'journal'`. Both are `request` for staff, so neither action is hidden —
    * they are relabelled. The app checks neither and shows staff an enabled
    * "Post to Ledger" that silently files a request instead.
    */
@@ -46,10 +56,14 @@ export default function JournalEntryDetailPage() {
     isLoading,
     isError,
     error,
+    refetch,
   } = useQuery({
     queryKey: ['journal-entries', journalEntryId],
     queryFn: () => getJournalEntryById(journalEntryId),
   });
+
+  const company = useDocumentCompany();
+  const doc = useMemo(() => (entry ? journalEntryDocument(entry, company) : null), [entry, company]);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
@@ -101,81 +115,119 @@ export default function JournalEntryDetailPage() {
       toast.error('Could not void the entry', { description: e.message }),
   });
 
-  if (isLoading) {
-    return <p className="text-body-sm text-text-secondary">Loading entry…</p>;
-  }
+  if (isLoading) return <DetailPageSkeleton />;
 
-  if (isError || !entry) {
+  if (isError || !entry || !doc) {
     return (
-      <Card className="p-xl">
-        <p className="text-label-lg text-text-primary">Journal entry not found</p>
-        <p className="mt-xxs text-body-sm text-text-secondary">
-          {error instanceof Error ? error.message : 'It may have been deleted.'}
-        </p>
-        <Button asChild variant="secondary" className="mt-lg">
-          <Link to="/journal-entries">Back to journal entries</Link>
-        </Button>
-      </Card>
+      <PageMessage
+        tone={isError ? 'error' : 'notFound'}
+        title={isError ? 'This journal entry could not be loaded' : 'Journal entry not found'}
+        description={error instanceof Error ? error.message : 'It may have been deleted.'}
+        onRetry={isError ? () => refetch() : undefined}
+        backTo="/journal-entries"
+        backLabel="Back to journal entries"
+      />
     );
   }
 
   const busy = post.isPending || doVoid.isPending;
   const balanced = entry.totalDebits === entry.totalCredits;
+  const difference = Math.abs(entry.totalDebits - entry.totalCredits);
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-lg">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to="/journal-entries">
-          <ArrowLeft className="size-4" />
-          Journal entries
-        </Link>
-      </Button>
+    <DetailLayout
+      header={
+        <PageHeader
+          back={{ to: '/journal-entries', label: 'Journal entries' }}
+          title={entry.reference || 'Journal entry'}
+          status={
+            <>
+              <StatusBadge status={entry.status} />
+              {isOpeningBalanceEntry(entry) && (
+                <span className="rounded-full bg-primary-tint px-sm py-xxs text-caption text-primary">
+                  Opening balance
+                </span>
+              )}
+              {isReversal(entry) && (
+                <span className="rounded-full bg-neutral-100 px-sm py-xxs text-caption text-text-secondary">
+                  Reversal
+                </span>
+              )}
+            </>
+          }
+          meta={[
+            entry.date ? `Dated ${docDate(entry.date)}` : null,
+            `${entry.lines.length} ${entry.lines.length === 1 ? 'line' : 'lines'}`,
+          ]}
+          actions={
+            <>
+              {/* Staff CAN call /post — the server files an approval request rather
+                  than refusing — so the button shows with the label saying so. */}
+              {canPost(entry) && cap.allowed && (
+                <Button size="sm" onClick={() => setPostOpen(true)} disabled={busy}>
+                  <Send className="size-4" />
+                  {cap.submitLabel('Post to ledger')}
+                </Button>
+              )}
+              <DocumentActions
+                document={doc.share}
+                getPdf={() => journalEntryPdfBlob(doc)}
+                cacheKey={[entry.id, entry.updatedAt, entry.status, company.name, company.logo].join('|')}
+              />
+              <MoreActionsMenu
+                actions={[
+                  { label: 'New journal entry', icon: Plus, to: '/journal-entries/new' },
+                  {
+                    label: voidCap.submitLabel('Void entry'),
+                    icon: Ban,
+                    destructive: true,
+                    onSelect: () => setVoidOpen(true),
+                    hidden: !(canVoid(entry) && voidCap.allowed),
+                    disabled: busy,
+                  },
+                ]}
+              />
+            </>
+          }
+        />
+      }
+      aside={
+        <>
+          <AmountSummary
+            label="Entry total"
+            amount={entry.totalDebits}
+            tone={entry.status === 'void' ? 'muted' : 'default'}
+            note={balanced ? 'Debits equal credits' : `Out of balance by ${formatMoney(difference)}`}
+            noteTone={balanced ? 'neutral' : 'danger'}
+          />
 
-      <div className="flex flex-wrap items-start justify-between gap-md">
-        <div>
-          <div className="flex flex-wrap items-center gap-sm">
-            <h1 className="text-h2 text-text-primary">
-              {entry.reference || 'Journal entry'}
-            </h1>
-            <StatusBadge status={entry.status} />
-            {isOpeningBalanceEntry(entry) && (
-              <span className="rounded-full bg-primary-tint px-sm py-xxs text-caption text-primary">
-                Opening balance
-              </span>
-            )}
-            {isReversal(entry) && (
-              <span className="rounded-full bg-neutral-100 px-sm py-xxs text-caption text-text-secondary">
-                Reversal
-              </span>
-            )}
-          </div>
-          <p className="mt-xxs text-body-sm text-text-secondary">{entry.date}</p>
-        </div>
-
-        <div className="flex flex-wrap gap-xs">
-          {/* Staff CAN call /post — the server files an approval request rather
-              than refusing — so the button shows with the label saying so. */}
-          {canPost(entry) && cap.allowed && (
-            <Button onClick={() => setPostOpen(true)} disabled={busy}>
-              <Send className="size-4" />
-              {cap.submitLabel('Post to ledger')}
-            </Button>
-          )}
-
-          {canVoid(entry) && voidCap.allowed && (
-            <Button variant="danger" onClick={() => setVoidOpen(true)} disabled={busy}>
-              <Ban className="size-4" />
-              {voidCap.submitLabel('Void')}
-            </Button>
-          )}
-        </div>
-      </div>
-
+          <RailSection title="Details">
+            <KeyValueList
+              items={[
+                { label: 'Reference', value: entry.reference || '—' },
+                { label: 'Date', value: docDate(entry.date) || '—' },
+                { label: 'Posted', value: docDate(entry.postedAt), hidden: !entry.postedAt },
+                {
+                  label: 'Reverses',
+                  value: (
+                    <Link to={`/journal-entries/${entry.reversalOfId}`} className="text-primary hover:underline">
+                      Original entry
+                    </Link>
+                  ),
+                  hidden: !entry.reversalOfId,
+                },
+                { label: 'Created', value: docDate(entry.createdAt), hidden: !entry.createdAt },
+              ]}
+            />
+          </RailSection>
+        </>
+      }
+    >
       {entry.status === 'draft' && (
         <p className="rounded-md bg-surface-2 p-md text-body-sm text-text-secondary">
           <strong className="text-text-primary">This is a draft. </strong>
-          Nothing has reached the ledger and no balance has moved. A draft may be
-          out of balance; posting it cannot be.
+          Nothing has reached the ledger and no balance has moved. A draft may be out of balance;
+          posting it cannot be.
         </p>
       )}
 
@@ -186,62 +238,66 @@ export default function JournalEntryDetailPage() {
         </p>
       )}
 
-      <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse">
+      <Card className="overflow-hidden p-0">
+        <div className="h-1 bg-primary" aria-hidden="true" />
+        <div className="flex flex-wrap items-end justify-between gap-md px-lg pt-lg">
+          <div>
+            <p className="text-overline text-text-tertiary">Journal entry</p>
+            <p className="text-h3 text-text-primary">{entry.reference || '—'}</p>
+          </div>
+          <p className="text-body-sm text-text-secondary">{docDate(entry.date)}</p>
+        </div>
+        <div className="mt-md overflow-x-auto">
+          <table className="w-full min-w-[36rem] border-collapse">
             <thead>
-              <tr className="border-b border-border bg-surface-2">
-                <th className="px-md py-sm text-left text-overline text-text-secondary">
-                  Account
-                </th>
-                <th className="px-md py-sm text-left text-overline text-text-secondary">
-                  Description
-                </th>
-                <th className="px-md py-sm text-right text-overline text-text-secondary">
-                  Debit
-                </th>
-                <th className="px-md py-sm text-right text-overline text-text-secondary">
-                  Credit
-                </th>
+              <tr className="bg-primary-50">
+                <th className="px-lg py-xs text-left text-overline text-primary">Account</th>
+                <th className="px-md py-xs text-left text-overline text-primary">Description</th>
+                <th className="px-md py-xs text-right text-overline text-primary">Debit</th>
+                <th className="px-lg py-xs text-right text-overline text-primary">Credit</th>
               </tr>
             </thead>
             <tbody>
               {entry.lines.map((line) => (
                 <tr key={line.id} className="border-b border-border-light">
-                  <td className="px-md py-sm">
+                  <td className="px-lg py-sm">
                     <span className="block text-label-md text-text-primary">
                       {line.accountNumber
                         ? `${line.accountNumber} · ${line.accountName}`
                         : line.accountName || '—'}
                     </span>
                   </td>
-                  <td className="px-md py-sm text-body-sm text-text-secondary">
-                    {line.description || '—'}
+                  <td className="px-md py-sm text-body-sm text-text-secondary">{line.description || '—'}</td>
+                  <td className="px-md py-sm text-right text-body-sm text-text-primary tabular">
+                    {line.debit > 0 ? formatMoney(line.debit) : ''}
                   </td>
-                  <td className="px-md py-sm text-right tabular text-body-sm text-text-primary">
-                    {line.debit > 0 ? formatMoney(line.debit) : '—'}
-                  </td>
-                  <td className="px-md py-sm text-right tabular text-body-sm text-text-primary">
-                    {line.credit > 0 ? formatMoney(line.credit) : '—'}
+                  <td className="px-lg py-sm text-right text-body-sm text-text-primary tabular">
+                    {line.credit > 0 ? formatMoney(line.credit) : ''}
                   </td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr className="bg-surface-2">
-                <td className="px-md py-sm text-label-lg text-text-primary" colSpan={2}>
+                <td className="px-lg py-sm text-label-lg text-text-primary" colSpan={2}>
                   Totals
                 </td>
-                <td className="px-md py-sm text-right tabular text-label-lg text-text-primary">
+                <td className="px-md py-sm text-right text-label-lg text-text-primary tabular">
                   {formatMoney(entry.totalDebits)}
                 </td>
-                <td className="px-md py-sm text-right tabular text-label-lg text-text-primary">
+                <td className="px-lg py-sm text-right text-label-lg text-text-primary tabular">
                   {formatMoney(entry.totalCredits)}
                 </td>
               </tr>
             </tfoot>
           </table>
         </div>
+        {entry.memo && (
+          <div className="border-t border-border-light px-lg py-md">
+            <p className="text-overline text-text-tertiary">Memo</p>
+            <p className="mt-xxs text-body-sm text-text-secondary">{entry.memo}</p>
+          </div>
+        )}
       </Card>
 
       {/* A draft can legitimately be out of balance, so this says so rather than
@@ -250,18 +306,10 @@ export default function JournalEntryDetailPage() {
         <div className="flex items-center gap-sm rounded-md border border-warning-light bg-warning-lighter p-md">
           <Scale className="size-4 shrink-0 text-warning" />
           <p className="text-body-sm text-text-primary">
-            Debits and credits do not match — out by{' '}
-            {formatMoney(Math.abs(entry.totalDebits - entry.totalCredits))}. This
-            has to be corrected before the entry can post.
+            Debits and credits do not match — out by {formatMoney(difference)}. This has to be
+            corrected before the entry can post.
           </p>
         </div>
-      )}
-
-      {entry.memo && (
-        <Card className="p-lg">
-          <p className="text-caption text-text-secondary">Memo</p>
-          <p className="mt-xxs text-body-md text-text-primary">{entry.memo}</p>
-        </Card>
       )}
 
       <ConfirmDialog
@@ -293,6 +341,6 @@ export default function JournalEntryDetailPage() {
         busy={doVoid.isPending}
         onConfirm={(reason) => doVoid.mutate(reason ?? '')}
       />
-    </div>
+    </DetailLayout>
   );
 }

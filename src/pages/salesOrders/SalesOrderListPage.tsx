@@ -4,6 +4,7 @@ import { Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
+import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { DataTable } from '@/components/ui/DataTable';
 import { DateField } from '@/components/ui/Field';
@@ -129,20 +130,18 @@ export default function SalesOrderListPage() {
 
   return (
     <div className="flex flex-col gap-lg">
-      <div className="flex flex-wrap items-center justify-between gap-md">
-        <div>
-          <h1 className="text-h2 text-text-primary">Sales orders</h1>
-          <p className="text-body-sm text-text-secondary">
-            Confirmed orders, and how much of each has shipped.
-          </p>
-        </div>
-        <Button asChild>
-          <Link to="/sales-orders/new">
-            <Plus className="size-4" />
-            New sales order
-          </Link>
-        </Button>
-      </div>
+      <PageHeader
+        title="Sales orders"
+        description="Confirmed orders, and how much of each has shipped."
+        actions={
+          <Button asChild>
+            <Link to="/sales-orders/new">
+              <Plus className="size-4" />
+              New sales order
+            </Link>
+          </Button>
+        }
+      />
 
       <DataTable
         columns={columns}

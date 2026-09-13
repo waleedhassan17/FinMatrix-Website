@@ -47,6 +47,7 @@ export const mapCompanyProfile = (raw: unknown): CompanyProfile => {
     },
     fiscalYearStartMonth: month >= 1 && month <= 12 ? month : null,
     homeCurrency: str(r.homeCurrency).toUpperCase(),
+    logo: str(r.logo),
   };
 };
 

@@ -1,13 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, CheckCircle2, Lock, Undo2 } from 'lucide-react';
-import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { CheckCircle2, Lock, Undo2 } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
-import { Button } from '@/components/ui/Button';
+import { MoreActionsMenu, PageHeader } from '@/components/layout/PageHeader';
+import { DetailPageSkeleton, PageMessage } from '@/components/layout/PageState';
 import { Card } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { reportPdfBlob } from '@/features/documents/documentPdf';
+import { reconciliationDocument } from '@/features/documents/operationsDocuments';
+import { useDocumentCompany } from '@/features/documents/useDocumentContext';
+import { DocumentActions } from '@/features/share/DocumentActions';
 import { useFeature } from '@/hooks/useCapability';
 import { cn } from '@/lib/cn';
 import { isLatestForAccount, sourceTypeLabel, type ReconEntry } from '@/models/reconciliation';
@@ -29,6 +34,7 @@ export default function ReconciliationDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const enabled = useFeature('bankReconciliation');
+  const company = useDocumentCompany();
   const [undoOpen, setUndoOpen] = useState(false);
 
   const detail = useQuery({
@@ -62,6 +68,17 @@ export default function ReconciliationDetailPage() {
     onError: (e: Error) => toast.error('Could not undo', { description: e.message }),
   });
 
+  const account = (accounts.data ?? []).find((a) => a.accountId === detail.data?.accountId);
+  const accountLabel = account ? `${account.accountNumber} · ${account.name}` : '';
+
+  const printable = useMemo(
+    () =>
+      detail.data
+        ? reconciliationDocument(detail.data, accountLabel || 'Bank account', company)
+        : null,
+    [detail.data, accountLabel, company],
+  );
+
   if (!enabled) {
     return (
       <Card className="mx-auto max-w-[32rem] p-xxl text-center">
@@ -72,26 +89,22 @@ export default function ReconciliationDetailPage() {
     );
   }
 
-  if (detail.isLoading) {
-    return (
-      <Card className="p-lg">
-        <div className="h-32 animate-pulse rounded-md bg-neutral-100" />
-      </Card>
-    );
-  }
+  if (detail.isLoading) return <DetailPageSkeleton rail={false} />;
 
   if (detail.error || !detail.data) {
     return (
-      <Card className="p-lg">
-        <p className="text-body-sm text-danger">
-          {detail.error?.message ?? 'Reconciliation not found.'}
-        </p>
-      </Card>
+      <PageMessage
+        tone={detail.error ? 'error' : 'notFound'}
+        title={detail.error ? 'This reconciliation could not be loaded' : 'Reconciliation not found'}
+        description={detail.error?.message ?? 'It may have been undone.'}
+        onRetry={detail.error ? () => detail.refetch() : undefined}
+        backTo="/reconciliations"
+        backLabel="Back to bank reconciliation"
+      />
     );
   }
 
   const r = detail.data;
-  const account = (accounts.data ?? []).find((a) => a.accountId === r.accountId);
   // Only the account's most recent reconciliation can be undone; offering the
   // button on an older one would only produce the server's refusal.
   const canUndo = history.data ? isLatestForAccount(r, history.data) : false;
@@ -99,33 +112,37 @@ export default function ReconciliationDetailPage() {
 
   return (
     <div className="flex flex-col gap-lg">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to="/reconciliations">
-          <ArrowLeft className="size-4" />
-          Bank reconciliation
-        </Link>
-      </Button>
-
-      <div className="flex flex-wrap items-start justify-between gap-md">
-        <div>
-          <div className="flex flex-wrap items-center gap-sm">
-            <h1 className="text-h2 text-text-primary">
-              {account ? `${account.accountNumber} · ${account.name}` : 'Reconciliation'}
-            </h1>
-            <StatusBadge status={r.status} />
-          </div>
-          <p className="text-body-sm text-text-secondary">
-            Statement dated {formatReportDate(r.statementDate)}
-            {r.reconciledAt && ` · reconciled ${formatReportDate(r.reconciledAt.slice(0, 10))}`}
-          </p>
-        </div>
-        {canUndo && (
-          <Button variant="secondary" onClick={() => setUndoOpen(true)}>
-            <Undo2 className="size-4" />
-            Undo reconciliation
-          </Button>
-        )}
-      </div>
+      <PageHeader
+        back={{ to: '/reconciliations', label: 'Bank reconciliation' }}
+        title={accountLabel || 'Reconciliation'}
+        status={<StatusBadge status={r.status} />}
+        meta={[
+          `Statement dated ${formatReportDate(r.statementDate)}`,
+          r.reconciledAt ? `Reconciled ${formatReportDate(r.reconciledAt.slice(0, 10))}` : null,
+        ]}
+        actions={
+          <>
+            {printable && (
+              <DocumentActions
+                document={printable.share}
+                getPdf={() => reportPdfBlob(printable.pdf)}
+                cacheKey={[r.id, detail.dataUpdatedAt, accountLabel, company.name, company.logo].join('|')}
+              />
+            )}
+            <MoreActionsMenu
+              actions={[
+                {
+                  label: 'Undo reconciliation',
+                  icon: Undo2,
+                  destructive: true,
+                  hidden: !canUndo,
+                  onSelect: () => setUndoOpen(true),
+                },
+              ]}
+            />
+          </>
+        }
+      />
 
       <Card className="grid gap-md p-lg sm:grid-cols-4">
         <Figure label="Beginning balance" value={formatMoney(r.beginningBalance)} />

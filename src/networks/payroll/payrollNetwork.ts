@@ -5,7 +5,7 @@
 // Staff never reach these screens (absent from their nav, route-guarded), and
 // the server 403s them regardless.
 
-import { api, authedBlobUrl, toApiError, unwrapEnvelope } from '@/networks/network/apiHelpers';
+import { api, authedBlob, authedBlobUrl, toApiError, unwrapEnvelope } from '@/networks/network/apiHelpers';
 import type { EmployeeStatus, Employee, PayrollRun } from '@/models/payroll';
 import { listRows } from '@/serializers/inventorySerializer';
 import { mapEmployee, mapPayrollRun } from '@/serializers/payrollSerializer';
@@ -127,3 +127,7 @@ export const deletePayrollRun = async (id: string): Promise<void> => {
  */
 export const getPayslipPdfUrl = (runId: string, employeeId: string): Promise<string> =>
   authedBlobUrl(`/payroll/runs/${runId}/payslip/${employeeId}/pdf`);
+
+/** The same payslip as a file, for printing, downloading or sharing it. */
+export const getPayslipPdf = (runId: string, employeeId: string): Promise<Blob> =>
+  authedBlob(`/payroll/runs/${runId}/payslip/${employeeId}/pdf`);

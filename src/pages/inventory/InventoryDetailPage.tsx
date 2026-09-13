@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createColumnHelper } from '@tanstack/react-table';
-import { ArrowLeft, History, Package, PackagePlus, Pencil, SlidersHorizontal, Undo2 } from 'lucide-react';
+import { History, Package, PackagePlus, Pencil, SlidersHorizontal, Undo2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { PageHeader } from '@/components/layout/PageHeader';
+import { DetailPageSkeleton, PageMessage } from '@/components/layout/PageState';
 import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -214,22 +216,19 @@ export default function InventoryDetailPage() {
     );
   }
 
-  if (itemQuery.isLoading) {
-    return <p className="text-body-sm text-text-secondary">Loading item…</p>;
-  }
+  if (itemQuery.isLoading) return <DetailPageSkeleton rail={false} />;
 
   const item = itemQuery.data;
   if (!item) {
     return (
-      <Card className="p-xl">
-        <p className="text-label-lg text-text-primary">Item not found</p>
-        <p className="mt-xxs text-body-sm text-text-secondary">
-          {itemQuery.error?.message ?? 'It may have been removed.'}
-        </p>
-        <Button asChild variant="secondary" className="mt-lg">
-          <Link to="/inventory">Back to inventory</Link>
-        </Button>
-      </Card>
+      <PageMessage
+        tone={itemQuery.isError ? 'error' : 'notFound'}
+        title={itemQuery.isError ? 'This item could not be loaded' : 'Item not found'}
+        description={itemQuery.error?.message ?? 'It may have been removed.'}
+        onRetry={itemQuery.isError ? () => itemQuery.refetch() : undefined}
+        backTo="/inventory"
+        backLabel="Back to inventory"
+      />
     );
   }
 
@@ -254,52 +253,47 @@ export default function InventoryDetailPage() {
 
   return (
     <div className="flex flex-col gap-lg">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to="/inventory">
-          <ArrowLeft className="size-4" />
-          Inventory
-        </Link>
-      </Button>
-
-      {/* ── Header ──────────────────────────────────────────────────── */}
-      <Card className="p-lg">
-        <div className="flex flex-wrap items-start justify-between gap-md">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-sm">
-              <h1 className="text-h2 text-text-primary">{item.name}</h1>
-              {item.isActive ? (
-                <StatusBadge
-                  status={STOCK_STATUS_DISPLAY[status].badge}
-                  label={STOCK_STATUS_DISPLAY[status].label}
-                />
-              ) : (
-                <StatusBadge status="inactive" />
+      <PageHeader
+        back={{ to: '/inventory', label: 'Inventory' }}
+        title={item.name}
+        status={
+          item.isActive ? (
+            <StatusBadge
+              status={STOCK_STATUS_DISPLAY[status].badge}
+              label={STOCK_STATUS_DISPLAY[status].label}
+            />
+          ) : (
+            <StatusBadge status="inactive" />
+          )
+        }
+        meta={[
+          item.sku ? `SKU ${item.sku}` : null,
+          item.category || null,
+          item.unitOfMeasure ? `Sold by ${item.unitOfMeasure}` : null,
+        ]}
+        actions={
+          (canManage || canAdjust) && (
+            <>
+              {canManage && (
+                <Button asChild variant="secondary" size="sm">
+                  <Link to={`/inventory/${item.id}/edit`}>
+                    <Pencil className="size-4" />
+                    Edit
+                  </Link>
+                </Button>
               )}
-            </div>
-            <p className="text-body-sm text-text-secondary">
-              {[item.sku, item.category].filter(Boolean).join(' · ')}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-xs">
-            {canManage && (
-              <Button asChild variant="secondary">
-                <Link to={`/inventory/${item.id}/edit`}>
-                  <Pencil className="size-4" />
-                  Edit
-                </Link>
-              </Button>
-            )}
-            {canAdjust && (
-              <Button asChild>
-                <Link to={`/inventory/${item.id}/adjust`}>
-                  <SlidersHorizontal className="size-4" />
-                  Adjust stock
-                </Link>
-              </Button>
-            )}
-          </div>
-        </div>
-      </Card>
+              {canAdjust && (
+                <Button asChild size="sm">
+                  <Link to={`/inventory/${item.id}/adjust`}>
+                    <SlidersHorizontal className="size-4" />
+                    Adjust stock
+                  </Link>
+                </Button>
+              )}
+            </>
+          )
+        }
+      />
 
       {/* ── Figures ─────────────────────────────────────────────────── */}
       <div className="grid gap-md sm:grid-cols-2 xl:grid-cols-5">
@@ -344,7 +338,9 @@ export default function InventoryDetailPage() {
         </Card>
       )}
 
-      <div className="grid gap-lg lg:grid-cols-3">
+      {/* grid-cols-1 is minmax(0, 1fr): without it the movements table sizes
+          the single phone column and the whole page scrolls sideways. */}
+      <div className="grid grid-cols-1 gap-lg lg:grid-cols-3">
         {/* ── Details ─────────────────────────────────────────────── */}
         <Card className="p-lg">
           <SectionHeader title="Details" />

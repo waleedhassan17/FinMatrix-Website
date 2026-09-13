@@ -4,6 +4,7 @@ import { Clock, Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
+import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DataTable } from '@/components/ui/DataTable';
@@ -134,18 +135,18 @@ export default function InvoiceListPage() {
 
   return (
     <div className="flex flex-col gap-lg">
-      <div className="flex flex-wrap items-center justify-between gap-md">
-        <div>
-          <h1 className="text-h2 text-text-primary">Invoices</h1>
-          <p className="text-body-sm text-text-secondary">What customers owe you.</p>
-        </div>
-        <Button asChild>
-          <Link to="/invoices/new">
-            <Plus className="size-4" />
-            New invoice
-          </Link>
-        </Button>
-      </div>
+      <PageHeader
+        title="Invoices"
+        description="What customers owe you."
+        actions={
+          <Button asChild>
+            <Link to="/invoices/new">
+              <Plus className="size-4" />
+              New invoice
+            </Link>
+          </Button>
+        }
+      />
 
       {pending.length > 0 && (
         <Card className="border border-warning-light bg-warning-lighter p-lg">

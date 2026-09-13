@@ -49,6 +49,28 @@ export default function InventoryValuationPage() {
       title="Inventory Valuation"
       subtitle="Stock on hand at what the books carry it at."
       onExportCsv={exportCsv}
+      pdf={{
+        periodLabel: asOfLabel(isoToday()),
+        cacheKey: String(query.dataUpdatedAt),
+        build: () => [
+          {
+            columns: [
+              { header: 'Item', flex: 3.4 },
+              { header: 'Category', flex: 2 },
+              { header: 'Qty', align: 'right', flex: 1 },
+              { header: 'Unit cost', align: 'right', flex: 1.6 },
+              { header: 'Value', align: 'right', flex: 1.8 },
+            ],
+            rows: [
+              ...rows.map((r) => ({
+                cells: [r.itemName, r.category, r.qty.toLocaleString('en-US'), r.cost, r.value],
+                sub: r.sku || undefined,
+              })),
+              { cells: ['Total', '', '', '', report?.totalValue ?? 0], grand: true },
+            ],
+          },
+        ],
+      }}
       isLoading={query.isLoading}
       isRefetching={query.isFetching}
       error={query.error as Error | null}

@@ -4,6 +4,7 @@ import { Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
+import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { DataTable } from '@/components/ui/DataTable';
 import { SearchInput } from '@/components/ui/SearchInput';
@@ -96,20 +97,18 @@ export default function CreditMemoListPage() {
 
   return (
     <div className="flex flex-col gap-lg">
-      <div className="flex flex-wrap items-center justify-between gap-md">
-        <div>
-          <h1 className="text-h2 text-text-primary">Credit memos</h1>
-          <p className="text-body-sm text-text-secondary">
-            Credits owed back to customers, and how much of each is still unused.
-          </p>
-        </div>
-        <Button asChild>
-          <Link to="/credit-memos/new">
-            <Plus className="size-4" />
-            New credit memo
-          </Link>
-        </Button>
-      </div>
+      <PageHeader
+        title="Credit memos"
+        description="Credits owed back to customers, and how much of each is still unused."
+        actions={
+          <Button asChild>
+            <Link to="/credit-memos/new">
+              <Plus className="size-4" />
+              New credit memo
+            </Link>
+          </Button>
+        }
+      />
 
       <DataTable
         columns={columns}

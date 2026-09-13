@@ -1,24 +1,34 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowLeft,
   ArrowRight,
   Check,
   FileText,
   Pencil,
   Send,
   Trash2,
+  Users,
   X,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { DetailLayout, RailSection } from '@/components/layout/DetailLayout';
+import { MoreActionsMenu, PageHeader } from '@/components/layout/PageHeader';
+import { DetailPageSkeleton, PageMessage } from '@/components/layout/PageState';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { DateField } from '@/components/ui/Field';
+import { KeyValueList } from '@/components/ui/KeyValueList';
 import { StatusBadge } from '@/components/ui/StatusBadge';
-import { DocumentView } from '@/features/documents/DocumentView';
+import { AmountSummary } from '@/features/documents/AmountSummary';
+import { estimateDocument } from '@/features/documents/documentBuilders';
+import { docDate } from '@/features/documents/documentModel';
+import { DocumentPaper } from '@/features/documents/DocumentPaper';
+import { documentPdfBlob } from '@/features/documents/documentPdf';
+import { PartyCard } from '@/features/documents/PartyCard';
+import { useDocumentCompany, useDocumentCustomer } from '@/features/documents/useDocumentContext';
+import { DocumentActions } from '@/features/share/DocumentActions';
 import { useAdminOnly, useFeature, useIsOwner } from '@/hooks/useCapability';
 import { addDays, isoToday } from '@/models/document';
 import {
@@ -48,10 +58,17 @@ export default function EstimateDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [dueDate, setDueDate] = useState(addDays(isoToday(), 30));
 
-  const { data: estimate, isLoading, isError, error } = useQuery({
+  const { data: estimate, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['estimates', estimateId],
     queryFn: () => getEstimateById(estimateId),
   });
+
+  const company = useDocumentCompany();
+  const customer = useDocumentCustomer(estimate?.customerId);
+  const doc = useMemo(
+    () => (estimate ? estimateDocument(estimate, company, customer) : null),
+    [estimate, company, customer],
+  );
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['estimates'] });
@@ -111,21 +128,18 @@ export default function EstimateDetailPage() {
       toast.error('Could not delete estimate', { description: e.message }),
   });
 
-  if (isLoading) {
-    return <p className="text-body-sm text-text-secondary">Loading estimate…</p>;
-  }
+  if (isLoading) return <DetailPageSkeleton />;
 
-  if (isError || !estimate) {
+  if (isError || !estimate || !doc) {
     return (
-      <Card className="p-xl">
-        <p className="text-label-lg text-text-primary">Estimate not found</p>
-        <p className="mt-xxs text-body-sm text-text-secondary">
-          {error instanceof Error ? error.message : 'It may have been deleted.'}
-        </p>
-        <Button asChild variant="secondary" className="mt-lg">
-          <Link to="/estimates">Back to estimates</Link>
-        </Button>
-      </Card>
+      <PageMessage
+        tone={isError ? 'error' : 'notFound'}
+        title={isError ? 'This estimate could not be loaded' : 'Estimate not found'}
+        description={error instanceof Error ? error.message : 'It may have been deleted.'}
+        onRetry={isError ? () => refetch() : undefined}
+        backTo="/estimates"
+        backLabel="Back to estimates"
+      />
     );
   }
 
@@ -133,141 +147,181 @@ export default function EstimateDetailPage() {
   const convertible = isConvertible(estimate.status);
   const expired = isExpired(estimate);
   const busy = status.isPending || toInvoice.isPending || toSalesOrder.isPending;
+  const convertedTo = estimate.convertedToId
+    ? estimate.convertedToType === 'invoice'
+      ? { to: `/invoices/${estimate.convertedToId}`, label: 'invoice' }
+      : { to: `/sales-orders/${estimate.convertedToId}`, label: 'sales order' }
+    : null;
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-lg">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to="/estimates">
-          <ArrowLeft className="size-4" />
-          Estimates
-        </Link>
-      </Button>
-
-      <div className="flex flex-wrap items-center justify-between gap-md">
-        <div className="flex items-center gap-sm">
-          <h1 className="text-h2 text-text-primary">
-            {estimate.estimateNumber || 'Estimate'}
-          </h1>
-          <StatusBadge status={estimate.status} />
-          {expired && <StatusBadge status="expired" />}
-        </div>
-
-        <div className="flex flex-wrap gap-xs">
-          {editable && (
-            <Button asChild variant="secondary">
-              <Link to={`/estimates/${estimate.id}/edit`}>
-                <Pencil className="size-4" />
-                Edit
-              </Link>
-            </Button>
-          )}
-
-          {estimate.status === 'draft' && (
-            <Button onClick={() => status.mutate('sent')} disabled={busy}>
-              <Send className="size-4" />
-              Mark sent
-            </Button>
-          )}
-
-          {estimate.status === 'sent' && (
+    <DetailLayout
+      header={
+        <PageHeader
+          back={{ to: '/estimates', label: 'Estimates' }}
+          title={estimate.estimateNumber || 'Estimate'}
+          status={
             <>
-              <Button variant="secondary" onClick={() => status.mutate('declined')} disabled={busy}>
-                <X className="size-4" />
-                Declined
-              </Button>
-              <Button onClick={() => status.mutate('accepted')} disabled={busy}>
-                <Check className="size-4" />
-                Accepted
-              </Button>
+              <StatusBadge status={estimate.status} />
+              {expired && <StatusBadge status="expired" />}
             </>
-          )}
-
-          {estimate.status === 'declined' && (
-            <Button variant="secondary" onClick={() => status.mutate('accepted')} disabled={busy}>
-              <Check className="size-4" />
-              Mark accepted
-            </Button>
-          )}
-
-          {convertible && salesOrdersEnabled && (
-            <Button
-              variant="secondary"
-              onClick={() => toSalesOrder.mutate()}
-              disabled={busy}
+          }
+          meta={[
+            <Link
+              key="customer"
+              to={`/customers/${estimate.customerId}`}
+              className="text-label-md text-text-primary hover:text-primary hover:underline"
             >
-              <ArrowRight className="size-4" />
-              To sales order
-            </Button>
+              {doc.party?.name || 'Customer'}
+            </Link>,
+            estimate.estimateDate ? `Dated ${docDate(estimate.estimateDate)}` : null,
+            estimate.expiryDate ? `Valid until ${docDate(estimate.expiryDate)}` : null,
+          ]}
+          actions={
+            <>
+              {editable && (
+                <Button asChild variant="secondary" size="sm">
+                  <Link to={`/estimates/${estimate.id}/edit`}>
+                    <Pencil className="size-4" />
+                    Edit
+                  </Link>
+                </Button>
+              )}
+
+              {estimate.status === 'draft' && (
+                <Button size="sm" onClick={() => status.mutate('sent')} disabled={busy}>
+                  <Send className="size-4" />
+                  Mark sent
+                </Button>
+              )}
+
+              {estimate.status === 'sent' && (
+                <>
+                  <Button variant="secondary" size="sm" onClick={() => status.mutate('declined')} disabled={busy}>
+                    <X className="size-4" />
+                    Declined
+                  </Button>
+                  <Button size="sm" onClick={() => status.mutate('accepted')} disabled={busy}>
+                    <Check className="size-4" />
+                    Accepted
+                  </Button>
+                </>
+              )}
+
+              {estimate.status === 'declined' && (
+                <Button variant="secondary" size="sm" onClick={() => status.mutate('accepted')} disabled={busy}>
+                  <Check className="size-4" />
+                  Mark accepted
+                </Button>
+              )}
+
+              {/* Admin only, deliberately.
+
+                  This route has NO maker-checker branch: it calls
+                  InvoicesService.create with status 'sent', so a staff caller would
+                  get a real posted invoice — revenue recognised, COGS posted, stock
+                  decremented — with no approval. That is a complete bypass of
+                  invoice.create = 'request'. Hiding it here closes the hole in our
+                  UI; the API still permits it, which is a backend follow-up. */}
+              {convertible && isOwner && (
+                <Button size="sm" onClick={() => setConvertOpen(true)} disabled={busy}>
+                  <FileText className="size-4" />
+                  Convert to invoice
+                </Button>
+              )}
+
+              {convertedTo && (
+                <Button asChild size="sm">
+                  <Link to={convertedTo.to}>
+                    <ArrowRight className="size-4" />
+                    View {convertedTo.label}
+                  </Link>
+                </Button>
+              )}
+
+              <DocumentActions
+                document={doc.share}
+                getPdf={() => documentPdfBlob(doc)}
+                cacheKey={[estimate.id, estimate.updatedAt, estimate.status, company.name, company.logo, customer?.id].join('|')}
+              />
+
+              <MoreActionsMenu
+                actions={[
+                  {
+                    label: 'Convert to sales order',
+                    icon: ArrowRight,
+                    onSelect: () => toSalesOrder.mutate(),
+                    hidden: !(convertible && salesOrdersEnabled),
+                    disabled: busy,
+                  },
+                  { label: 'View customer', icon: Users, to: `/customers/${estimate.customerId}` },
+                  {
+                    label: 'Delete estimate',
+                    icon: Trash2,
+                    destructive: true,
+                    onSelect: () => setDeleteOpen(true),
+                    hidden: !(canDelete && editable),
+                  },
+                ]}
+              />
+            </>
+          }
+        />
+      }
+      aside={
+        <>
+          <AmountSummary
+            label="Quote total"
+            amount={estimate.total}
+            tone={estimate.status === 'declined' ? 'muted' : 'default'}
+            note={
+              expired
+                ? 'This quote has expired'
+                : estimate.expiryDate
+                  ? `Valid until ${docDate(estimate.expiryDate)}`
+                  : undefined
+            }
+            noteTone={expired ? 'danger' : 'neutral'}
+          />
+
+          <PartyCard
+            title="Customer"
+            to={`/customers/${estimate.customerId}`}
+            party={doc.party}
+            loading={!customer}
+          />
+
+          {convertedTo && (
+            <RailSection title="Converted">
+              <Link
+                to={convertedTo.to}
+                className="inline-flex items-center gap-xs text-body-sm text-primary hover:underline"
+              >
+                <ArrowRight className="size-4" aria-hidden="true" />
+                Open the {convertedTo.label} this became
+              </Link>
+            </RailSection>
           )}
 
-          {/* Admin only, deliberately.
-
-              This route has NO maker-checker branch: it calls
-              InvoicesService.create with status 'sent', so a staff caller would
-              get a real posted invoice — revenue recognised, COGS posted, stock
-              decremented — with no approval. That is a complete bypass of
-              invoice.create = 'request'. Hiding it here closes the hole in our
-              UI; the API still permits it, which is a backend follow-up. */}
-          {convertible && isOwner && (
-            <Button onClick={() => setConvertOpen(true)} disabled={busy}>
-              <FileText className="size-4" />
-              Convert to invoice
-            </Button>
-          )}
-
-          {canDelete && editable && (
-            <Button variant="text" onClick={() => setDeleteOpen(true)}>
-              <Trash2 className="size-4" />
-              Delete
-            </Button>
-          )}
-        </div>
-      </div>
-
+          <RailSection title="Details">
+            <KeyValueList
+              items={[
+                { label: 'Estimate #', value: estimate.estimateNumber || '—' },
+                { label: 'Created', value: docDate(estimate.createdAt), hidden: !estimate.createdAt },
+                { label: 'Last updated', value: docDate(estimate.updatedAt), hidden: !estimate.updatedAt },
+              ]}
+            />
+          </RailSection>
+        </>
+      }
+    >
       {!isOwner && convertible && (
         <p className="rounded-md bg-primary-tint p-md text-body-sm text-text-primary">
-          Invoicing an estimate posts the sale and moves stock, so it is the
-          owner&rsquo;s action. Ask them to convert this one when the customer
-          accepts.
+          Invoicing an estimate posts the sale and moves stock, so it is the owner&rsquo;s action.
+          Ask them to convert this one when the customer accepts.
         </p>
       )}
 
-      {estimate.convertedToId && (
-        <Link
-          to={
-            estimate.convertedToType === 'invoice'
-              ? `/invoices/${estimate.convertedToId}`
-              : `/sales-orders/${estimate.convertedToId}`
-          }
-          className="flex items-center gap-sm rounded-md border border-border bg-surface px-lg py-md hover:bg-surface-hover"
-        >
-          <ArrowRight className="size-4 text-primary" />
-          <span className="flex-1 text-body-sm text-text-primary">
-            Converted to{' '}
-            {estimate.convertedToType === 'invoice' ? 'an invoice' : 'a sales order'} —
-            open it
-          </span>
-        </Link>
-      )}
-
-      <DocumentView
-        title="Estimate"
-        counterpartyLabel="Quote for"
-        counterpartyName={estimate.customerName}
-        meta={[
-          ['Estimate #', estimate.estimateNumber || '—'],
-          ['Date', estimate.estimateDate || '—'],
-          ['Valid until', estimate.expiryDate?.slice(0, 10) ?? '—'],
-        ]}
-        lines={estimate.lines}
-        subtotal={estimate.subtotal}
-        discountType={estimate.discountType}
-        discountValue={estimate.discountValue}
-        discountAmount={estimate.discountAmount}
-        taxAmount={estimate.taxAmount}
-        total={estimate.total}
-        notes={estimate.notes}
-      />
+      <DocumentPaper doc={doc} />
 
       <ConfirmDialog
         open={convertOpen}
@@ -275,11 +329,10 @@ export default function EstimateDetailPage() {
         title="Convert to invoice?"
         description={
           <>
-            This creates a <strong>posted</strong> invoice straight away: the sale
-            is recognised in the ledger, the customer&rsquo;s balance goes up and
-            stock is decremented. It cannot be undone except by voiding the
-            invoice. The invoice is dated <strong>today</strong>, not the estimate
-            date.
+            This creates a <strong>posted</strong> invoice straight away: the sale is recognised in
+            the ledger, the customer&rsquo;s balance goes up and stock is decremented. It cannot be
+            undone except by voiding the invoice. The invoice is dated <strong>today</strong>, not
+            the estimate date.
           </>
         }
         confirmLabel="Convert and post"
@@ -305,6 +358,6 @@ export default function EstimateDetailPage() {
         busy={doDelete.isPending}
         onConfirm={() => doDelete.mutate()}
       />
-    </div>
+    </DetailLayout>
   );
 }

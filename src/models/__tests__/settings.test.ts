@@ -25,6 +25,7 @@ const profile = (over: Partial<CompanyProfile> = {}): CompanyProfile => ({
   address: { street: '12 Main Blvd', city: 'Lahore', state: '', postalCode: '', country: 'Pakistan' },
   fiscalYearStartMonth: 7,
   homeCurrency: 'PKR',
+  logo: '',
   ...over,
 });
 

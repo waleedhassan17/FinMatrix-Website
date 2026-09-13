@@ -1,15 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ChevronDown, ChevronRight, Pencil, PiggyBank, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Pencil, PiggyBank, Trash2 } from 'lucide-react';
 import { Fragment, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { MoreActionsMenu, PageHeader } from '@/components/layout/PageHeader';
+import { DetailPageSkeleton, PageMessage } from '@/components/layout/PageState';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { VsActualChart } from '@/features/budgets/VsActualChart';
+import { reportPdfBlob } from '@/features/documents/documentPdf';
+import { budgetVsActualDocument } from '@/features/documents/operationsDocuments';
+import { useDocumentCompany } from '@/features/documents/useDocumentContext';
 import { KpiTile } from '@/features/reports/KpiTile';
+import { DocumentActions } from '@/features/share/DocumentActions';
 import { FeatureUnavailable } from '@/features/shell/FeatureUnavailable';
 import { useFeature } from '@/hooks/useCapability';
 import { cn } from '@/lib/cn';
@@ -47,6 +53,7 @@ export default function BudgetDetailPage() {
   const enabled = useFeature('budgets');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const company = useDocumentCompany();
   const [openRows, setOpenRows] = useState<Set<string>>(() => new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -75,21 +82,27 @@ export default function BudgetDetailPage() {
     };
   }, [vs.data]);
 
+  const printable = useMemo(
+    () => (budget.data && vs.data ? budgetVsActualDocument(budget.data, vs.data.rows, company) : null),
+    [budget.data, vs.data, company],
+  );
+
   if (!enabled) {
     return <FeatureUnavailable icon={PiggyBank} title="Budgets" body="Budgets are not included in your company’s plan." />;
   }
-  if (budget.isLoading) return <p className="text-body-sm text-text-secondary">Loading budget…</p>;
+  if (budget.isLoading) return <DetailPageSkeleton rail={false} />;
 
   const b = budget.data;
   if (!b) {
     return (
-      <Card className="p-xl">
-        <p className="text-label-lg text-text-primary">Budget not found</p>
-        <p className="mt-xxs text-body-sm text-text-secondary">{budget.error?.message ?? 'It may have been deleted.'}</p>
-        <Button asChild variant="secondary" className="mt-lg">
-          <Link to="/budgets">Back to budgets</Link>
-        </Button>
-      </Card>
+      <PageMessage
+        tone={budget.isError ? 'error' : 'notFound'}
+        title={budget.isError ? 'This budget could not be loaded' : 'Budget not found'}
+        description={budget.error?.message ?? 'It may have been deleted.'}
+        onRetry={budget.isError ? () => budget.refetch() : undefined}
+        backTo="/budgets"
+        backLabel="Back to budgets"
+      />
     );
   }
 
@@ -111,38 +124,37 @@ export default function BudgetDetailPage() {
 
   return (
     <div className="flex flex-col gap-lg">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to="/budgets">
-          <ArrowLeft className="size-4" />
-          Budgets
-        </Link>
-      </Button>
-
-      <Card className="p-lg">
-        <div className="flex flex-wrap items-start justify-between gap-md">
-          <div>
-            <div className="flex flex-wrap items-center gap-sm">
-              <h1 className="text-h2 text-text-primary">{b.name}</h1>
-              <StatusBadge status={b.status} />
-            </div>
-            <p className="text-body-sm text-text-secondary">
-              Fiscal year {b.fiscalYear} · {b.lines.length} {b.lines.length === 1 ? 'account' : 'accounts'}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-xs">
-            <Button variant="text" onClick={() => setConfirmDelete(true)}>
-              <Trash2 className="size-4" />
-              Delete
-            </Button>
-            <Button asChild variant="secondary">
+      <PageHeader
+        back={{ to: '/budgets', label: 'Budgets' }}
+        title={b.name}
+        status={<StatusBadge status={b.status} />}
+        meta={[
+          `Fiscal year ${b.fiscalYear}`,
+          `${b.lines.length} ${b.lines.length === 1 ? 'account' : 'accounts'}`,
+        ]}
+        actions={
+          <>
+            <Button asChild variant="secondary" size="sm">
               <Link to={`/budgets/${b.id}/edit`}>
                 <Pencil className="size-4" />
                 Edit
               </Link>
             </Button>
-          </div>
-        </div>
-      </Card>
+            {printable && (
+              <DocumentActions
+                document={printable.share}
+                getPdf={() => reportPdfBlob(printable.pdf)}
+                cacheKey={[b.id, vs.dataUpdatedAt, budget.dataUpdatedAt, company.name, company.logo].join('|')}
+              />
+            )}
+            <MoreActionsMenu
+              actions={[
+                { label: 'Delete budget', icon: Trash2, destructive: true, onSelect: () => setConfirmDelete(true) },
+              ]}
+            />
+          </>
+        }
+      />
 
       <div className="grid gap-md sm:grid-cols-2 xl:grid-cols-4">
         <KpiTile label="Revenue budgeted" value={revenueBudget} loading={vs.isLoading} />

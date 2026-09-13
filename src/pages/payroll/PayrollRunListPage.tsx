@@ -4,6 +4,7 @@ import { ClipboardList, Plus, Users, Wallet } from 'lucide-react';
 import { useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
+import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DataTable } from '@/components/ui/DataTable';
@@ -84,29 +85,26 @@ export default function PayrollRunListPage() {
 
   return (
     <div className="flex flex-col gap-lg">
-      <div className="flex flex-wrap items-start justify-between gap-md">
-        <div>
-          <h1 className="text-h2 text-text-primary">Payroll runs</h1>
-          <p className="text-body-sm text-text-secondary">
-            Build a run as a draft, check each employee’s pay, then process it to post the
-            payroll journal entry.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-xs">
-          <Button asChild variant="secondary">
-            <Link to="/employees">
-              <Users className="size-4" />
-              Employees
-            </Link>
-          </Button>
-          <Button asChild>
-            <Link to="/payroll/runs/new">
-              <Plus className="size-4" />
-              New payroll run
-            </Link>
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Payroll runs"
+        description="Build a run as a draft, check each employee’s pay, then process it to post the payroll journal entry."
+        actions={
+          <>
+            <Button asChild variant="secondary">
+              <Link to="/employees">
+                <Users className="size-4" />
+                Employees
+              </Link>
+            </Button>
+            <Button asChild>
+              <Link to="/payroll/runs/new">
+                <Plus className="size-4" />
+                New payroll run
+              </Link>
+            </Button>
+          </>
+        }
+      />
 
       <div className="grid gap-md sm:grid-cols-3">
         <KpiTile label={`Gross paid in ${year}`} value={paidThisYear} loading={query.isLoading} />

@@ -1,15 +1,25 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Ban, Banknote, Link2, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { Ban, Banknote, FileText, Link2, Trash2, Users } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { DetailLayout, RailSection } from '@/components/layout/DetailLayout';
+import { MoreActionsMenu, PageHeader } from '@/components/layout/PageHeader';
+import { DetailPageSkeleton, PageMessage } from '@/components/layout/PageState';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { KeyValueList } from '@/components/ui/KeyValueList';
 import { StatusBadge } from '@/components/ui/StatusBadge';
-import { DocumentView } from '@/features/documents/DocumentView';
 import { ApplyCreditDialog } from '@/features/creditMemos/ApplyCreditDialog';
+import { AmountSummary } from '@/features/documents/AmountSummary';
+import { creditMemoDocument } from '@/features/documents/documentBuilders';
+import { docDate } from '@/features/documents/documentModel';
+import { DocumentPaper } from '@/features/documents/DocumentPaper';
+import { documentPdfBlob } from '@/features/documents/documentPdf';
+import { PartyCard } from '@/features/documents/PartyCard';
+import { useDocumentCompany, useDocumentCustomer } from '@/features/documents/useDocumentContext';
+import { DocumentActions } from '@/features/share/DocumentActions';
 import { useAdminOnly, useCapability } from '@/hooks/useCapability';
 import { canApply, canDelete, canRefund, canVoid } from '@/models/creditMemo';
 import {
@@ -35,10 +45,17 @@ export default function CreditMemoDetailPage() {
   const [voidOpen, setVoidOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  const { data: memo, isLoading, isError, error } = useQuery({
+  const { data: memo, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['credit-memos', creditMemoId],
     queryFn: () => getCreditMemoById(creditMemoId),
   });
+
+  const company = useDocumentCompany();
+  const customer = useDocumentCustomer(memo?.customerId);
+  const doc = useMemo(
+    () => (memo ? creditMemoDocument(memo, company, customer) : null),
+    [memo, company, customer],
+  );
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['credit-memos'] });
@@ -111,124 +128,150 @@ export default function CreditMemoDetailPage() {
       toast.error('Could not delete credit memo', { description: e.message }),
   });
 
-  if (isLoading) {
-    return <p className="text-body-sm text-text-secondary">Loading credit memo…</p>;
-  }
+  if (isLoading) return <DetailPageSkeleton />;
 
-  if (isError || !memo) {
+  if (isError || !memo || !doc) {
     return (
-      <Card className="p-xl">
-        <p className="text-label-lg text-text-primary">Credit memo not found</p>
-        <p className="mt-xxs text-body-sm text-text-secondary">
-          {error instanceof Error ? error.message : 'It may have been deleted.'}
-        </p>
-        <Button asChild variant="secondary" className="mt-lg">
-          <Link to="/credit-memos">Back to credit memos</Link>
-        </Button>
-      </Card>
+      <PageMessage
+        tone={isError ? 'error' : 'notFound'}
+        title={isError ? 'This credit memo could not be loaded' : 'Credit memo not found'}
+        description={error instanceof Error ? error.message : 'It may have been deleted.'}
+        onRetry={isError ? () => refetch() : undefined}
+        backTo="/credit-memos"
+        backLabel="Back to credit memos"
+      />
     );
   }
 
   const busy = apply.isPending || refund.isPending || doVoid.isPending;
+  const voided = memo.status === 'void';
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-lg">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to="/credit-memos">
-          <ArrowLeft className="size-4" />
-          Credit memos
-        </Link>
-      </Button>
+    <DetailLayout
+      header={
+        <PageHeader
+          back={{ to: '/credit-memos', label: 'Credit memos' }}
+          title={memo.creditMemoNumber || 'Credit memo'}
+          status={<StatusBadge status={memo.status} />}
+          meta={[
+            <Link
+              key="customer"
+              to={`/customers/${memo.customerId}`}
+              className="text-label-md text-text-primary hover:text-primary hover:underline"
+            >
+              {doc.party?.name || 'Customer'}
+            </Link>,
+            memo.date ? `Dated ${docDate(memo.date)}` : null,
+          ]}
+          actions={
+            <>
+              {canApply(memo) && (
+                <Button size="sm" onClick={() => setApplyOpen(true)} disabled={busy}>
+                  <Link2 className="size-4" />
+                  {cap.submitLabel('Apply to invoice')}
+                </Button>
+              )}
 
-      <div className="flex flex-wrap items-center justify-between gap-md">
-        <div className="flex items-center gap-sm">
-          <h1 className="text-h2 text-text-primary">
-            {memo.creditMemoNumber || 'Credit memo'}
-          </h1>
-          <StatusBadge status={memo.status} />
-        </div>
+              <DocumentActions
+                document={doc.share}
+                getPdf={() => documentPdfBlob(doc)}
+                cacheKey={[memo.id, memo.updatedAt, memo.status, company.name, company.logo, customer?.id].join('|')}
+              />
 
-        <div className="flex flex-wrap gap-xs">
-          {canApply(memo) && (
-            <Button onClick={() => setApplyOpen(true)} disabled={busy}>
-              <Link2 className="size-4" />
-              {cap.submitLabel('Apply to invoice')}
-            </Button>
-          )}
+              <MoreActionsMenu
+                actions={[
+                  { label: 'View customer', icon: Users, to: `/customers/${memo.customerId}` },
+                  {
+                    label: 'View original invoice',
+                    icon: FileText,
+                    to: `/invoices/${memo.originalInvoiceId}`,
+                    hidden: !memo.originalInvoiceId,
+                  },
+                  {
+                    label: cap.submitLabel('Refund remaining credit'),
+                    icon: Banknote,
+                    onSelect: () => setRefundOpen(true),
+                    hidden: !canRefund(memo),
+                    disabled: busy,
+                  },
+                  {
+                    // Disappears the moment any of the credit has been consumed —
+                    // the server refuses with ALREADY_APPLIED.
+                    label: cap.submitLabel('Void credit memo'),
+                    icon: Ban,
+                    destructive: true,
+                    onSelect: () => setVoidOpen(true),
+                    hidden: !canVoid(memo),
+                    disabled: busy,
+                  },
+                  {
+                    label: 'Delete credit memo',
+                    icon: Trash2,
+                    destructive: true,
+                    onSelect: () => setDeleteOpen(true),
+                    hidden: !(canRemove && canDelete(memo)),
+                  },
+                ]}
+              />
+            </>
+          }
+        />
+      }
+      aside={
+        <>
+          <AmountSummary
+            label={voided ? 'Voided' : 'Available credit'}
+            amount={voided ? memo.total : memo.balance}
+            tone={voided ? 'muted' : memo.balance > 0 ? 'success' : 'default'}
+            progress={
+              voided
+                ? undefined
+                : {
+                    value: memo.amountApplied,
+                    total: memo.total,
+                    label: 'Applied',
+                    tone: 'primary',
+                    caption: `${formatMoney(memo.amountApplied)} of ${formatMoney(memo.total)} applied`,
+                  }
+            }
+          />
 
-          {canRefund(memo) && (
-            <Button variant="secondary" onClick={() => setRefundOpen(true)} disabled={busy}>
-              <Banknote className="size-4" />
-              {cap.submitLabel('Refund remaining')}
-            </Button>
-          )}
+          <PartyCard
+            title="Customer"
+            to={`/customers/${memo.customerId}`}
+            party={doc.party}
+            loading={!customer}
+          />
 
-          {/* Disappears the moment any of the credit has been consumed — the
-              server refuses with ALREADY_APPLIED, so a disabled button would
-              only invite the question. */}
-          {canVoid(memo) && (
-            <Button variant="danger" onClick={() => setVoidOpen(true)} disabled={busy}>
-              <Ban className="size-4" />
-              {cap.submitLabel('Void')}
-            </Button>
-          )}
-
-          {canRemove && canDelete(memo) && (
-            <Button variant="text" onClick={() => setDeleteOpen(true)}>
-              <Trash2 className="size-4" />
-              Delete
-            </Button>
-          )}
-        </div>
-      </div>
-
+          <RailSection title="Details">
+            <KeyValueList
+              items={[
+                { label: 'Credit memo #', value: memo.creditMemoNumber || '—' },
+                {
+                  label: 'Original invoice',
+                  value: (
+                    <Link to={`/invoices/${memo.originalInvoiceId}`} className="text-primary hover:underline">
+                      View invoice
+                    </Link>
+                  ),
+                  hidden: !memo.originalInvoiceId,
+                },
+                { label: 'Created', value: docDate(memo.createdAt), hidden: !memo.createdAt },
+                { label: 'Last updated', value: docDate(memo.updatedAt), hidden: !memo.updatedAt },
+              ]}
+            />
+          </RailSection>
+        </>
+      }
+    >
       {cap.needsApproval && canApply(memo) && (
         <p className="rounded-md bg-primary-tint p-md text-body-sm text-text-primary">
-          Applying, refunding or voiding a credit all go to the owner for
-          approval. Nothing changes on this memo until they act.
+          Applying, refunding or voiding a credit all go to the owner for approval. Nothing changes
+          on this memo until they act.
         </p>
       )}
 
-      <Card className="p-lg">
-        <div className="grid gap-lg sm:grid-cols-3">
-          <Figure label="Credit total" value={formatMoney(memo.total)} />
-          <Figure label="Applied" value={formatMoney(memo.amountApplied)} />
-          <Figure
-            label="Available"
-            value={formatMoney(memo.balance)}
-            tone={memo.balance > 0 ? 'success' : undefined}
-          />
-        </div>
-      </Card>
-
-      <DocumentView
-        title="Credit memo"
-        counterpartyLabel="Credit for"
-        counterpartyName={memo.customerName}
-        meta={[
-          ['Credit memo #', memo.creditMemoNumber || '—'],
-          ['Date', memo.date || '—'],
-        ]}
-        lines={memo.lines}
-        subtotal={memo.subtotal}
-        // Credit memos have no discount concept at all.
-        discountType="none"
-        discountValue={0}
-        discountAmount={0}
-        taxAmount={memo.taxAmount}
-        total={memo.total}
-        extraTotals={[
-          { label: 'Applied', value: memo.amountApplied },
-          {
-            label: 'Available',
-            value: memo.balance,
-            strong: true,
-            dividerBefore: true,
-            tone: memo.balance > 0 ? 'success' : undefined,
-          },
-        ]}
-        notes={memo.reason}
-      />
+      <DocumentPaper doc={doc} />
 
       <ApplyCreditDialog
         open={applyOpen}
@@ -245,10 +288,9 @@ export default function CreditMemoDetailPage() {
         title="Refund the remaining credit?"
         description={
           <>
-            This pays <strong>{formatMoney(memo.balance)}</strong> — the whole
-            remaining balance — back to the customer in cash. There is no partial
-            refund, the money comes out of account 1000 Cash, and it posts dated
-            today rather than the memo&rsquo;s date.
+            This pays <strong>{formatMoney(memo.balance)}</strong> — the whole remaining balance —
+            back to the customer in cash. There is no partial refund, the money comes out of account
+            1000 Cash, and it posts dated today rather than the memo&rsquo;s date.
           </>
         }
         confirmLabel={cap.submitLabel('Refund in full')}
@@ -277,29 +319,6 @@ export default function CreditMemoDetailPage() {
         busy={doDelete.isPending}
         onConfirm={() => doDelete.mutate()}
       />
-    </div>
-  );
-}
-
-function Figure({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone?: 'success';
-}) {
-  return (
-    <div>
-      <p className="text-caption text-text-secondary">{label}</p>
-      <p
-        className={`mt-xxs text-h3 tabular ${
-          tone === 'success' ? 'text-success' : 'text-text-primary'
-        }`}
-      >
-        {value}
-      </p>
-    </div>
+    </DetailLayout>
   );
 }

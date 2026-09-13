@@ -4,6 +4,7 @@ import { ClipboardList, Plus, Users, Wallet } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
+import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DataTable } from '@/components/ui/DataTable';
@@ -144,28 +145,26 @@ export default function EmployeeListPage() {
 
   return (
     <div className="flex flex-col gap-lg">
-      <div className="flex flex-wrap items-start justify-between gap-md">
-        <div>
-          <h1 className="text-h2 text-text-primary">Employees</h1>
-          <p className="text-body-sm text-text-secondary">
-            Who you pay, how much, and what is withheld each period.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-xs">
-          <Button asChild variant="secondary">
-            <Link to="/payroll/runs">
-              <ClipboardList className="size-4" />
-              Payroll runs
-            </Link>
-          </Button>
-          <Button asChild>
-            <Link to="/employees/new">
-              <Plus className="size-4" />
-              New employee
-            </Link>
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Employees"
+        description="Who you pay, how much, and what is withheld each period."
+        actions={
+          <>
+            <Button asChild variant="secondary">
+              <Link to="/payroll/runs">
+                <ClipboardList className="size-4" />
+                Payroll runs
+              </Link>
+            </Button>
+            <Button asChild>
+              <Link to="/employees/new">
+                <Plus className="size-4" />
+                New employee
+              </Link>
+            </Button>
+          </>
+        }
+      />
 
       <div className="grid gap-md sm:grid-cols-3">
         <StatTile label="Active employees" value={String(active.length)} loading={query.isLoading} />

@@ -1,24 +1,34 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowLeft,
   ArrowRight,
   Ban,
   FileText,
   PackageCheck,
   Pencil,
   Trash2,
+  Users,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { DetailLayout, RailSection } from '@/components/layout/DetailLayout';
+import { MoreActionsMenu, PageHeader } from '@/components/layout/PageHeader';
+import { DetailPageSkeleton, PageMessage } from '@/components/layout/PageState';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { DateField } from '@/components/ui/Field';
+import { KeyValueList } from '@/components/ui/KeyValueList';
 import { StatusBadge } from '@/components/ui/StatusBadge';
-import { DocumentView } from '@/features/documents/DocumentView';
+import { AmountSummary } from '@/features/documents/AmountSummary';
+import { salesOrderDocument } from '@/features/documents/documentBuilders';
+import { docDate } from '@/features/documents/documentModel';
+import { DocumentPaper } from '@/features/documents/DocumentPaper';
+import { documentPdfBlob } from '@/features/documents/documentPdf';
+import { PartyCard } from '@/features/documents/PartyCard';
+import { useDocumentCompany, useDocumentCustomer } from '@/features/documents/useDocumentContext';
 import { FulfilDialog } from '@/features/salesOrders/FulfilDialog';
+import { DocumentActions } from '@/features/share/DocumentActions';
 import { useAdminOnly, useIsOwner } from '@/hooks/useCapability';
 import { cn } from '@/lib/cn';
 import { addDays, isoToday } from '@/models/document';
@@ -54,10 +64,17 @@ export default function SalesOrderDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [dueDate, setDueDate] = useState(addDays(isoToday(), 30));
 
-  const { data: order, isLoading, isError, error } = useQuery({
+  const { data: order, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['sales-orders', salesOrderId],
     queryFn: () => getSalesOrderById(salesOrderId),
   });
+
+  const company = useDocumentCompany();
+  const customer = useDocumentCustomer(order?.customerId);
+  const doc = useMemo(
+    () => (order ? salesOrderDocument(order, company, customer) : null),
+    [order, company, customer],
+  );
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['sales-orders'] });
@@ -115,130 +132,190 @@ export default function SalesOrderDetailPage() {
       toast.error('Could not delete order', { description: e.message }),
   });
 
-  if (isLoading) {
-    return <p className="text-body-sm text-text-secondary">Loading sales order…</p>;
-  }
+  if (isLoading) return <DetailPageSkeleton />;
 
-  if (isError || !order) {
+  if (isError || !order || !doc) {
     return (
-      <Card className="p-xl">
-        <p className="text-label-lg text-text-primary">Sales order not found</p>
-        <p className="mt-xxs text-body-sm text-text-secondary">
-          {error instanceof Error ? error.message : 'It may have been deleted.'}
-        </p>
-        <Button asChild variant="secondary" className="mt-lg">
-          <Link to="/sales-orders">Back to sales orders</Link>
-        </Button>
-      </Card>
+      <PageMessage
+        tone={isError ? 'error' : 'notFound'}
+        title={isError ? 'This sales order could not be loaded' : 'Sales order not found'}
+        description={error instanceof Error ? error.message : 'It may have been deleted.'}
+        onRetry={isError ? () => refetch() : undefined}
+        backTo="/sales-orders"
+        backLabel="Back to sales orders"
+      />
     );
   }
 
   const busy = fulfil.isPending || toInvoice.isPending || doCancel.isPending;
   const fullyFulfilled = isFullyFulfilled(order);
+  const ordered = order.lines.reduce((sum, l) => sum + l.quantity, 0);
+  const shipped = order.lines.reduce((sum, l) => sum + Math.min(l.quantityFulfilled, l.quantity), 0);
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-lg">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to="/sales-orders">
-          <ArrowLeft className="size-4" />
-          Sales orders
-        </Link>
-      </Button>
+    <DetailLayout
+      header={
+        <PageHeader
+          back={{ to: '/sales-orders', label: 'Sales orders' }}
+          title={order.orderNumber || 'Sales order'}
+          status={<StatusBadge status={order.status} />}
+          meta={[
+            <Link
+              key="customer"
+              to={`/customers/${order.customerId}`}
+              className="text-label-md text-text-primary hover:text-primary hover:underline"
+            >
+              {doc.party?.name || 'Customer'}
+            </Link>,
+            order.orderDate ? `Ordered ${docDate(order.orderDate)}` : null,
+            order.expectedDate ? `Expected ${docDate(order.expectedDate)}` : null,
+          ]}
+          actions={
+            <>
+              {isSalesOrderEditable(order.status) && (
+                <Button asChild variant="secondary" size="sm">
+                  <Link to={`/sales-orders/${order.id}/edit`}>
+                    <Pencil className="size-4" />
+                    Edit
+                  </Link>
+                </Button>
+              )}
 
-      <div className="flex flex-wrap items-center justify-between gap-md">
-        <div className="flex items-center gap-sm">
-          <h1 className="text-h2 text-text-primary">{order.orderNumber || 'Order'}</h1>
-          <StatusBadge status={order.status} />
-        </div>
+              {isFulfillable(order.status) && (
+                <Button variant="secondary" size="sm" onClick={() => setFulfilOpen(true)} disabled={busy}>
+                  <PackageCheck className="size-4" />
+                  Record shipment
+                </Button>
+              )}
 
-        <div className="flex flex-wrap gap-xs">
-          {isSalesOrderEditable(order.status) && (
-            <Button asChild variant="secondary">
-              <Link to={`/sales-orders/${order.id}/edit`}>
-                <Pencil className="size-4" />
-                Edit
+              {/* Admin only, same reasoning as the estimate route: this posts a
+                  real invoice with no maker-checker branch, so a staff caller
+                  would recognise revenue without approval. */}
+              {isInvoiceable(order.status) && isOwner && (
+                <Button size="sm" onClick={() => setConvertOpen(true)} disabled={busy}>
+                  <FileText className="size-4" />
+                  Convert to invoice
+                </Button>
+              )}
+
+              {order.invoiceId && (
+                <Button asChild size="sm">
+                  <Link to={`/invoices/${order.invoiceId}`}>
+                    <ArrowRight className="size-4" />
+                    View invoice
+                  </Link>
+                </Button>
+              )}
+
+              <DocumentActions
+                document={doc.share}
+                getPdf={() => documentPdfBlob(doc)}
+                cacheKey={[order.id, order.updatedAt, order.status, company.name, company.logo, customer?.id].join('|')}
+              />
+
+              <MoreActionsMenu
+                actions={[
+                  { label: 'View customer', icon: Users, to: `/customers/${order.customerId}` },
+                  {
+                    label: 'Cancel order',
+                    icon: Ban,
+                    destructive: true,
+                    onSelect: () => setCancelOpen(true),
+                    hidden: !isSalesOrderEditable(order.status),
+                  },
+                  {
+                    label: 'Delete order',
+                    icon: Trash2,
+                    destructive: true,
+                    onSelect: () => setDeleteOpen(true),
+                    hidden: !(canDelete && order.status !== 'invoiced'),
+                  },
+                ]}
+              />
+            </>
+          }
+        />
+      }
+      aside={
+        <>
+          <AmountSummary
+            label="Order total"
+            amount={order.total}
+            tone={order.status === 'cancelled' ? 'muted' : 'default'}
+            progress={
+              ordered > 0
+                ? {
+                    value: shipped,
+                    total: ordered,
+                    label: 'Shipped',
+                    tone: fullyFulfilled ? 'success' : 'primary',
+                    caption: `${shipped.toLocaleString('en-US')} of ${ordered.toLocaleString('en-US')} units shipped`,
+                  }
+                : undefined
+            }
+          />
+
+          <PartyCard
+            title="Customer"
+            to={`/customers/${order.customerId}`}
+            party={doc.party}
+            loading={!customer}
+          />
+
+          {order.invoiceId && (
+            <RailSection title="Invoice">
+              <Link
+                to={`/invoices/${order.invoiceId}`}
+                className="inline-flex items-center gap-xs text-body-sm text-primary hover:underline"
+              >
+                <FileText className="size-4" aria-hidden="true" />
+                Open the invoice for this order
               </Link>
-            </Button>
+            </RailSection>
           )}
 
-          {isFulfillable(order.status) && (
-            <Button variant="secondary" onClick={() => setFulfilOpen(true)} disabled={busy}>
-              <PackageCheck className="size-4" />
-              Record shipment
-            </Button>
-          )}
-
-          {/* Admin only, same reasoning as the estimate route: this posts a
-              real invoice with no maker-checker branch, so a staff caller
-              would recognise revenue without approval. */}
-          {isInvoiceable(order.status) && isOwner && (
-            <Button onClick={() => setConvertOpen(true)} disabled={busy}>
-              <FileText className="size-4" />
-              Convert to invoice
-            </Button>
-          )}
-
-          {isSalesOrderEditable(order.status) && (
-            <Button variant="danger" onClick={() => setCancelOpen(true)} disabled={busy}>
-              <Ban className="size-4" />
-              Cancel order
-            </Button>
-          )}
-
-          {canDelete && order.status !== 'invoiced' && (
-            <Button variant="text" onClick={() => setDeleteOpen(true)}>
-              <Trash2 className="size-4" />
-              Delete
-            </Button>
-          )}
-        </div>
-      </div>
-
+          <RailSection title="Details">
+            <KeyValueList
+              items={[
+                { label: 'Order #', value: order.orderNumber || '—' },
+                {
+                  label: 'From estimate',
+                  value: (
+                    <Link to={`/estimates/${order.sourceEstimateId}`} className="text-primary hover:underline">
+                      View estimate
+                    </Link>
+                  ),
+                  hidden: !order.sourceEstimateId,
+                },
+                { label: 'Created', value: docDate(order.createdAt), hidden: !order.createdAt },
+                { label: 'Last updated', value: docDate(order.updatedAt), hidden: !order.updatedAt },
+              ]}
+            />
+          </RailSection>
+        </>
+      }
+    >
       {!isOwner && isInvoiceable(order.status) && (
         <p className="rounded-md bg-primary-tint p-md text-body-sm text-text-primary">
-          Invoicing an order posts the sale and moves stock, so it is the
-          owner&rsquo;s action. Record shipments here and ask them to invoice.
+          Invoicing an order posts the sale and moves stock, so it is the owner&rsquo;s action.
+          Record shipments here and ask them to invoice.
         </p>
       )}
 
       {!areLinesEditable(order.status) && isSalesOrderEditable(order.status) && (
         <p className="rounded-md bg-warning-lighter p-md text-body-sm text-text-primary">
-          This order has started shipping, so its lines are locked — editing them
-          would reset the fulfilment record. Dates and notes can still be changed.
+          This order has started shipping, so its lines are locked — editing them would reset the
+          fulfilment record. Dates and notes can still be changed.
         </p>
       )}
 
-      {order.invoiceId && (
-        <Link
-          to={`/invoices/${order.invoiceId}`}
-          className="flex items-center gap-sm rounded-md border border-border bg-surface px-lg py-md hover:bg-surface-hover"
-        >
-          <ArrowRight className="size-4 text-primary" />
-          <span className="flex-1 text-body-sm text-text-primary">
-            Invoiced — open the invoice
-          </span>
-        </Link>
-      )}
-
-      <DocumentView
-        title="Sales order"
-        counterpartyLabel="Order for"
-        counterpartyName={order.customerName}
-        meta={[
-          ['Order #', order.orderNumber || '—'],
-          ['Ordered', order.orderDate || '—'],
-          ['Expected', order.expectedDate?.slice(0, 10) ?? '—'],
-        ]}
-        lines={order.lines}
+      <DocumentPaper
+        doc={doc}
         lineExtraHeader="Fulfilled"
-        lineExtra={(line) => <FulfilmentCell line={line as SalesOrderLine} />}
-        subtotal={order.subtotal}
-        discountType={order.discountType}
-        discountValue={order.discountValue}
-        discountAmount={order.discountAmount}
-        taxAmount={order.taxAmount}
-        total={order.total}
-        notes={order.notes}
+        lineExtra={(_line, i) => {
+          const line = order.lines[i];
+          return line ? <FulfilmentCell line={line} /> : null;
+        }}
       />
 
       <FulfilDialog
@@ -255,15 +332,14 @@ export default function SalesOrderDetailPage() {
         title="Convert to invoice?"
         description={
           <>
-            This creates a <strong>posted</strong> invoice straight away: the sale
-            is recognised, the customer&rsquo;s balance goes up and stock is
-            decremented.
+            This creates a <strong>posted</strong> invoice straight away: the sale is recognised,
+            the customer&rsquo;s balance goes up and stock is decremented.
             {!fullyFulfilled && (
               <>
                 {' '}
-                This order is <strong>not fully shipped</strong>, and converting
-                still bills and decrements the <strong>full ordered quantity</strong> —
-                there is no partial invoicing.
+                This order is <strong>not fully shipped</strong>, and converting still bills and
+                decrements the <strong>full ordered quantity</strong> — there is no partial
+                invoicing.
               </>
             )}
           </>
@@ -303,7 +379,7 @@ export default function SalesOrderDetailPage() {
         busy={doDelete.isPending}
         onConfirm={() => doDelete.mutate()}
       />
-    </div>
+    </DetailLayout>
   );
 }
 
@@ -316,10 +392,7 @@ function FulfilmentCell({ line }: { line: SalesOrderLine }) {
       </div>
       <div className="mt-xxs h-1.5 overflow-hidden rounded-full bg-neutral-100">
         <div
-          className={cn(
-            'h-full rounded-full',
-            pct >= 100 ? 'bg-success' : 'bg-warning',
-          )}
+          className={cn('h-full rounded-full', pct >= 100 ? 'bg-success' : 'bg-warning')}
           style={{ width: `${pct}%` }}
         />
       </div>

@@ -100,6 +100,28 @@ export function AgingReportView({
       title={title}
       subtitle={subtitle}
       onExportCsv={exportCsv}
+      pdf={{
+        periodLabel: asOfLabel(report?.asOfDate ?? ''),
+        cacheKey: String(query.dataUpdatedAt),
+        build: () => [
+          {
+            columns: [
+              { header: counterpartyHeader, flex: 3 },
+              ...AGING_BUCKETS.map((b) => ({ header: b.label, align: 'right' as const, flex: 1.5 })),
+              { header: 'Total', align: 'right', flex: 1.7 },
+            ],
+            rows: [
+              ...(report?.rows ?? []).map((r) => ({
+                cells: [r.customerName, ...AGING_BUCKETS.map((b) => r[b.key]), r.total],
+              })),
+              {
+                cells: ['Total', ...AGING_BUCKETS.map((b) => report?.totals[b.key] ?? 0), report?.totals.total ?? 0],
+                grand: true,
+              },
+            ],
+          },
+        ],
+      }}
       isLoading={query.isLoading}
       isRefetching={query.isFetching}
       error={query.error}

@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, History, MapPin, Sparkles, Trash2, Truck, UserPlus } from 'lucide-react';
+import { History, MapPin, Sparkles, Trash2, Truck, UserPlus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { MoreActionsMenu, PageHeader } from '@/components/layout/PageHeader';
+import { DetailPageSkeleton, PageMessage } from '@/components/layout/PageState';
 import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -12,6 +14,10 @@ import { CompletionCard } from '@/features/delivery/CompletionCard';
 import { DeliveryStatusBadge, OnlineDot, PriorityBadge } from '@/features/delivery/DeliveryBadges';
 import { invalidateDeliveries } from '@/features/delivery/invalidateDeliveries';
 import { useRiders } from '@/features/delivery/useRiders';
+import { reportPdfBlob } from '@/features/documents/documentPdf';
+import { deliveryNoteDocument } from '@/features/documents/operationsDocuments';
+import { useDocumentCompany } from '@/features/documents/useDocumentContext';
+import { DocumentActions } from '@/features/share/DocumentActions';
 import { FeatureUnavailable } from '@/features/shell/FeatureUnavailable';
 import { useAdminOnly, useCapability, useFeature } from '@/hooks/useCapability';
 import {
@@ -80,6 +86,7 @@ export default function DeliveryDetailPage() {
     enabled,
   });
   const { riders, byId } = useRiders(enabled);
+  const company = useDocumentCompany();
 
   const completion = useMemo(
     () =>
@@ -158,20 +165,19 @@ export default function DeliveryDetailPage() {
     );
   }
 
-  if (query.isLoading) return <p className="text-body-sm text-text-secondary">Loading delivery…</p>;
+  if (query.isLoading) return <DetailPageSkeleton />;
 
   const d = query.data;
   if (!d) {
     return (
-      <Card className="p-xl">
-        <p className="text-label-lg text-text-primary">Delivery not found</p>
-        <p className="mt-xxs text-body-sm text-text-secondary">
-          {query.error?.message ?? 'It may have been deleted.'}
-        </p>
-        <Button asChild variant="secondary" className="mt-lg">
-          <Link to="/deliveries">Back to the monitor</Link>
-        </Button>
-      </Card>
+      <PageMessage
+        tone={query.isError ? 'error' : 'notFound'}
+        title={query.isError ? 'This delivery could not be loaded' : 'Delivery not found'}
+        description={query.error?.message ?? 'It may have been deleted.'}
+        onRetry={query.isError ? () => query.refetch() : undefined}
+        backTo="/deliveries"
+        backLabel="Back to the monitor"
+      />
     );
   }
 
@@ -180,58 +186,65 @@ export default function DeliveryDetailPage() {
   const map = mapsLink({ lat: d.destLat, lng: d.destLng }, d.address);
   const total = deliveryValue(d.lines);
   const dispatched = isDispatched(d);
+  const note = deliveryNoteDocument(d, company, rider ? riderLabel(rider) : null);
 
   return (
     <div className="flex flex-col gap-lg">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to="/deliveries">
-          <ArrowLeft className="size-4" />
-          Delivery monitor
-        </Link>
-      </Button>
-
-      {/* ── Header ──────────────────────────────────────────────────── */}
-      <Card className="p-lg">
-        <div className="flex flex-wrap items-start justify-between gap-md">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-sm">
-              <h1 className="text-h2 text-text-primary">{d.referenceNo || 'Delivery'}</h1>
-              <DeliveryStatusBadge status={d.status} />
-              <PriorityBadge priority={d.priority} />
-            </div>
-            <p className="text-body-sm text-text-secondary">
-              {d.customerId ? (
-                <Link to={`/customers/${d.customerId}`} className="text-primary hover:underline">
-                  {d.customerName || 'Customer'}
-                </Link>
-              ) : (
-                d.customerName || '—'
-              )}
-              {' · '}Created {formatWhen(d.createdAt)}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-xs">
+      <PageHeader
+        back={{ to: '/deliveries', label: 'Delivery monitor' }}
+        title={d.referenceNo || 'Delivery'}
+        status={
+          <>
+            <DeliveryStatusBadge status={d.status} />
+            <PriorityBadge priority={d.priority} />
+          </>
+        }
+        meta={[
+          d.customerId ? (
+            <Link key="customer" to={`/customers/${d.customerId}`} className="text-primary hover:underline">
+              {d.customerName || 'Customer'}
+            </Link>
+          ) : (
+            d.customerName || null
+          ),
+          `Created ${formatWhen(d.createdAt)}`,
+        ]}
+        actions={
+          <>
             {actions.map((a) => (
-              <Button key={a} variant="secondary" onClick={() => setAction(a)}>
+              <Button key={a} variant="secondary" size="sm" onClick={() => setAction(a)}>
                 {OPERATOR_ACTION_COPY[a].label}
               </Button>
             ))}
-            {canDelete && d.status === 'unassigned' && !dispatched && (
-              <Button variant="text" onClick={() => setConfirmDelete(true)}>
-                <Trash2 className="size-4" />
-                Delete
-              </Button>
-            )}
-          </div>
-        </div>
-        {d.cancelReason && d.status === 'cancelled' && (
-          <p className="mt-md rounded-md bg-surface-2 p-sm text-body-sm text-text-secondary">
-            Cancelled: {d.cancelReason}
-          </p>
-        )}
-      </Card>
+            {/* The delivery note: items and quantities for the rider to carry
+                and the customer to sign — no prices. */}
+            <DocumentActions
+              document={note.share}
+              getPdf={() => reportPdfBlob(note.pdf)}
+              cacheKey={[d.id, d.status, query.dataUpdatedAt, riderLabel(rider), company.name, company.logo].join('|')}
+            />
+            <MoreActionsMenu
+              actions={[
+                {
+                  label: 'Delete delivery',
+                  icon: Trash2,
+                  destructive: true,
+                  hidden: !(canDelete && d.status === 'unassigned' && !dispatched),
+                  onSelect: () => setConfirmDelete(true),
+                },
+              ]}
+            />
+          </>
+        }
+      />
 
-      <div className="grid gap-lg lg:grid-cols-3">
+      {d.cancelReason && d.status === 'cancelled' && (
+        <p className="rounded-md bg-surface-2 p-md text-body-sm text-text-secondary">
+          Cancelled: {d.cancelReason}
+        </p>
+      )}
+
+      <div className="grid grid-cols-1 gap-lg lg:grid-cols-3">
         <div className="flex flex-col gap-lg lg:col-span-2">
           {/* ── Completion ─────────────────────────────────────────── */}
           {completion && (

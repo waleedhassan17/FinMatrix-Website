@@ -151,6 +151,40 @@ export default function GeneralLedgerPage() {
         </div>
       }
       onExportCsv={exportCsv}
+      pdf={{
+        periodLabel: rangeLabel(range.startDate, range.endDate),
+        basis: accountCode ? `Account ${accountCode}` : 'All accounts',
+        cacheKey: [range.startDate, range.endDate, accountCode, ledger.dataUpdatedAt].join('|'),
+        // The whole period, not the page on screen — the same rule as the CSV.
+        build: () => [
+          {
+            columns: [
+              { header: 'Date', flex: 1.4 },
+              { header: 'Reference', flex: 1.5 },
+              { header: 'Account', flex: 3 },
+              { header: 'Debit', align: 'right', flex: 1.6 },
+              { header: 'Credit', align: 'right', flex: 1.6 },
+              { header: 'Balance', align: 'right', flex: 1.7 },
+            ],
+            rows: [
+              ...entries.map((e) => ({
+                cells: [
+                  formatShortDate(e.date),
+                  e.reference || '—',
+                  `${e.accountCode} · ${e.accountName}`,
+                  e.debit || null,
+                  e.credit || null,
+                  e.balance,
+                ],
+              })),
+              {
+                cells: ['Period total', '', '', ledger.data?.totals.debit ?? 0, ledger.data?.totals.credit ?? 0, ''],
+                grand: true,
+              },
+            ],
+          },
+        ],
+      }}
       isLoading={ledger.isLoading}
       isRefetching={ledger.isFetching}
       error={ledger.error as Error | null}

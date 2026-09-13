@@ -1,23 +1,33 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowLeft,
   FileText,
   PackageCheck,
   Pencil,
   Send,
+  Store,
   Trash2,
   XCircle,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { DetailLayout, RailSection } from '@/components/layout/DetailLayout';
+import { MoreActionsMenu, PageHeader } from '@/components/layout/PageHeader';
+import { DetailPageSkeleton, PageMessage } from '@/components/layout/PageState';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { KeyValueList } from '@/components/ui/KeyValueList';
 import { StatusBadge } from '@/components/ui/StatusBadge';
-import { DocumentView } from '@/features/documents/DocumentView';
+import { AmountSummary } from '@/features/documents/AmountSummary';
+import { purchaseOrderDocument } from '@/features/documents/documentBuilders';
+import { docDate } from '@/features/documents/documentModel';
+import { DocumentPaper } from '@/features/documents/DocumentPaper';
+import { documentPdfBlob } from '@/features/documents/documentPdf';
+import { PartyCard } from '@/features/documents/PartyCard';
+import { useDocumentCompany, useDocumentVendor } from '@/features/documents/useDocumentContext';
 import { ReceiveItemsPanel } from '@/features/purchaseOrders/ReceiveItemsPanel';
+import { DocumentActions } from '@/features/share/DocumentActions';
 import { useAdminOnly, useCapability } from '@/hooks/useCapability';
 import { cn } from '@/lib/cn';
 import {
@@ -62,10 +72,14 @@ export default function PODetailPage() {
     number: string;
   } | null>(null);
 
-  const { data: po, isLoading, isError, error } = useQuery({
+  const { data: po, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['purchase-orders', poId],
     queryFn: () => getPurchaseOrderById(poId),
   });
+
+  const company = useDocumentCompany();
+  const vendor = useDocumentVendor(po?.vendorId);
+  const doc = useMemo(() => (po ? purchaseOrderDocument(po, company, vendor) : null), [po, company, vendor]);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
@@ -138,21 +152,18 @@ export default function PODetailPage() {
       toast.error('Could not delete the order', { description: e.message }),
   });
 
-  if (isLoading) {
-    return <p className="text-body-sm text-text-secondary">Loading purchase order…</p>;
-  }
+  if (isLoading) return <DetailPageSkeleton />;
 
-  if (isError || !po) {
+  if (isError || !po || !doc) {
     return (
-      <Card className="p-xl">
-        <p className="text-label-lg text-text-primary">Purchase order not found</p>
-        <p className="mt-xxs text-body-sm text-text-secondary">
-          {error instanceof Error ? error.message : 'It may have been removed.'}
-        </p>
-        <Button asChild variant="secondary" className="mt-lg">
-          <Link to="/purchase-orders">Back to purchase orders</Link>
-        </Button>
-      </Card>
+      <PageMessage
+        tone={isError ? 'error' : 'notFound'}
+        title={isError ? 'This purchase order could not be loaded' : 'Purchase order not found'}
+        description={error instanceof Error ? error.message : 'It may have been removed.'}
+        onRetry={isError ? () => refetch() : undefined}
+        backTo="/purchase-orders"
+        backLabel="Back to purchase orders"
+      />
     );
   }
 
@@ -162,6 +173,13 @@ export default function PODetailPage() {
   // Edit is gated twice: the capability (false for staff) AND draft-only,
   // because PATCH rebuilds every line and zeroes what was received.
   const canEdit = editCap.allowed && isPOEditable(po.status);
+  const receivedAmount = receivedValue(po);
+
+  // On screen only: what has arrived is the buyer's working figure, not something
+  // the vendor's copy of the order should carry.
+  const screenDoc = received
+    ? { ...doc, totals: [...doc.totals, { label: 'Received so far', value: receivedAmount, dividerBefore: true }] }
+    : doc;
 
   const startReceiving = () => {
     setDrafts(buildReceiptDrafts(po.lines));
@@ -169,87 +187,156 @@ export default function PODetailPage() {
   };
 
   return (
-    <div className="flex flex-col gap-lg">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to="/purchase-orders">
-          <ArrowLeft className="size-4" />
-          Purchase orders
-        </Link>
-      </Button>
+    <DetailLayout
+      header={
+        <PageHeader
+          back={{ to: '/purchase-orders', label: 'Purchase orders' }}
+          title={po.poNumber || 'Purchase order'}
+          status={<StatusBadge status={po.status} />}
+          meta={[
+            <Link
+              key="vendor"
+              to={`/vendors/${po.vendorId}`}
+              className="text-label-md text-text-primary hover:text-primary hover:underline"
+            >
+              {doc.party?.name || 'Vendor'}
+            </Link>,
+            po.orderDate ? `Ordered ${docDate(po.orderDate)}` : null,
+            po.expectedDate ? `Expected ${docDate(po.expectedDate)}` : null,
+          ]}
+          actions={
+            <>
+              {canEdit && (
+                <Button asChild variant="secondary" size="sm">
+                  <Link to={`/purchase-orders/${po.id}/edit`}>
+                    <Pencil className="size-4" />
+                    Edit
+                  </Link>
+                </Button>
+              )}
 
-      {/* ── Header ──────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-start justify-between gap-md">
-        <div className="min-w-0">
-          <div className="flex items-center gap-sm">
-            <h1 className="text-h2 text-text-primary">{po.poNumber || 'Order'}</h1>
-            <StatusBadge status={po.status} />
-          </div>
-          <p className="text-body-sm text-text-secondary">
-            <Link to={`/vendors/${po.vendorId}`} className="hover:underline">
-              {po.vendorName || 'Unknown vendor'}
-            </Link>
-          </p>
-        </div>
+              {po.status === 'draft' && statusCap.allowed && (
+                <Button size="sm" onClick={() => setConfirmSend(true)} disabled={changeStatus.isPending}>
+                  <Send className="size-4" />
+                  Send to vendor
+                </Button>
+              )}
 
-        <div className="flex flex-wrap gap-xs">
-          {canEdit && (
-            <Button asChild variant="secondary">
-              <Link to={`/purchase-orders/${po.id}/edit`}>
-                <Pencil className="size-4" />
-                Edit
+              {canReceive && !receiving && (
+                <Button size="sm" onClick={startReceiving}>
+                  <PackageCheck className="size-4" />
+                  Receive items
+                </Button>
+              )}
+
+              {/* Only offered once something has actually arrived: create-bill
+                  bills the received quantity, so with nothing received it would
+                  raise a bill for zero. */}
+              {billId ? (
+                <Button asChild variant="secondary" size="sm">
+                  <Link to={`/bills/${billId}`}>
+                    <FileText className="size-4" />
+                    View bill
+                  </Link>
+                </Button>
+              ) : (
+                received && (
+                  <Button variant="secondary" size="sm" onClick={() => setConfirmBill(true)}>
+                    <FileText className="size-4" />
+                    Convert to bill
+                  </Button>
+                )
+              )}
+
+              <DocumentActions
+                document={doc.share}
+                getPdf={() => documentPdfBlob(doc)}
+                cacheKey={[po.id, po.updatedAt, po.status, company.name, company.logo, vendor?.id].join('|')}
+              />
+
+              <MoreActionsMenu
+                actions={[
+                  { label: 'View vendor', icon: Store, to: `/vendors/${po.vendorId}` },
+                  {
+                    label: 'Close order',
+                    icon: XCircle,
+                    onSelect: () => setConfirmClose(true),
+                    hidden: !(po.status !== 'closed' && po.status !== 'draft' && statusCap.allowed),
+                  },
+                  {
+                    label: 'Delete order',
+                    icon: Trash2,
+                    destructive: true,
+                    onSelect: () => setConfirmDelete(true),
+                    hidden: !canDelete,
+                  },
+                ]}
+              />
+            </>
+          }
+        />
+      }
+      aside={
+        <>
+          <AmountSummary
+            label="Order total"
+            amount={po.total}
+            progress={
+              po.status === 'draft'
+                ? undefined
+                : {
+                    value: receivedAmount,
+                    total: po.total,
+                    label: 'Received',
+                    tone: 'primary',
+                    caption: received
+                      ? `${formatMoney(receivedAmount)} of ${formatMoney(po.total)} received`
+                      : 'Nothing received yet',
+                  }
+            }
+          >
+            {po.status === 'draft' && (
+              <p className="mt-xs text-caption text-text-secondary">
+                A draft — send it to the vendor when it is ready. A purchase order posts
+                nothing to the ledger.
+              </p>
+            )}
+          </AmountSummary>
+
+          <PartyCard
+            title="Vendor"
+            to={`/vendors/${po.vendorId}`}
+            party={doc.party}
+            loading={!vendor}
+          />
+
+          {billId && (
+            <RailSection title="Bill">
+              <Link
+                to={`/bills/${billId}`}
+                className="flex items-center justify-between gap-sm rounded-md text-body-sm text-primary hover:underline"
+              >
+                <span className="inline-flex items-center gap-xs">
+                  <FileText className="size-4" aria-hidden="true" />
+                  {existingBill?.number || 'Open the bill for this order'}
+                </span>
               </Link>
-            </Button>
+            </RailSection>
           )}
 
-          {po.status === 'draft' && statusCap.allowed && (
-            <Button onClick={() => setConfirmSend(true)} disabled={changeStatus.isPending}>
-              <Send className="size-4" />
-              Send to vendor
-            </Button>
-          )}
-
-          {canReceive && !receiving && (
-            <Button onClick={startReceiving}>
-              <PackageCheck className="size-4" />
-              Receive items
-            </Button>
-          )}
-
-          {/* Only offered once something has actually arrived: create-bill
-              bills the received quantity, so with nothing received it would
-              raise a bill for zero. */}
-          {billId ? (
-            <Button asChild variant="secondary">
-              <Link to={`/bills/${billId}`}>
-                <FileText className="size-4" />
-                View bill
-              </Link>
-            </Button>
-          ) : (
-            received && (
-              <Button variant="secondary" onClick={() => setConfirmBill(true)}>
-                <FileText className="size-4" />
-                Convert to bill
-              </Button>
-            )
-          )}
-
-          {po.status !== 'closed' && po.status !== 'draft' && statusCap.allowed && (
-            <Button variant="secondary" onClick={() => setConfirmClose(true)}>
-              <XCircle className="size-4" />
-              Close
-            </Button>
-          )}
-
-          {canDelete && (
-            <Button variant="secondary" onClick={() => setConfirmDelete(true)}>
-              <Trash2 className="size-4" />
-              Delete
-            </Button>
-          )}
-        </div>
-      </div>
-
+          <RailSection title="Details">
+            <KeyValueList
+              items={[
+                { label: 'PO #', value: po.poNumber || '—' },
+                { label: 'Lines', value: String(po.lines.length) },
+                { label: 'Created', value: docDate(po.createdAt), hidden: !po.createdAt },
+                { label: 'Last updated', value: docDate(po.updatedAt), hidden: !po.updatedAt },
+              ]}
+            />
+          </RailSection>
+        </>
+      }
+    >
       {receiving && (
         <ReceiveItemsPanel
           drafts={drafts}
@@ -260,18 +347,8 @@ export default function PODetailPage() {
         />
       )}
 
-      <DocumentView
-        title="Purchase order"
-        counterpartyLabel="To"
-        counterpartyName={po.vendorName}
-        meta={[
-          ['PO #', po.poNumber || '—'],
-          ['Order date', po.orderDate.slice(0, 10) || '—'],
-          ['Expected', po.expectedDate.slice(0, 10) || '—'],
-        ]}
-        lines={po.lines}
-        quantityHeader="Ordered"
-        priceHeader="Unit cost"
+      <DocumentPaper
+        doc={screenDoc}
         lineExtraHeader="Received"
         // The extra-column slot built for sales-order fulfilment, reused
         // unchanged — the two progress readouts are the same idea.
@@ -289,34 +366,13 @@ export default function PODetailPage() {
               </div>
               <div className="mt-xxs h-1.5 overflow-hidden rounded-full bg-neutral-100">
                 <div
-                  className={cn(
-                    'h-full rounded-full',
-                    pct >= 100 ? 'bg-success' : 'bg-primary',
-                  )}
+                  className={cn('h-full rounded-full', pct >= 100 ? 'bg-success' : 'bg-primary')}
                   style={{ width: `${pct}%` }}
                 />
               </div>
             </div>
           );
         }}
-        subtotal={po.subtotal}
-        discountType="none"
-        discountValue={0}
-        discountAmount={0}
-        taxAmount={po.taxAmount}
-        total={po.total}
-        extraTotals={
-          received
-            ? [
-                {
-                  label: 'Received so far',
-                  value: receivedValue(po),
-                  dividerBefore: true,
-                },
-              ]
-            : []
-        }
-        notes={po.notes}
       />
 
       <ConfirmDialog
@@ -349,10 +405,9 @@ export default function PODetailPage() {
         title="Raise a bill for what has arrived?"
         description={
           <>
-            A bill for <strong>{formatMoney(receivedValue(po))}</strong> will be
-            raised against {po.vendorName || 'this vendor'} — the received
-            quantity at the ordered cost, not the full order value of{' '}
-            {formatMoney(po.total)}. It clears Goods Received Not Invoiced
+            A bill for <strong>{formatMoney(receivedAmount)}</strong> will be raised against{' '}
+            {doc.party?.name || 'this vendor'} — the received quantity at the ordered cost, not the
+            full order value of {formatMoney(po.total)}. It clears Goods Received Not Invoiced
             against accounts payable. An order can only be billed once.
           </>
         }
@@ -371,6 +426,6 @@ export default function PODetailPage() {
         busy={remove.isPending}
         onConfirm={() => remove.mutate()}
       />
-    </div>
+    </DetailLayout>
   );
 }

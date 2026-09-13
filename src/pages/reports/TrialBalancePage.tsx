@@ -73,6 +73,26 @@ export default function TrialBalancePage() {
       subtitle="Every account’s movement in the period, debits against credits."
       controls={<PeriodPicker value={range} onChange={setRange} />}
       onExportCsv={exportCsv}
+      pdf={{
+        periodLabel: rangeLabel(range.startDate, range.endDate),
+        basis: 'Movements in the period',
+        cacheKey: [range.startDate, range.endDate, query.dataUpdatedAt].join('|'),
+        build: () => [
+          {
+            columns: [
+              { header: 'Account', flex: 5 },
+              { header: 'Debit', align: 'right', flex: 2 },
+              { header: 'Credit', align: 'right', flex: 2 },
+            ],
+            rows: [
+              ...(report?.rows ?? []).map((r) => ({
+                cells: [`${r.accountCode} · ${r.accountName}`, r.debit || null, r.credit || null],
+              })),
+              { cells: ['Total', report?.totalDebits ?? 0, report?.totalCredits ?? 0], grand: true },
+            ],
+          },
+        ],
+      }}
       isLoading={query.isLoading}
       isRefetching={query.isFetching}
       error={query.error as Error | null}

@@ -4,6 +4,7 @@ import { PiggyBank, Plus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
+import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DataTable } from '@/components/ui/DataTable';
@@ -57,21 +58,18 @@ export default function BudgetListPage() {
 
   return (
     <div className="flex flex-col gap-lg">
-      <div className="flex flex-wrap items-start justify-between gap-md">
-        <div>
-          <h1 className="text-h2 text-text-primary">Budgets</h1>
-          <p className="text-body-sm text-text-secondary">
-            Plan revenue and spending by account and month, then compare against what actually
-            posted.
-          </p>
-        </div>
-        <Button asChild>
-          <Link to="/budgets/new">
-            <Plus className="size-4" />
-            New budget
-          </Link>
-        </Button>
-      </div>
+      <PageHeader
+        title="Budgets"
+        description="Plan revenue and spending by account and month, then compare against what actually posted."
+        actions={
+          <Button asChild>
+            <Link to="/budgets/new">
+              <Plus className="size-4" />
+              New budget
+            </Link>
+          </Button>
+        }
+      />
 
       {years.length > 1 && (
         <div className="flex flex-wrap gap-xs">

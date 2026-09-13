@@ -1,12 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ArrowRight, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { FileText, RotateCcw, Users } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
-import { Button } from '@/components/ui/Button';
-import { Card, SectionHeader } from '@/components/ui/Card';
+import { DetailLayout, RailSection } from '@/components/layout/DetailLayout';
+import { MoreActionsMenu, PageHeader } from '@/components/layout/PageHeader';
+import { DetailPageSkeleton, PageMessage } from '@/components/layout/PageState';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { KeyValueList } from '@/components/ui/KeyValueList';
+import { StatusBadge } from '@/components/ui/StatusBadge';
+import { AmountSummary } from '@/features/documents/AmountSummary';
+import { docDate } from '@/features/documents/documentModel';
+import { DocumentPaper } from '@/features/documents/DocumentPaper';
+import { documentPdfBlob } from '@/features/documents/documentPdf';
+import { PartyCard } from '@/features/documents/PartyCard';
+import { paymentReceiptDocument } from '@/features/documents/receiptBuilders';
+import { useDocumentCompany, useDocumentCustomer } from '@/features/documents/useDocumentContext';
+import { DocumentActions } from '@/features/share/DocumentActions';
 import { useAdminOnly } from '@/hooks/useCapability';
 import { paymentMethodLabel } from '@/models/payment';
 import { deletePayment, getPaymentById } from '@/networks/sales/paymentNetwork';
@@ -20,10 +31,17 @@ export default function PaymentDetailPage() {
 
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  const { data: payment, isLoading, isError, error } = useQuery({
+  const { data: payment, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['payments', paymentId],
     queryFn: () => getPaymentById(paymentId),
   });
+
+  const company = useDocumentCompany();
+  const customer = useDocumentCustomer(payment?.customerId);
+  const doc = useMemo(
+    () => (payment ? paymentReceiptDocument(payment, company, customer) : null),
+    [payment, company, customer],
+  );
 
   const doDelete = useMutation({
     mutationFn: () => deletePayment(paymentId),
@@ -41,106 +59,132 @@ export default function PaymentDetailPage() {
       toast.error('Could not reverse payment', { description: e.message }),
   });
 
-  if (isLoading) {
-    return <p className="text-body-sm text-text-secondary">Loading payment…</p>;
-  }
+  if (isLoading) return <DetailPageSkeleton />;
 
-  if (isError || !payment) {
+  if (isError || !payment || !doc) {
     return (
-      <Card className="p-xl">
-        <p className="text-label-lg text-text-primary">Payment not found</p>
-        <p className="mt-xxs text-body-sm text-text-secondary">
-          {error instanceof Error ? error.message : 'It may have been reversed.'}
-        </p>
-        <Button asChild variant="secondary" className="mt-lg">
-          <Link to="/payments">Back to payments</Link>
-        </Button>
-      </Card>
+      <PageMessage
+        tone={isError ? 'error' : 'notFound'}
+        title={isError ? 'This payment could not be loaded' : 'Payment not found'}
+        description={error instanceof Error ? error.message : 'It may have been reversed.'}
+        onRetry={isError ? () => refetch() : undefined}
+        backTo="/payments"
+        backLabel="Back to payments"
+      />
     );
   }
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-lg">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to="/payments">
-          <ArrowLeft className="size-4" />
-          Payments
-        </Link>
-      </Button>
-
-      <div className="flex flex-wrap items-center justify-between gap-md">
-        <div>
-          <h1 className="text-h2 text-text-primary">
-            {payment.reference || `Payment ${payment.id.slice(0, 8)}`}
-          </h1>
-          <p className="text-body-sm text-text-secondary">
-            {payment.customerName} · {payment.paymentDate}
-          </p>
-        </div>
-
-        {/* Admin only. DELETE /payments/:id is @Roles('admin') with no approval
-            path, so staff cannot reverse a payment or even request it. */}
-        {canDelete && (
-          <Button variant="text" onClick={() => setDeleteOpen(true)}>
-            <Trash2 className="size-4" />
-            Reverse payment
-          </Button>
-        )}
-      </div>
-
-      <Card className="p-xl">
-        <div className="grid gap-lg sm:grid-cols-3">
-          <Figure label="Amount received" value={formatMoney(payment.amount)} />
-          <Figure label="Applied to invoices" value={formatMoney(payment.allocated)} />
-          <Figure
-            label="Held as credit"
-            value={formatMoney(payment.unapplied)}
-            tone={payment.unapplied > 0 ? 'warning' : undefined}
+    <DetailLayout
+      header={
+        <PageHeader
+          back={{ to: '/payments', label: 'Payments' }}
+          title={doc.number}
+          status={
+            payment.unapplied > 0 ? (
+              <StatusBadge status="partial" label="Part held as credit" />
+            ) : (
+              <StatusBadge status="paid" label="Applied" />
+            )
+          }
+          meta={[
+            <Link
+              key="customer"
+              to={`/customers/${payment.customerId}`}
+              className="text-label-md text-text-primary hover:text-primary hover:underline"
+            >
+              {doc.party?.name || 'Customer'}
+            </Link>,
+            payment.paymentDate ? `Received ${docDate(payment.paymentDate)}` : null,
+            paymentMethodLabel(payment.paymentMethod),
+          ]}
+          actions={
+            <>
+              <DocumentActions
+                document={doc.share}
+                getPdf={() => documentPdfBlob(doc)}
+                cacheKey={[payment.id, payment.amount, payment.allocated, company.name, company.logo, customer?.id].join('|')}
+              />
+              <MoreActionsMenu
+                actions={[
+                  { label: 'View customer', icon: Users, to: `/customers/${payment.customerId}` },
+                  {
+                    // Admin only. DELETE /payments/:id is @Roles('admin') with no
+                    // approval path, so staff cannot reverse a payment or request it.
+                    label: 'Reverse payment',
+                    icon: RotateCcw,
+                    destructive: true,
+                    onSelect: () => setDeleteOpen(true),
+                    hidden: !canDelete,
+                  },
+                ]}
+              />
+            </>
+          }
+        />
+      }
+      aside={
+        <>
+          <AmountSummary
+            label="Amount received"
+            amount={payment.amount}
+            tone="success"
+            note={payment.unapplied > 0 ? `${formatMoney(payment.unapplied)} held as customer credit` : undefined}
+            noteTone="warning"
+            progress={{
+              value: payment.allocated,
+              total: payment.amount,
+              label: 'Applied',
+              tone: 'primary',
+              caption: `${formatMoney(payment.allocated)} applied to invoices`,
+            }}
           />
-        </div>
 
-        <div className="mt-xl border-t border-border-light pt-md">
-          <Row label="Method" value={paymentMethodLabel(payment.paymentMethod)} />
-          <Row label="Reference" value={payment.reference || '—'} />
-          <Row label="Date" value={payment.paymentDate || '—'} />
-        </div>
+          <PartyCard
+            title="Customer"
+            to={`/customers/${payment.customerId}`}
+            party={doc.party}
+            loading={!customer}
+          />
 
-        {payment.memo && (
-          <div className="mt-lg border-t border-border-light pt-md">
-            <SectionHeader title="Notes" />
-            <p className="mt-sm whitespace-pre-line text-body-sm text-text-secondary">
-              {payment.memo}
-            </p>
-          </div>
-        )}
-      </Card>
+          <RailSection title="Applied to">
+            {payment.applications.length === 0 ? (
+              <p className="text-body-sm text-text-tertiary">
+                Nothing was applied — the whole amount is held as a customer credit.
+              </p>
+            ) : (
+              <ul className="-mx-sm flex flex-col">
+                {payment.applications.map((a) => (
+                  <li key={a.invoiceId}>
+                    <Link
+                      to={`/invoices/${a.invoiceId}`}
+                      className="flex items-center justify-between gap-sm rounded-md px-sm py-xs hover:bg-surface-hover"
+                    >
+                      <span className="inline-flex min-w-0 items-center gap-xs text-label-md text-text-primary">
+                        <FileText className="size-4 shrink-0 text-text-tertiary" aria-hidden="true" />
+                        <span className="truncate">{a.invoiceNumber || a.invoiceId.slice(0, 8)}</span>
+                      </span>
+                      <span className="text-label-md text-text-primary tabular">{formatMoney(a.amountApplied)}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </RailSection>
 
-      <Card className="p-lg">
-        <SectionHeader title="Applied to" />
-        {payment.applications.length === 0 ? (
-          <p className="mt-md text-body-sm text-text-tertiary">
-            Nothing was applied — the whole amount is held as a customer credit.
-          </p>
-        ) : (
-          <div className="mt-md divide-y divide-border-light">
-            {payment.applications.map((a) => (
-              <Link
-                key={a.invoiceId}
-                to={`/invoices/${a.invoiceId}`}
-                className="flex items-center gap-md py-sm first:pt-0 last:pb-0 hover:bg-surface-hover"
-              >
-                <ArrowRight className="size-4 shrink-0 text-text-tertiary" />
-                <span className="flex-1 text-label-lg text-text-primary">
-                  {a.invoiceNumber || a.invoiceId.slice(0, 8)}
-                </span>
-                <span className="text-label-lg text-text-primary tabular">
-                  {formatMoney(a.amountApplied)}
-                </span>
-              </Link>
-            ))}
-          </div>
-        )}
-      </Card>
+          <RailSection title="Details">
+            <KeyValueList
+              items={[
+                { label: 'Method', value: paymentMethodLabel(payment.paymentMethod) },
+                { label: 'Reference', value: payment.reference || '—' },
+                { label: 'Date', value: docDate(payment.paymentDate) || '—' },
+              ]}
+            />
+          </RailSection>
+        </>
+      }
+    >
+      <DocumentPaper doc={doc} />
 
       <ConfirmDialog
         open={deleteOpen}
@@ -152,38 +196,6 @@ export default function PaymentDetailPage() {
         busy={doDelete.isPending}
         onConfirm={() => doDelete.mutate()}
       />
-    </div>
-  );
-}
-
-function Figure({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone?: 'warning';
-}) {
-  return (
-    <div>
-      <p className="text-caption text-text-secondary">{label}</p>
-      <p
-        className={`mt-xxs text-h3 tabular ${
-          tone === 'warning' ? 'text-warning' : 'text-text-primary'
-        }`}
-      >
-        {value}
-      </p>
-    </div>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between border-b border-border-light py-xs last:border-0">
-      <span className="text-body-sm text-text-secondary">{label}</span>
-      <span className="text-body-sm text-text-primary">{value}</span>
-    </div>
+    </DetailLayout>
   );
 }

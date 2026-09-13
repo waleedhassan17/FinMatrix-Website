@@ -4,6 +4,7 @@ import { Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
+import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { DataTable } from '@/components/ui/DataTable';
 import { DateField } from '@/components/ui/Field';
@@ -114,20 +115,18 @@ export default function EstimateListPage() {
 
   return (
     <div className="flex flex-col gap-lg">
-      <div className="flex flex-wrap items-center justify-between gap-md">
-        <div>
-          <h1 className="text-h2 text-text-primary">Estimates</h1>
-          <p className="text-body-sm text-text-secondary">
-            Quotes and proposals. Nothing posts until one is converted.
-          </p>
-        </div>
-        <Button asChild>
-          <Link to="/estimates/new">
-            <Plus className="size-4" />
-            New estimate
-          </Link>
-        </Button>
-      </div>
+      <PageHeader
+        title="Estimates"
+        description="Quotes and proposals. Nothing posts until one is converted."
+        actions={
+          <Button asChild>
+            <Link to="/estimates/new">
+              <Plus className="size-4" />
+              New estimate
+            </Link>
+          </Button>
+        }
+      />
 
       <DataTable
         columns={columns}

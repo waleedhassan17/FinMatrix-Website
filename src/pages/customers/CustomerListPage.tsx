@@ -4,6 +4,7 @@ import { Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
+import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DataTable, TablePager } from '@/components/ui/DataTable';
@@ -139,18 +140,18 @@ export default function CustomerListPage() {
 
   return (
     <div className="flex flex-col gap-lg">
-      <div className="flex flex-wrap items-center justify-between gap-md">
-        <div>
-          <h1 className="text-h2 text-text-primary">Customers</h1>
-          <p className="text-body-sm text-text-secondary">Who you sell to.</p>
-        </div>
-        <Button asChild>
-          <Link to="/customers/new">
-            <Plus className="size-4" />
-            New customer
-          </Link>
-        </Button>
-      </div>
+      <PageHeader
+        title="Customers"
+        description="Who you sell to."
+        actions={
+          <Button asChild>
+            <Link to="/customers/new">
+              <Plus className="size-4" />
+              New customer
+            </Link>
+          </Button>
+        }
+      />
 
       {/* Company-wide totals, straight from the server's summary — not a count
           of the loaded page. */}

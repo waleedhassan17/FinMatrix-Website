@@ -4,6 +4,7 @@ import { Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
+import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DataTable, TablePager } from '@/components/ui/DataTable';
@@ -131,18 +132,18 @@ export default function VendorListPage() {
 
   return (
     <div className="flex flex-col gap-lg">
-      <div className="flex flex-wrap items-center justify-between gap-md">
-        <div>
-          <h1 className="text-h2 text-text-primary">Vendors</h1>
-          <p className="text-body-sm text-text-secondary">Who you buy from.</p>
-        </div>
-        <Button asChild>
-          <Link to="/vendors/new">
-            <Plus className="size-4" />
-            New vendor
-          </Link>
-        </Button>
-      </div>
+      <PageHeader
+        title="Vendors"
+        description="Who you buy from."
+        actions={
+          <Button asChild>
+            <Link to="/vendors/new">
+              <Plus className="size-4" />
+              New vendor
+            </Link>
+          </Button>
+        }
+      />
 
       <Card className="p-lg">
         <p className="text-caption text-text-secondary">
