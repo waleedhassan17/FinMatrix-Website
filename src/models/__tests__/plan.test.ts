@@ -8,6 +8,7 @@ import {
   planPerks,
   planSerializer,
   planTerms,
+  resolvePlanFeatures,
   savingsPercent,
 } from '@/models/plan';
 
@@ -25,6 +26,27 @@ const FEATURES = [
   'Full inventory + purchase orders (GRNI 3-way match)',
   'Deliveries with rider app & admin approval',
   'Goods-in-Transit accounting built in',
+];
+
+/**
+ * What a card shows for that capture. "Large Organization" is not on sale, so a
+ * line naming it becomes what it included — a card never points at a plan the
+ * reader cannot see.
+ */
+const RESOLVED_FEATURES = [
+  'Complete accounting: invoices, bills, payments, tax & reports',
+  'Payroll, budgets, bank reconciliation & team roles',
+  'Full inventory + purchase orders (GRNI 3-way match)',
+  'Deliveries with rider app & admin approval',
+  'Goods-in-Transit accounting built in',
+];
+
+/** The server's copy since it stopped naming another tier. */
+const CURRENT_FEATURES = [
+  'Complete accounting: invoices, bills, payments, tax & reports',
+  'Payroll, budgets, bank reconciliation & team roles',
+  'Full inventory + purchase orders (GRNI 3-way match)',
+  'Deliveries with rider app, admin approval & Goods-in-Transit accounting',
 ];
 
 const plan = (
@@ -97,7 +119,7 @@ describe('planSerializer', () => {
     expect(p.totalMinorUnits).toBe(1800000);
     expect(p.maxUsers).toBe(25);
     expect(p.deliveryPersonnelLimit).toBe(3);
-    expect(p.features).toEqual(FEATURES);
+    expect(p.features).toEqual(RESOLVED_FEATURES);
     expect(p.tagline).toBe('Warehouse · 6 months, billed once');
   });
 
@@ -274,16 +296,44 @@ describe('planPerks', () => {
     expect(starter.features).toEqual(scale.features);
   });
 
-  it('includes the team-member cap and then the server features', () => {
+  it('follows the rider limit with the features, and never a seat count', () => {
+    // Access is by role — owner, staff, delivery personnel — and maxUsers is
+    // the same on every plan, so a "team members" row would say nothing.
+    for (const p of PUBLIC_PLANS) {
+      expect(planPerks(planSerializer(p)).some((perk) => /team member|users?\b/i.test(perk))).toBe(false);
+    }
     expect(planPerks(planSerializer(PUBLIC_PLANS[0]))).toEqual([
       'Up to 3 delivery riders',
-      'Up to 25 team members',
-      ...FEATURES,
+      ...RESOLVED_FEATURES,
     ]);
   });
 
   it('omits a limit the plan does not state', () => {
     const perks = planPerks(planSerializer(TIER_PLAN));
     expect(perks).toEqual(['Up to 5 delivery riders']);
+  });
+});
+
+describe('resolvePlanFeatures', () => {
+  it('never shows a line naming a plan the reader cannot see', () => {
+    for (const p of PUBLIC_PLANS) {
+      expect(planPerks(planSerializer(p)).some((f) => /everything in/i.test(f))).toBe(false);
+    }
+  });
+
+  it('passes the current server copy through unchanged', () => {
+    expect(resolvePlanFeatures(CURRENT_FEATURES)).toEqual(CURRENT_FEATURES);
+    expect(planSerializer({ ...PUBLIC_PLANS[2], features: CURRENT_FEATURES }).features).toEqual(CURRENT_FEATURES);
+  });
+
+  it('spells out Small Business, drops an unknown tier, and keeps each line once', () => {
+    expect(
+      resolvePlanFeatures([
+        'everything in small business.',
+        'Everything in Standard',
+        'Complete accounting: invoices, bills, payments, tax & reports',
+        'Payroll, employees & payslips',
+      ]),
+    ).toEqual(['Complete accounting: invoices, bills, payments, tax & reports', 'Payroll, employees & payslips']);
   });
 });

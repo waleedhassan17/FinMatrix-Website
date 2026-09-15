@@ -7,10 +7,16 @@
 // Every link goes somewhere real. A footer full of href="#" placeholders looks
 // complete in a screenshot and is broken the moment anyone clicks.
 
-import { BarChart3, Mail, MapPin, ShieldCheck } from 'lucide-react';
+import { BarChart3, Mail, MapPin, MessageCircle, ShieldCheck, UserRound } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
-import { CONTACT_EMAIL } from '@/features/landing/constants';
+import {
+  CONTACT_EMAIL,
+  CONTACT_WHATSAPP,
+  CONTACT_WHATSAPP_DISPLAY,
+  OWNER_NAME,
+} from '@/features/landing/constants';
+import { normalizeWhatsappPhone } from '@/features/share/shareDocument';
 
 const PRODUCT = [
   { label: 'Features', href: '#modules' },
@@ -20,6 +26,9 @@ const PRODUCT = [
 ];
 
 const linkClass = 'text-body-sm text-white/65 transition-colors hover:text-text-inverse';
+
+/** Opens a chat with the number, country code first — wa.me wants no leading 0. */
+const WHATSAPP_HREF = `https://wa.me/${normalizeWhatsappPhone(CONTACT_WHATSAPP) ?? ''}`;
 
 export function LandingFooter() {
   return (
@@ -63,20 +72,26 @@ export function LandingFooter() {
             </ul>
           </nav>
 
-          <nav aria-labelledby="footer-account">
-            <p id="footer-account" className="text-overline text-white/45">
-              Account
+          <nav aria-labelledby="footer-contact">
+            <p id="footer-contact" className="text-overline text-white/45">
+              Contact
             </p>
             <ul className="mt-md flex flex-col gap-sm">
-              <li>
-                <Link to="/get-started" className={linkClass}>
-                  Sign in
-                </Link>
+              <li className="flex items-center gap-xs text-body-sm text-text-inverse">
+                <UserRound className="size-4 shrink-0 text-white/65" aria-hidden="true" />
+                <span>{OWNER_NAME}</span>
               </li>
               <li>
-                <Link to="/register" className={linkClass}>
-                  Create an account
-                </Link>
+                <a
+                  href={WHATSAPP_HREF}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`Chat on WhatsApp: ${CONTACT_WHATSAPP_DISPLAY}`}
+                  className={`flex items-center gap-xs ${linkClass}`}
+                >
+                  <MessageCircle className="size-4 shrink-0" aria-hidden="true" />
+                  <span className="tabular">WhatsApp {CONTACT_WHATSAPP_DISPLAY}</span>
+                </a>
               </li>
               <li>
                 <a
@@ -86,6 +101,14 @@ export function LandingFooter() {
                   <Mail className="size-4 shrink-0" aria-hidden="true" />
                   <span className="truncate">{CONTACT_EMAIL}</span>
                 </a>
+              </li>
+              <li className="mt-xs flex flex-wrap items-center gap-x-md gap-y-xs">
+                <Link to="/get-started" className={linkClass}>
+                  Sign in
+                </Link>
+                <Link to="/register" className={linkClass}>
+                  Create an account
+                </Link>
               </li>
             </ul>
           </nav>

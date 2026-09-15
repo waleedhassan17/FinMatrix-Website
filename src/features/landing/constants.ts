@@ -5,3 +5,12 @@
  * so it changes in one place.
  */
 export const CONTACT_EMAIL = 'waleedhassansfd@gmail.com';
+
+/** Who is behind FinMatrix, named in the footer's Contact column. */
+export const OWNER_NAME = 'Muhammad Waleed Hassan';
+
+/** WhatsApp, as a Pakistani mobile number. The footer builds the wa.me link from it. */
+export const CONTACT_WHATSAPP = '03124890176';
+
+/** The same number grouped for reading: 0312 4890176. */
+export const CONTACT_WHATSAPP_DISPLAY = `${CONTACT_WHATSAPP.slice(0, 4)} ${CONTACT_WHATSAPP.slice(4)}`;

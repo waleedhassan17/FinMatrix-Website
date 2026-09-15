@@ -126,7 +126,9 @@ export const planSerializer = (raw: unknown): Plan => {
     totalLabel:
       str(r.totalLabel) ||
       (totalMinorUnits > 0 ? formatMoney(totalMinorUnits / 100) : ''),
-    features: Array.isArray(r.features) ? r.features.filter(isNonEmpty) : [],
+    features: resolvePlanFeatures(
+      Array.isArray(r.features) ? r.features.filter(isNonEmpty) : [],
+    ),
     maxUsers: typeof r.maxUsers === 'number' ? r.maxUsers : null,
     deliveryPersonnelLimit: num(r.deliveryPersonnelLimit),
     sortOrder: num(r.sortOrder),
@@ -135,6 +137,34 @@ export const planSerializer = (raw: unknown): Plan => {
 
 const isNonEmpty = (v: unknown): v is string =>
   typeof v === 'string' && v.trim().length > 0;
+
+const ACCOUNTING_FEATURE = 'Complete accounting: invoices, bills, payments, tax & reports';
+const PEOPLE_FEATURE = 'Payroll, budgets, bank reconciliation & team roles';
+
+/** What an inherited tier stood for, in the words the server now uses. */
+const INHERITED_FEATURES: Record<string, string[]> = {
+  'small business': [ACCOUNTING_FEATURE],
+  'large organization': [ACCOUNTING_FEATURE, PEOPLE_FEATURE],
+};
+
+/**
+ * A plan's feature list with no line pointing at another plan.
+ *
+ * The server once listed "Everything in Large Organization" on every warehouse
+ * plan — a tier no longer sold or shown — so a buyer was told a plan includes
+ * something they could not see. A line like that is replaced with what the
+ * tier actually included, or dropped when the tier is unknown. The current
+ * server copy has no such line and passes through unchanged.
+ */
+export const resolvePlanFeatures = (features: string[]): string[] => {
+  const out: string[] = [];
+  for (const feature of features) {
+    const inherited = /^everything in (.+?)\.?$/i.exec(feature.trim());
+    const lines = inherited ? (INHERITED_FEATURES[inherited[1].trim().toLowerCase()] ?? []) : [feature];
+    for (const line of lines) if (!out.includes(line)) out.push(line);
+  }
+  return out;
+};
 
 export const planListSerializer = (raw: unknown): Plan[] => {
   // /billing/plans answers { companyType, plans: [...] }; the public endpoint
@@ -225,18 +255,19 @@ export const formatTerm = (months: number): string => {
  *
  * The server sends the SAME four features for every plan in the live
  * catalogue, so printing them alone would render three identical cards and
- * hide the only thing a buyer is actually choosing between. The limit rows are
- * prepended from the plan's own numbers — derived from the response, not
- * invented — so each card states what it uniquely gives you first.
+ * hide the only thing a buyer is actually choosing between: how many delivery
+ * riders the plan allows. That row is prepended from the plan's own number —
+ * derived from the response, not invented — so each card states it first.
+ *
+ * No seat count. Access in FinMatrix is by role — the owner, staff and delivery
+ * personnel — and the server's `maxUsers` is the same on every plan, so "Up to
+ * 25 team members" described nothing a buyer chooses between.
  */
 export const planPerks = (plan: Plan): string[] => {
   const perks: string[] = [];
 
   if (plan.deliveryPersonnelLimit > 0) {
     perks.push(`Up to ${plan.deliveryPersonnelLimit} delivery riders`);
-  }
-  if (plan.maxUsers && plan.maxUsers > 0) {
-    perks.push(`Up to ${plan.maxUsers} team members`);
   }
 
   return [...perks, ...plan.features];
