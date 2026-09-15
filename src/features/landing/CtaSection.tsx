@@ -6,9 +6,15 @@
 // — two different dark navies with nothing between them, which read as a seam.
 // A rounded panel with light around it removes the seam entirely.
 //
-// The reassurance line states facts — no card is stored, nothing auto-renews —
-// rather than the usual "free trial, cancel anytime", which would be two claims
-// this product cannot make.
+// The reassurance line states facts, and only facts the product delivers.
+//
+// There IS now a free trial, so "free trial" and "no credit card required" may be
+// said — there is no card anywhere in the flow. What may NOT be said is "instant
+// access": a person reviews every trial request, and the owner is told it is
+// activated within 24 hours. The landing page must promise exactly that, never
+// something the backend will not do thirty seconds after sign-up. "Cancel
+// anytime" stays out as well: nothing renews, so there is nothing to cancel.
+// landingHonesty.test.tsx enforces all of this.
 
 import { ArrowRight, Check } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -16,7 +22,11 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { Reveal } from '@/components/motion/Reveal';
 
-const FACTS = ['No card stored', 'Nothing renews automatically', 'Your data stays yours'];
+const FACTS = [
+  'No credit card required',
+  'Free trial activated after review, usually within 24 hours',
+  'Nothing renews automatically',
+];
 
 export function CtaSection() {
   return (
@@ -44,19 +54,31 @@ export function CtaSection() {
             </h2>
 
             <p className="mx-auto mt-lg max-w-[560px] text-body-lg text-white/75">
-              Set up your company in minutes. Add your team when you are ready.
+              Set up your company in minutes and try every feature free for 30 days.
+              Add your team when you are ready.
             </p>
 
             <div className="mt-xxl flex flex-wrap justify-center gap-sm">
+              {/* The trial is requested at the plan step, after registration,
+                  email verification and company setup — so it starts where an
+                  account does. */}
               <Button
                 size="lg"
                 asChild
                 className="bg-surface px-xl text-primary-900 shadow-lg hover:bg-primary-50"
               >
                 <Link to="/register">
-                  Create your account
+                  Start your free trial
                   <ArrowRight className="size-4" aria-hidden="true" />
                 </Link>
+              </Button>
+              <Button
+                size="lg"
+                variant="text"
+                asChild
+                className="border border-white/20 bg-white/5 px-xl text-text-inverse hover:bg-white/10"
+              >
+                <Link to="/register">Create your account</Link>
               </Button>
               <Button
                 size="lg"

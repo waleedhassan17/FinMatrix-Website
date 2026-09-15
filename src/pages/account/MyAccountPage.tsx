@@ -561,7 +561,7 @@ function PlanDetails({
         <Button asChild full size="sm">
           <Link to="/account/renew">
             <CreditCard className="size-4" />
-            Renew subscription
+            {summary.trialing ? 'Subscribe to a plan' : 'Renew subscription'}
           </Link>
         </Button>
       )}

@@ -289,6 +289,8 @@ describe('riders', () => {
     expect(riderAvailability({ status: 'active', isAvailable: true })).toBe('available');
     expect(riderAvailability({ status: 'active', isAvailable: false })).toBe('busy');
     expect(riderAvailability({ status: 'on_leave', isAvailable: true })).toBe('on_leave');
+    // A plan-paused rider is never shown as available, whatever the toggle says.
+    expect(riderAvailability({ status: 'plan_locked', isAvailable: true })).toBe('plan_locked');
     const now = Date.parse('2026-09-11T10:00:00Z');
     expect(isRiderOnline({ locationUpdatedAt: '2026-09-11T09:59:00Z' }, now)).toBe(true);
     expect(isRiderOnline({ locationUpdatedAt: '2026-09-11T09:50:00Z' }, now)).toBe(false);

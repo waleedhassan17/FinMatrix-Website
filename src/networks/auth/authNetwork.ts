@@ -46,6 +46,8 @@ export class AuthError extends Error {
   rejectionReason?: string | null;
   /** WRONG_PORTAL only: the role of the account that was refused. */
   accountType?: UserRole | null;
+  /** COMPANY_PENDING only: whether a free-trial request or a payment is in review. */
+  pendingKind?: 'trial' | 'payment' | null;
 
   constructor(
     message: string,
@@ -55,6 +57,7 @@ export class AuthError extends Error {
       companyStatus?: string | null;
       rejectionReason?: string | null;
       accountType?: UserRole | null;
+      pendingKind?: 'trial' | 'payment' | null;
     },
   ) {
     super(message);
@@ -64,6 +67,7 @@ export class AuthError extends Error {
     this.companyStatus = extra?.companyStatus ?? null;
     this.rejectionReason = extra?.rejectionReason ?? null;
     this.accountType = extra?.accountType ?? null;
+    this.pendingKind = extra?.pendingKind ?? null;
   }
 }
 
@@ -88,7 +92,7 @@ interface RawErrorBody {
     email?: string;
     companyStatus?: string | null;
     rejectionReason?: string | null;
-    details?: { accountType?: string; portal?: string };
+    details?: { accountType?: string; portal?: string; pendingKind?: string };
   };
   code?: string;
   email?: string;
@@ -136,6 +140,11 @@ function asAuthError(e: unknown): never {
           ('companyStatus' in err ? err.companyStatus : undefined) ?? null,
         rejectionReason:
           ('rejectionReason' in err ? err.rejectionReason : undefined) ?? null,
+        // `details` is the one extra key the server's exception filter keeps.
+        pendingKind: (() => {
+          const kind = 'details' in err ? err.details?.pendingKind : undefined;
+          return kind === 'trial' || kind === 'payment' ? kind : null;
+        })(),
       },
     );
   }

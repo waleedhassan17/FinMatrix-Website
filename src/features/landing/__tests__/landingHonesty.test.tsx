@@ -11,9 +11,12 @@
 //
 //   FBR / tax compliance — the product has tax RATES and a liability report. It
 //       has no compliance certification, and claiming one is a regulatory claim.
-//   free trial / no card required — there is no trial and no card processor. The
-//       real flow is a bank transfer reviewed by a person. This is the one that
-//       would actively mislead a buyer into signing up.
+//   instant access — there IS a 30-day free trial now, and "free trial" and "no
+//       credit card required" are true and may be said. What is still false is
+//       that it starts on the spot: a person reviews every request and activates
+//       it within 24 hours. "Instant", "immediately", "right away" would promise
+//       what the backend does not do, and that is the claim that would actively
+//       mislead a buyer into signing up.
 //   competitor names and "N% cheaper" — we are not making comparative price
 //       claims about other companies' products.
 //   user / business counts, "trusted by" — invented social proof. There is no
@@ -47,13 +50,14 @@ const BANNED: [RegExp, string][] = [
 
 /**
  * Banned in the SELLING copy but allowed in the FAQ, which exists precisely to
- * say what the product does not do. "Is there a free trial? No." is the opposite
- * of a false claim, and a blunt page-wide ban would forbid answering the question
- * at all — pushing the copy toward silence on the thing a buyer most wants to know.
+ * say what the product does not do ("It is not instant: …"). A blunt page-wide
+ * ban would forbid answering the question at all — pushing the copy toward
+ * silence on the thing a buyer most wants to know.
  */
 const BANNED_OUTSIDE_FAQ: [RegExp, string][] = [
-  [/free trial/i, 'there is no trial'],
-  [/no credit card/i, 'there is no card processor'],
+  [/instant(ly)?\b/i, 'trials are reviewed by a person, not instant'],
+  [/immediately/i, 'trials are reviewed by a person, not immediate'],
+  [/right away|straight away/i, 'trials are reviewed by a person'],
   [/cancel anytime/i, 'nothing auto-renews, so there is nothing to cancel'],
 ];
 
@@ -85,13 +89,29 @@ describe('landing page claims', () => {
     expect(container.textContent ?? '').not.toMatch(pattern);
   });
 
-  it('answers the trial question rather than dodging it', () => {
+  it('answers the trial question rather than dodging it — including the review', () => {
     const { container } = renderLanding();
     const faq = container.querySelector('#faq')?.textContent ?? '';
 
-    // The question has to be asked AND answered in the negative. Without this,
-    // the ban above is satisfied just as well by saying nothing.
-    expect(faq).toMatch(/is there a free trial\?\s*no\./i);
+    // The question has to be asked AND answered, and the answer has to carry
+    // the part a buyer would otherwise discover later: it is reviewed, not
+    // instant. Without this the bans above are satisfied by saying nothing.
+    expect(faq).toMatch(/is there a free trial\?\s*yes\./i);
+    expect(faq).toMatch(/not instant/i);
+    expect(faq).toMatch(/24 hours/i);
+  });
+
+  it('never offers the trial without saying it is reviewed', () => {
+    const { container } = renderLanding();
+    const faq = container.querySelector('#faq');
+    faq?.remove();
+    const text = container.textContent ?? '';
+
+    // Wherever the selling copy mentions the trial, the 24-hour review is on
+    // the page too.
+    if (/free trial/i.test(text)) {
+      expect(text).toMatch(/24 hours/i);
+    }
   });
 });
 

@@ -38,6 +38,7 @@ const AVAILABILITY_LABEL: Record<ReturnType<typeof riderAvailability>, string> =
   busy: 'Busy',
   on_leave: 'On leave',
   inactive: 'Inactive',
+  plan_locked: 'Paused — plan limit',
 };
 
 const columnHelper = createColumnHelper<Delivery & { value: number }>();
@@ -81,7 +82,9 @@ export default function AssignDeliveriesPage() {
   const rankedRiders = useMemo(
     () =>
       [...riders]
-        .filter((r) => r.status !== 'inactive')
+        // Only riders the server will hand work to: it refuses anyone who is
+        // deactivated, on leave, or paused by the plan's rider limit.
+        .filter((r) => r.status === 'active')
         .sort(
           (a, b) =>
             Number(canTakeWork(b)) - Number(canTakeWork(a)) || a.currentLoad - b.currentLoad,

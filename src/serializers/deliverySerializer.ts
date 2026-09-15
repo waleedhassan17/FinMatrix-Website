@@ -111,7 +111,11 @@ export const mapRider = (raw: unknown): Rider => {
     maxLoad: num(r.maxLoad),
     currentLoad: num(r.currentLoad),
     isAvailable: r.isAvailable === true,
-    status: (status === 'on_leave' || status === 'inactive' ? status : 'active') as RiderStatus,
+    // plan_locked must not fall through to 'active': a paused rider cannot sign
+    // in or take work, and showing them as active would say they can.
+    status: (status === 'on_leave' || status === 'inactive' || status === 'plan_locked'
+      ? status
+      : 'active') as RiderStatus,
     rating: num(r.rating),
     totalDeliveries: num(r.totalDeliveries),
     onTimeRate: num(r.onTimeRate),

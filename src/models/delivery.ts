@@ -390,7 +390,13 @@ export const draftTotals = (lines: DeliveryLineDraft[]) => {
 
 // ─── Riders (delivery personnel) ────────────────────────
 
-export type RiderStatus = 'active' | 'on_leave' | 'inactive';
+/**
+ * plan_locked: paused by the SERVER because the plan allows fewer active riders
+ * than the company has. The rider cannot sign in or take work until a seat
+ * frees up. The owner cannot choose it (it is not in RIDER_STATUS_OPTIONS) —
+ * they swap seats by deactivating another rider and activating this one.
+ */
+export type RiderStatus = 'active' | 'on_leave' | 'inactive' | 'plan_locked';
 
 export interface Rider {
   userId: string;
@@ -435,7 +441,8 @@ export const isRiderOnline = (
 /** One word for a badge: why this rider can or cannot take work right now. */
 export const riderAvailability = (
   r: Pick<Rider, 'status' | 'isAvailable'>,
-): 'available' | 'busy' | 'on_leave' | 'inactive' => {
+): 'available' | 'busy' | 'on_leave' | 'inactive' | 'plan_locked' => {
+  if (r.status === 'plan_locked') return 'plan_locked';
   if (r.status === 'inactive') return 'inactive';
   if (r.status === 'on_leave') return 'on_leave';
   return r.isAvailable ? 'available' : 'busy';

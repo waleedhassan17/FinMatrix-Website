@@ -126,7 +126,13 @@ export default function LoginPage() {
           e.code === 'COMPANY_REJECTED' ||
           e.code === 'COMPANY_INACTIVE'
         ) {
-          navigate('/account-status', { replace: true, state: { code: e.code } });
+          // No session exists for a blocked sign-in, so the status page is told
+          // what happened here — including WHAT is in review (a free-trial
+          // request reads differently from a payment).
+          navigate('/account-status', {
+            replace: true,
+            state: { code: e.code, message: e.message, pendingKind: e.pendingKind ?? null },
+          });
           return;
         }
       }

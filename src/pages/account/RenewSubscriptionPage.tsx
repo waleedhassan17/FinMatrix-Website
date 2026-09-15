@@ -33,7 +33,7 @@ import {
   getPlansForCompany,
   submitPaymentProof,
 } from '@/networks/billing/billingNetwork';
-import { selectCompanyType, setIdentity } from '@/store/authSlice';
+import { selectCompanyStatus, selectCompanyType, setIdentity } from '@/store/authSlice';
 import { useAppDispatch, useAppSelector } from '@/store/store';
 
 function RenewBody() {
@@ -61,7 +61,11 @@ function RenewBody() {
   });
 
   const awaiting = status.data?.lastSubmission?.status === 'submitted';
-  const rejected = status.data?.lastSubmission?.status === 'rejected';
+  // A rejected free-trial REQUEST is not a rejected payment.
+  const rejected =
+    status.data?.lastSubmission?.status === 'rejected' &&
+    status.data.lastSubmission.kind !== 'TRIAL';
+  const trial = isTrialing(status.data);
 
   // Poll only while something is actually pending. An unconditional interval
   // would hammer the API for every owner who leaves this tab open.
@@ -107,9 +111,7 @@ function RenewBody() {
               </p>
               {status.data.expiryDate && (
                 <p className="mt-xxs text-body-sm text-text-secondary">
-                  {status.data.neverExpires
-                    ? 'Does not expire'
-                    : `Expired ${new Date(status.data.expiryDate).toLocaleDateString()}`}
+                  {expiryLine(status.data.expiryDate, status.data.neverExpires, trial)}
                 </p>
               )}
             </div>
@@ -181,7 +183,9 @@ function RenewBody() {
             onSelect={(plan) => {
               if (!awaiting) setChosen(plan);
             }}
-            ctaLabel={awaiting ? 'Payment pending' : 'Renew on this plan'}
+            ctaLabel={
+              awaiting ? 'Payment pending' : trial ? 'Subscribe to this plan' : 'Renew on this plan'
+            }
           />
           {chosen && bank.isPending && (
             <p className="mt-lg text-center text-body-sm text-text-secondary">
@@ -194,12 +198,53 @@ function RenewBody() {
   );
 }
 
+/** A company on a free trial it never converted to a paid plan. */
+const isTrialing = (s: { isTrial: boolean; trialConvertedAt: string | null } | undefined): boolean =>
+  s?.isTrial === true && !s.trialConvertedAt;
+
+/** "Expired 1/2/2027" only when it has — this page is also opened mid-term. */
+function expiryLine(expiryDate: string, neverExpires: boolean, trial: boolean): string {
+  if (neverExpires) return 'Does not expire';
+  const when = new Date(expiryDate);
+  const date = when.toLocaleDateString();
+  const past = when.getTime() <= Date.now();
+  if (trial) return past ? `Trial ended ${date}` : `Trial ends ${date}`;
+  return past ? `Expired ${date}` : `Active until ${date}`;
+}
+
+// Copy only. The double-payment guard in RenewBody is untouched: a company on a
+// free trial has never paid, so the words are "subscribe", not "renew" — the
+// flow, the plans and the proof upload are identical.
 export default function RenewSubscriptionPage() {
+  const companyStatus = useAppSelector(selectCompanyStatus);
+  // Same query key as RenewBody, so this shares its single request.
+  const status = useQuery({ queryKey: ['billing', 'status'], queryFn: getBillingStatus });
+  const trial = isTrialing(status.data);
+  const trialEnded = trial && status.data?.accountStatus === 'inactive';
+
   return (
     <OnboardingShell
-      back={{ to: '/account-status', label: 'Back' }}
-      title="Renew your subscription"
-      subtitle="Your data is exactly where you left it. Pay for a new term and everything switches back on."
+      // A running company opened this from its app (the trial banner, My
+      // Account); a lapsed one came from the status page.
+      back={
+        companyStatus === 'active'
+          ? { to: '/dashboard', label: 'Back' }
+          : { to: '/account-status', label: 'Back' }
+      }
+      title={
+        trialEnded
+          ? 'Your trial has ended'
+          : trial
+            ? 'Subscribe to a plan'
+            : 'Renew your subscription'
+      }
+      subtitle={
+        trialEnded
+          ? 'Subscribe to keep your data active. Everything you set up during the trial is exactly where you left it.'
+          : trial
+            ? 'Choose a plan to keep going after your trial and add more delivery riders. It starts as soon as your payment is verified.'
+            : 'Your data is exactly where you left it. Pay for a new term and everything switches back on.'
+      }
     >
       <OwnerOnly
         fallback={

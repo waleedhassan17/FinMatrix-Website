@@ -93,6 +93,11 @@ export interface SubscriptionSummary {
   shouldRenew: boolean;
   /** A payment proof is with an administrator; paying again would pay twice. */
   pendingReview: boolean;
+  /**
+   * On a free trial that has not been converted to a paid plan. The owner has
+   * never paid, so the action is "subscribe", not "renew".
+   */
+  trialing: boolean;
 }
 
 /** Days at or under which the renewal button appears. */
@@ -112,9 +117,10 @@ export function subscriptionSummary(status: BillingStatus): SubscriptionSummary 
   const planLabel = status.planLabel || titleCase(status.plan) || 'No plan';
   const pendingReview = status.lastSubmission?.status === 'submitted';
   const rejected = status.lastSubmission?.status === 'rejected';
+  const trialing = status.isTrial === true && !status.trialConvertedAt;
 
   if (status.neverExpires) {
-    return { planLabel, renewalLine: 'No expiry', daysLeftLabel: '', tone: 'normal', shouldRenew: false, pendingReview };
+    return { planLabel, renewalLine: 'No expiry', daysLeftLabel: '', tone: 'normal', shouldRenew: false, pendingReview, trialing };
   }
 
   const days = status.daysRemaining;
@@ -129,6 +135,7 @@ export function subscriptionSummary(status: BillingStatus): SubscriptionSummary 
       tone: 'danger',
       shouldRenew: !pendingReview,
       pendingReview,
+      trialing,
     };
   }
 
@@ -138,21 +145,39 @@ export function subscriptionSummary(status: BillingStatus): SubscriptionSummary 
   const date = formatShortDate(status.expiryDate.slice(0, 10));
 
   if (expired) {
-    return { planLabel, renewalLine: `Expired ${date}`, daysLeftLabel: '', tone: 'danger', shouldRenew: !pendingReview, pendingReview };
+    return {
+      planLabel,
+      renewalLine: trialing ? `Trial ended ${date}` : `Expired ${date}`,
+      daysLeftLabel: '',
+      tone: 'danger',
+      shouldRenew: !pendingReview,
+      pendingReview,
+      trialing,
+    };
   }
 
   if (days === 0) {
-    return { planLabel, renewalLine: `Expires today, ${date}`, daysLeftLabel: '', tone: 'danger', shouldRenew: !pendingReview, pendingReview };
+    return {
+      planLabel,
+      renewalLine: trialing ? `Trial ends today, ${date}` : `Expires today, ${date}`,
+      daysLeftLabel: '',
+      tone: 'danger',
+      shouldRenew: !pendingReview,
+      pendingReview,
+      trialing,
+    };
   }
 
   const tone: SubscriptionTone = days !== null && days <= WARNING_DAYS ? 'warning' : 'normal';
   const inWindow = days !== null && days <= RENEW_WINDOW_DAYS;
   return {
     planLabel,
-    renewalLine: `Active until ${date}`,
+    renewalLine: trialing ? `Free trial until ${date}` : `Active until ${date}`,
     daysLeftLabel: days === null ? '' : `${days} ${days === 1 ? 'day' : 'days'} left`,
     tone,
-    shouldRenew: !pendingReview && (inWindow || rejected),
+    // A trialist may subscribe at any point of the trial, not only near its end.
+    shouldRenew: !pendingReview && (trialing || inWindow || rejected),
     pendingReview,
+    trialing,
   };
 }

@@ -73,9 +73,11 @@ export function PricingSection() {
           <div className="mx-auto mt-xxxl flex max-w-[760px] items-start gap-sm rounded-xl border border-white/10 bg-white/5 p-lg">
             <Landmark className="mt-[2px] size-5 shrink-0 text-primary-200" aria-hidden="true" />
             <p className="text-body-sm text-white/75">
-              Payment is by bank transfer. After you choose a plan we show the
-              account details and the amount due — upload the receipt and we
-              activate your account, usually within one business day.
+              Paid plans are paid by bank transfer. After you choose a plan we show
+              the account details and the amount due — upload the receipt and we
+              activate your account, usually within one business day. Not ready to
+              pay? Start with a 30-day free trial instead: no credit card, activated
+              after a quick review, usually within 24 hours.
             </p>
           </div>
         </Reveal>

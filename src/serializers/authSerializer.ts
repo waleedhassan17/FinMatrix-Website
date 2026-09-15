@@ -11,6 +11,7 @@ import type {
   CompanyRef,
   CompanyType,
   Features,
+  SubscriptionSummary,
   UserRole,
 } from '@/types';
 import type { Identity } from '@/store/authSlice';
@@ -35,6 +36,7 @@ export interface RawAuthPayload {
   companyStatus?: string | null;
   companyType?: string | null;
   features?: Record<string, boolean> | null;
+  subscription?: Record<string, unknown> | null;
 }
 
 const ACCOUNT_STATUSES: AccountStatus[] = [
@@ -67,6 +69,23 @@ const companySerializer = (
 ): CompanyRef | null =>
   raw?.id ? { id: raw.id, name: raw.name ?? '', status: raw.status ?? '' } : null;
 
+const isoOrNull = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
+
+/** The plan + trial summary; null when the payload has none (no company yet). */
+export const subscriptionSerializer = (raw: unknown): SubscriptionSummary | null => {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  return {
+    plan: typeof r.plan === 'string' ? r.plan : '',
+    planLabel: typeof r.planLabel === 'string' ? r.planLabel : '',
+    expiryDate: isoOrNull(r.expiryDate),
+    paymentStatus: typeof r.paymentStatus === 'string' ? r.paymentStatus : 'none',
+    isTrial: r.isTrial === true,
+    trialStartedAt: isoOrNull(r.trialStartedAt),
+    trialConvertedAt: isoOrNull(r.trialConvertedAt),
+  };
+};
+
 /**
  * Map a signin or /auth/me payload to Identity.
  *
@@ -90,6 +109,7 @@ export const identitySerializer = (raw: RawAuthPayload): Identity => {
       status && ACCOUNT_STATUSES.includes(status) ? status : (status ?? null),
     companyType: type && COMPANY_TYPES.includes(type) ? type : null,
     features: (raw.features as Features | null) ?? null,
+    subscription: subscriptionSerializer(raw.subscription),
   };
 };
 

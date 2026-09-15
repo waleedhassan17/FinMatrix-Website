@@ -50,6 +50,8 @@ const STATUS_TIER_OF: Record<string, StatusTier> = {
   archived: 'neutral',
   none: 'neutral',
   on_leave: 'neutral',
+  // A rider paused by the plan's rider limit — fixable, so it asks attention.
+  plan_locked: 'warning',
   // ── personnel availability ──
   available: 'success',
   busy: 'warning',

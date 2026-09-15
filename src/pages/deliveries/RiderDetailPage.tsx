@@ -54,6 +54,7 @@ const AVAILABILITY_LABEL = {
   busy: 'Busy',
   on_leave: 'On leave',
   inactive: 'Inactive',
+  plan_locked: 'Paused — plan limit',
 } as const;
 
 const columnHelper = createColumnHelper<Delivery & { value: number }>();
@@ -104,7 +105,10 @@ export default function RiderDetailPage() {
         vehicleNumber: form.vehicleNumber.trim(),
         zones: parseZones(form.zones),
         ...(form.maxLoad.trim() ? { maxLoad: form.maxLoad.trim() } : {}),
-        status: form.status,
+        // Only a CHANGED status is sent. Re-sending an unchanged one would
+        // re-run the seat check for nothing, and 'plan_locked' is not a value
+        // the server accepts from a client at all.
+        ...(rider && form.status !== rider.status ? { status: form.status } : {}),
       }),
     onSuccess: () => {
       invalidateDeliveries(queryClient);
@@ -276,9 +280,20 @@ export default function RiderDetailPage() {
               label="Status"
               value={form.status}
               onChange={(v) => patch({ status: v as RiderStatus })}
-              options={RIDER_STATUS_OPTIONS}
+              options={
+                rider.status === 'plan_locked'
+                  ? [
+                      { value: 'plan_locked', label: 'Paused — plan limit' },
+                      ...RIDER_STATUS_OPTIONS,
+                    ]
+                  : RIDER_STATUS_OPTIONS
+              }
               disabled={!canManage}
-              hint="On leave or inactive riders are never auto-assigned."
+              hint={
+                rider.status === 'plan_locked'
+                  ? 'Paused because your plan includes fewer active riders than your team has. Set Active to give them a seat — if every seat is taken, make another rider inactive first, or upgrade your plan.'
+                  : 'On leave or inactive riders are never auto-assigned.'
+              }
             />
           </div>
           {canManage && (

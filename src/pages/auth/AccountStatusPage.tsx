@@ -1,13 +1,15 @@
-import { useQueryClient } from '@tanstack/react-query';
-import { Clock, RefreshCw, ShieldX, XCircle } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Clock, Gift, RefreshCw, ShieldX, XCircle } from 'lucide-react';
 import { useState, type ComponentType } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, Navigate, useLocation } from 'react-router-dom';
 
 import { Button } from '@/components/ui/Button';
 import { AuthShell } from '@/features/auth/AuthShell';
 import { useSignOut } from '@/features/auth/useSignOut';
 import { authMe } from '@/networks/auth/authNetwork';
+import { getBillingStatus } from '@/networks/billing/billingNetwork';
 import {
+  selectAuthStatus,
   selectCompany,
   selectCompanyStatus,
   selectIsOwner,
@@ -17,13 +19,19 @@ import { useAppDispatch, useAppSelector } from '@/store/store';
 import type { AccountStatus } from '@/types';
 
 /**
- * Where a signed-in user lands when their company will not serve business
- * requests.
+ * Where a user lands when their company will not serve business requests.
  *
- * Reached two ways: sign-in returned a gate code (pending / rejected), or a
- * business request came back 403 COMPANY_NOT_ACTIVE mid-session and the axios
- * client re-read /auth/me. Both end here, because from the user's side they are
- * the same situation — the product is closed and they need to know why.
+ * Reached three ways: sign-in returned a gate code (pending / rejected — no
+ * token is issued, so the login page hands the code over in route state), a
+ * signed-in draft or expired owner was routed here, or a business request came
+ * back 403 COMPANY_NOT_ACTIVE mid-session and the axios client re-read
+ * /auth/me. From the user's side these are the same situation — the product is
+ * closed and they need to know why.
+ *
+ * A FREE TRIAL request waits in the same review queue as a payment, so it is
+ * `pending` too. Its copy is branched here rather than given another page: the
+ * promise differs ("activated within 24 hours", "your 30 days start then") and
+ * neither message may be shown to the other kind of owner.
  */
 
 interface Copy {
@@ -46,7 +54,7 @@ const COPY: Record<AccountStatus | 'unknown', Copy> = {
     icon: Clock,
     tone: 'text-warning',
     title: 'Setup not finished',
-    body: 'Your company registration has not been submitted yet. Pick a plan and send us your payment to finish.',
+    body: 'Your company registration has not been submitted yet. Start a free trial or choose a plan to finish.',
   },
   inactive: {
     icon: XCircle,
@@ -74,16 +82,72 @@ const COPY: Record<AccountStatus | 'unknown', Copy> = {
   },
 };
 
+const TRIAL_PENDING_COPY: Copy = {
+  icon: Gift,
+  tone: 'text-primary',
+  title: 'Your free trial is being activated',
+  body: 'We have received your request for a 30-day free trial — every feature, with one delivery rider. Our team activates it within 24 hours and a confirmation email is on its way. Your 30 days start when the trial is activated, so no time is lost while you wait.',
+};
+
+const TRIAL_ENDED_COPY: Copy = {
+  icon: XCircle,
+  tone: 'text-danger',
+  title: 'Your free trial has ended',
+  body: 'Subscribe to keep your data active. Everything you set up during the trial is exactly where you left it.',
+};
+
+/** Sign-in gate codes → the status they stand for. */
+const CODE_STATUS: Record<string, AccountStatus> = {
+  COMPANY_PENDING: 'pending',
+  COMPANY_REJECTED: 'rejected',
+  COMPANY_INACTIVE: 'inactive',
+};
+
+interface GateState {
+  code?: string;
+  message?: string;
+  pendingKind?: 'trial' | 'payment' | null;
+}
+
 export default function AccountStatusPage() {
   const dispatch = useAppDispatch();
   const queryClient = useQueryClient();
-  const status = useAppSelector(selectCompanyStatus);
+  const location = useLocation();
+  const authStatus = useAppSelector(selectAuthStatus);
+  const sessionStatus = useAppSelector(selectCompanyStatus);
   const company = useAppSelector(selectCompany);
   const isOwner = useAppSelector(selectIsOwner);
   const { signOut } = useSignOut();
   const [checking, setChecking] = useState(false);
 
-  const copy = COPY[status ?? 'unknown'];
+  const gate = (location.state as GateState | null) ?? null;
+  const gateStatus = gate?.code ? CODE_STATUS[gate.code] : undefined;
+  const signedIn = authStatus === 'authenticated';
+
+  // With a session we can ask what is in review and whether a trial lapsed.
+  // Without one (a blocked sign-in) there is no token to ask with.
+  const status: AccountStatus | null = signedIn ? sessionStatus : (gateStatus ?? null);
+  const billing = useQuery({
+    queryKey: ['billing', 'status'],
+    queryFn: getBillingStatus,
+    enabled: signedIn && (status === 'pending' || status === 'inactive'),
+    retry: false,
+  });
+
+  if (authStatus === 'anonymous' && !gateStatus) {
+    return <Navigate to="/login" replace state={{ from: location }} />;
+  }
+
+  const trialPending =
+    status === 'pending' && (gate?.pendingKind === 'trial' || billing.data?.trialPending === true);
+  const trialEnded =
+    status === 'inactive' && billing.data?.isTrial === true && !billing.data.trialConvertedAt;
+
+  const copy = trialPending
+    ? TRIAL_PENDING_COPY
+    : trialEnded
+      ? TRIAL_ENDED_COPY
+      : COPY[status ?? 'unknown'];
   const Icon = copy.icon;
 
   // Re-checking is worth offering: `inactive` is computed live from the
@@ -108,38 +172,55 @@ export default function AccountStatusPage() {
         <Icon className={`size-10 ${copy.tone}`} />
         <p className="text-body-md text-text-secondary">{copy.body}</p>
 
-        <div className="mt-sm flex w-full flex-col gap-xs">
-          {/* A way forward, not just an explanation. `inactive` means the
-              subscription lapsed, which the owner can fix right now; `draft`
-              means onboarding was abandoned part-way. Both were previously dead
-              ends with nothing but "Check again". */}
-          {status === 'inactive' && isOwner && (
-            <Button full asChild>
-              <Link to="/account/renew">Renew subscription</Link>
-            </Button>
-          )}
-          {status === 'draft' && isOwner && (
-            <Button full asChild>
-              <Link to="/onboarding/plan">Finish setting up</Link>
-            </Button>
-          )}
+        {trialPending && (
+          <p className="text-body-sm text-text-tertiary">
+            Free trials are usually activated within 24 hours.
+          </p>
+        )}
 
-          <Button
-            variant={
-              isOwner && (status === 'inactive' || status === 'draft')
-                ? 'secondary'
-                : 'primary'
-            }
-            full
-            onClick={recheck}
-            disabled={checking}
-          >
-            <RefreshCw className={`size-4 ${checking ? 'animate-spin' : ''}`} />
-            {checking ? 'Checking…' : 'Check again'}
-          </Button>
-          <Button variant="text" full onClick={signOut}>
-            Sign out
-          </Button>
+        <div className="mt-sm flex w-full flex-col gap-xs">
+          {signedIn ? (
+            <>
+              {/* A way forward, not just an explanation. `inactive` means the
+                  subscription lapsed, which the owner can fix right now; `draft`
+                  means onboarding was abandoned part-way. Both were previously
+                  dead ends with nothing but "Check again". */}
+              {status === 'inactive' && isOwner && (
+                <Button full asChild>
+                  <Link to="/account/renew">
+                    {trialEnded ? 'Subscribe to a plan' : 'Renew subscription'}
+                  </Link>
+                </Button>
+              )}
+              {status === 'draft' && isOwner && (
+                <Button full asChild>
+                  <Link to="/onboarding/plan">Finish setting up</Link>
+                </Button>
+              )}
+
+              <Button
+                variant={
+                  isOwner && (status === 'inactive' || status === 'draft')
+                    ? 'secondary'
+                    : 'primary'
+                }
+                full
+                onClick={recheck}
+                disabled={checking}
+              >
+                <RefreshCw className={`size-4 ${checking ? 'animate-spin' : ''}`} />
+                {checking ? 'Checking…' : 'Check again'}
+              </Button>
+              <Button variant="text" full onClick={signOut}>
+                Sign out
+              </Button>
+            </>
+          ) : (
+            // No session: the only thing to do is try signing in again later.
+            <Button full asChild>
+              <Link to="/login">Back to sign in</Link>
+            </Button>
+          )}
         </div>
       </div>
     </AuthShell>

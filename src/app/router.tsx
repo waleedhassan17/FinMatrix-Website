@@ -233,16 +233,14 @@ export const router = createBrowserRouter([
       { path: '/forgot-password', element: <ForgotPasswordPage /> },
       { path: '/verify-email', element: <VerifyEmailPage /> },
 
-      // Signed in, but the company is gated. Inside RequireAuth (it reads
-      // identity) but outside RequireActiveCompany, or it would redirect to
-      // itself forever.
+      // The company is gated. Outside RequireActiveCompany, or it would
+      // redirect to itself forever — and outside RequireAuth too, because a
+      // PENDING or REJECTED sign-in issues no token: the login page hands the
+      // gate over in route state instead, and the page itself sends anyone who
+      // arrives with neither a session nor that hand-off to /login.
       {
         path: '/account-status',
-        element: (
-          <RequireAuth>
-            <AccountStatusPage />
-          </RequireAuth>
-        ),
+        element: <AccountStatusPage />,
       },
 
       // ── Owner-only, and OUTSIDE RequireActiveCompany ──────────────

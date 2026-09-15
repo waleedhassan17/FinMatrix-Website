@@ -8,7 +8,8 @@
 // open/close state for free, with no JavaScript and no ARIA to get wrong.
 //
 // The trial question is answered honestly. Someone asking it has already decided
-// they want the product; a dodge costs more trust than a plain "no" does.
+// they want the product, so the answer says exactly what they get and — just as
+// plainly — what they do not: the trial is reviewed by a person, not instant.
 
 import { Mail, Plus } from 'lucide-react';
 
@@ -19,7 +20,7 @@ import { SectionIntro } from '@/features/landing/SectionIntro';
 const FAQS = [
   {
     q: 'Is there a free trial?',
-    a: 'No. Plans are paid by bank transfer for a fixed term, and your account is activated once we verify the receipt. There is no card on file and nothing renews automatically — when a term ends you choose whether to pay for another.',
+    a: 'Yes. You get 30 days with every feature and one delivery rider, with no credit card. It is not instant: after you register and set up your company, our team reviews the request and activates it — usually within 24 hours — and the 30 days start then. Subscribe whenever you are ready; plans are paid by bank transfer for a fixed term and nothing renews automatically.',
   },
   {
     q: 'How do my staff get accounts?',
@@ -39,7 +40,7 @@ const FAQS = [
   },
   {
     q: 'What if I run more riders than my plan allows?',
-    a: 'The limit is enforced when you add delivery staff, and the app tells you how many of your allowance you have used. Moving up a tier is the same bank-transfer flow as the first purchase.',
+    a: 'The limit is enforced when you add or reactivate delivery staff, and the app tells you how many of your allowance you have used. If you move to a plan with fewer riders, the extra riders are paused — their accounts and history are kept. Riders with deliveries in progress and your longest-serving riders keep their seats first, and you can swap who is active at any time. Moving up a tier is the same bank-transfer flow as the first purchase.',
   },
 ];
 

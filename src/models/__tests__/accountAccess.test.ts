@@ -52,9 +52,55 @@ const base: BillingStatus = {
   priceLabel: '',
   deliveryPersonnelLimit: 10,
   lastSubmission: null,
+  isTrial: false,
+  trialRequestedAt: null,
+  trialStartedAt: null,
+  trialConvertedAt: null,
+  trialDaysRemaining: null,
+  trialPending: false,
 };
 
 describe('subscriptionSummary', () => {
+  const trial: BillingStatus = {
+    ...base,
+    plan: 'warehouse_trial',
+    planLabel: 'Free trial — 30 days',
+    paymentStatus: 'none',
+    daysRemaining: 30,
+    isTrial: true,
+    trialStartedAt: '2026-12-02T00:00:00.000Z',
+    trialDaysRemaining: 30,
+  };
+
+  it('reads a running trial as a trial and offers to subscribe at once', () => {
+    expect(subscriptionSummary(trial)).toMatchObject({
+      renewalLine: `Free trial until ${formatShortDate('2027-01-01')}`,
+      trialing: true,
+      shouldRenew: true,
+    });
+  });
+
+  it('does not offer to pay twice while a trialist’s payment is in review', () => {
+    const s = subscriptionSummary({
+      ...trial,
+      lastSubmission: { id: 'p1', plan: 'warehouse_starter_6mo', planLabel: 'Starter', kind: 'NEW', status: 'submitted', rejectionReason: null, createdAt: '' },
+    });
+    expect(s).toMatchObject({ pendingReview: true, shouldRenew: false, trialing: true });
+  });
+
+  it('says the trial ended once it lapses', () => {
+    expect(subscriptionSummary({ ...trial, daysRemaining: -2, subscriptionStatus: 'expired' })).toMatchObject({
+      renewalLine: `Trial ended ${formatShortDate('2027-01-01')}`,
+      tone: 'danger',
+      trialing: true,
+    });
+  });
+
+  it('treats a converted trial as an ordinary paid plan', () => {
+    const s = subscriptionSummary({ ...base, isTrial: true, trialConvertedAt: '2026-12-20T00:00:00.000Z' });
+    expect(s).toMatchObject({ trialing: false, renewalLine: `Active until ${formatShortDate('2027-01-01')}`, shouldRenew: false });
+  });
+
   it('reads a healthy plan plainly, with no renewal prompt', () => {
     expect(subscriptionSummary(base)).toEqual({
       planLabel: 'Warehouse',
@@ -63,6 +109,7 @@ describe('subscriptionSummary', () => {
       tone: 'normal',
       shouldRenew: false,
       pendingReview: false,
+      trialing: false,
     });
   });
 
@@ -91,7 +138,7 @@ describe('subscriptionSummary', () => {
     const s = subscriptionSummary({
       ...base,
       daysRemaining: 5,
-      lastSubmission: { id: 'p1', plan: 'warehouse', status: 'submitted', rejectionReason: null, createdAt: '' },
+      lastSubmission: { id: 'p1', plan: 'warehouse', planLabel: 'Warehouse', kind: 'RENEWAL', status: 'submitted', rejectionReason: null, createdAt: '' },
     });
     expect(s).toMatchObject({ pendingReview: true, shouldRenew: false });
   });
@@ -99,7 +146,7 @@ describe('subscriptionSummary', () => {
   it('offers renewal again after a rejected proof', () => {
     const s = subscriptionSummary({
       ...base,
-      lastSubmission: { id: 'p1', plan: 'warehouse', status: 'rejected', rejectionReason: 'Blurry', createdAt: '' },
+      lastSubmission: { id: 'p1', plan: 'warehouse', planLabel: 'Warehouse', kind: 'RENEWAL', status: 'rejected', rejectionReason: 'Blurry', createdAt: '' },
     });
     expect(s.shouldRenew).toBe(true);
   });

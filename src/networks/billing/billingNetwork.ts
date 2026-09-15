@@ -34,6 +34,7 @@ const asRaw = (v: unknown): Raw => (v && typeof v === 'object' ? (v as Raw) : {}
 const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 const numOrNull = (v: unknown): number | null =>
   typeof v === 'number' && Number.isFinite(v) ? v : null;
+const strOrNull = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
 
 // ─── Plans ──────────────────────────────────────────
 
@@ -95,10 +96,24 @@ export interface BillingStatus {
   lastSubmission: {
     id: string;
     plan: string;
+    planLabel: string;
+    /** NEW | RENEWAL | UPGRADE, or TRIAL for a free-trial request. */
+    kind: string;
     status: SubmissionStatus;
     rejectionReason: string | null;
     createdAt: string;
   } | null;
+  // ── Free trial ──
+  /** Permanent history: true from trial approval onward, even after paying. */
+  isTrial: boolean;
+  trialRequestedAt: string | null;
+  trialStartedAt: string | null;
+  /** Set when a real payment was approved after the trial. */
+  trialConvertedAt: string | null;
+  /** Days left while the trial runs unconverted; otherwise null. */
+  trialDaysRemaining: number | null;
+  /** A free-trial request is waiting for review. */
+  trialPending: boolean;
 }
 
 const billingStatusSerializer = (raw: unknown): BillingStatus => {
@@ -120,11 +135,19 @@ const billingStatusSerializer = (raw: unknown): BillingStatus => {
       ? {
           id: str(last.id),
           plan: str(last.plan),
+          planLabel: str(last.planLabel),
+          kind: str(last.kind),
           status: (str(last.status) || 'submitted') as SubmissionStatus,
           rejectionReason: str(last.rejectionReason) || null,
           createdAt: str(last.createdAt),
         }
       : null,
+    isTrial: r.isTrial === true,
+    trialRequestedAt: strOrNull(r.trialRequestedAt),
+    trialStartedAt: strOrNull(r.trialStartedAt),
+    trialConvertedAt: strOrNull(r.trialConvertedAt),
+    trialDaysRemaining: numOrNull(r.trialDaysRemaining),
+    trialPending: r.trialPending === true,
   };
 };
 
@@ -226,6 +249,51 @@ export const submitPaymentProof = async (
     `/billing/submit?plan=${encodeURIComponent(planKey)}`,
     form,
   );
+};
+
+// ─── Free trial ─────────────────────────────────────
+
+export interface StartTrialResult {
+  status: 'pending_approval';
+  submissionId: string;
+  requestedPlanKey: string;
+  requestedPlanLabel: string;
+  requestedAt: string;
+  estimatedActivationHours: number;
+  billing: BillingStatus;
+}
+
+/**
+ * Request the admin-approved 30-day free trial.
+ *
+ * NOT advisory, unlike selfSubscribe below: this call IS the request. It grants
+ * nothing by itself — the company stays pending until a super-admin approves,
+ * and the 30 days start then — so every failure (email or phone already used,
+ * email unverified, phone missing) must reach the user as the server words it.
+ *
+ * companyId travels as the x-company-id header the axios interceptor attaches
+ * AND in the body, so a just-created company that is not in storage yet still
+ * resolves.
+ */
+export const startTrial = async (companyId: string | null): Promise<StartTrialResult> => {
+  try {
+    const res = await api.post(
+      '/companies/start-trial',
+      companyId ? { companyId } : {},
+    );
+    const raw = asRaw(unwrapEnvelope(res));
+    return {
+      status: 'pending_approval',
+      submissionId: str(raw.submissionId),
+      requestedPlanKey: str(raw.requestedPlanKey),
+      requestedPlanLabel: str(raw.requestedPlanLabel),
+      requestedAt: str(raw.requestedAt),
+      estimatedActivationHours: numOrNull(raw.estimatedActivationHours) ?? 24,
+      billing: billingStatusSerializer(raw.billing),
+    };
+  } catch (error) {
+    throw toApiError(error);
+  }
 };
 
 // ─── Subscribe ──────────────────────────────────────

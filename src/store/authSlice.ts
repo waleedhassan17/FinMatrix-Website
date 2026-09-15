@@ -21,6 +21,7 @@ import type {
   CompanyRef,
   CompanyType,
   Features,
+  SubscriptionSummary,
   UserRole,
 } from '@/types';
 import {
@@ -38,6 +39,8 @@ export interface Identity {
   companyStatus: AccountStatus | null;
   companyType: CompanyType | null;
   features: Features | null;
+  /** Plan + trial summary. Optional so older payloads (and fixtures) still fit. */
+  subscription?: SubscriptionSummary | null;
 }
 
 export interface AuthState {
@@ -47,6 +50,7 @@ export interface AuthState {
   companyStatus: AccountStatus | null;
   companyType: CompanyType | null;
   features: Features | null;
+  subscription: SubscriptionSummary | null;
   isAuthenticated: boolean;
   /**
    * 'unknown' until the boot /auth/me settles. Route guards must not redirect
@@ -79,6 +83,7 @@ const initialState: AuthState = {
   companyStatus: null,
   companyType: null,
   features: null,
+  subscription: null,
   isAuthenticated: false,
   status: 'unknown',
   error: '',
@@ -108,7 +113,7 @@ export const authSlice = createSlice({
   initialState: { ...initialState, selectedRole: getStoredPortalRole() },
   reducers: {
     setIdentity(state, action: PayloadAction<Identity>) {
-      const { user, companyId, company, companyStatus, companyType, features } =
+      const { user, companyId, company, companyStatus, companyType, features, subscription } =
         action.payload;
       state.user = user;
       state.companyId = companyId;
@@ -116,6 +121,7 @@ export const authSlice = createSlice({
       state.companyStatus = companyStatus;
       state.companyType = companyType;
       state.features = features;
+      state.subscription = subscription ?? null;
       state.isAuthenticated = true;
       state.status = 'authenticated';
       state.error = '';
@@ -173,6 +179,8 @@ export const selectCompanyStatus = (s: WithAuth): AccountStatus | null =>
 export const selectCompanyType = (s: WithAuth): CompanyType | null =>
   s.auth.companyType ?? null;
 export const selectFeatures = (s: WithAuth): Features | null => s.auth.features ?? null;
+export const selectSubscription = (s: WithAuth): SubscriptionSummary | null =>
+  s.auth.subscription ?? null;
 export const selectIsAuthenticated = (s: WithAuth): boolean => s.auth.isAuthenticated;
 export const selectAuthStatus = (s: WithAuth): AuthState['status'] => s.auth.status;
 export const selectAuthError = (s: WithAuth): string => s.auth.error;

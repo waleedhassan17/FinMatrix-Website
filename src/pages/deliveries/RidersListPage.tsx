@@ -22,6 +22,7 @@ const FILTERS: Array<[Filter, string]> = [
   ['busy', 'Busy'],
   ['on_leave', 'On leave'],
   ['inactive', 'Inactive'],
+  ['plan_locked', 'Paused'],
 ];
 
 const AVAILABILITY_LABEL: Record<Exclude<Filter, 'all'>, string> = {
@@ -29,6 +30,7 @@ const AVAILABILITY_LABEL: Record<Exclude<Filter, 'all'>, string> = {
   busy: 'Busy',
   on_leave: 'On leave',
   inactive: 'Inactive',
+  plan_locked: 'Paused — plan limit',
 };
 
 const columnHelper = createColumnHelper<Rider>();

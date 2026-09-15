@@ -53,6 +53,24 @@ export interface AuthUser {
   isEmailVerified: boolean;
 }
 
+/**
+ * Plan + free-trial summary carried by signin and /auth/me. The trial countdown
+ * reads it, so the app shell needs no billing request of its own.
+ */
+export interface SubscriptionSummary {
+  plan: string;
+  planLabel: string;
+  /** ISO timestamp; null for a plan that never expires. */
+  expiryDate: string | null;
+  /** none | submitted | paid | rejected */
+  paymentStatus: string;
+  /** Permanent history — true once a trial was approved, even after paying. */
+  isTrial: boolean;
+  trialStartedAt: string | null;
+  /** Set when a real payment was approved after the trial. */
+  trialConvertedAt: string | null;
+}
+
 export interface CompanyRef {
   id: string;
   name: string;

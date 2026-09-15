@@ -25,7 +25,17 @@ import { useAppDispatch } from '@/store/store';
 const schema = z.object({
   name: z.string().trim().min(2, 'Enter your business name.'),
   industry: z.string().trim(),
-  phone: z.string().trim(),
+  // Required, as in the app. It is on invoices, and a free trial is tied to it
+  // (one trial per phone number). Format is checked by the server, which knows
+  // every way a Pakistani number is written; its message is shown as-is.
+  phone: z
+    .string()
+    .trim()
+    .min(1, 'Enter your business phone number.')
+    .refine(
+      (v) => v.replace(/\D/g, '').length >= 10,
+      'Enter a full phone number, e.g. 0300 1234567.',
+    ),
   email: z.string().trim(),
   taxId: z.string().trim(),
   street: z.string().trim(),
@@ -147,7 +157,7 @@ export default function CompanySetupPage() {
 
           <div className="grid gap-md sm:grid-cols-2">
             <Input
-              label="Business phone (optional)"
+              label="Business phone"
               type="tel"
               inputMode="tel"
               error={errors.phone?.message}

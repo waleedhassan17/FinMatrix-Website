@@ -9,9 +9,10 @@
 // down under a large empty void. The picture takes a little top padding instead,
 // so its top edge lines up with the headline rather than the eyebrow.
 //
-// THE CTA DOES NOT PROMISE A TRIAL. Activation runs through a bank transfer and a
-// human review — there is no card processor and no free tier. "Start free trial"
-// is the default hero copy and it would be false here.
+// THE CTA PROMISES ONLY WHAT HAPPENS. There is a 30-day free trial now, so it may
+// be offered — but it is not instant: a person reviews each request and activates
+// it within 24 hours, and the line under the buttons says so. Paid plans still run
+// through a bank transfer and a human review; there is no card processor.
 
 import { ArrowRight, Check, MapPin } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -89,7 +90,7 @@ export function HeroSection() {
                 className="bg-surface px-xl text-primary-900 shadow-lg hover:bg-primary-50"
               >
                 <Link to="/register">
-                  Create your account
+                  Start your free trial
                   <ArrowRight className="size-4" aria-hidden="true" />
                 </Link>
               </Button>
@@ -102,6 +103,10 @@ export function HeroSection() {
                 <a href="#pricing">See pricing</a>
               </Button>
             </div>
+            <p className="mt-sm text-body-sm text-white/65">
+              30 days, every feature, no credit card. Activated after a quick review — usually
+              within 24 hours.
+            </p>
           </Reveal>
 
           <Reveal delay={240}>
