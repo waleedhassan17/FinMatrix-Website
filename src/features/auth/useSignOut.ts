@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { authSignOut } from '@/networks/auth/authNetwork';
+import { markIntentionalSignOut } from '@/utils/authEvents';
 import { signOut as signOutAction } from '@/store/authSlice';
 import { useAppDispatch } from '@/store/store';
 
@@ -30,6 +31,10 @@ export function useSignOut() {
     if (inFlight.current) return;
     inFlight.current = true;
     setSigningOut(true);
+
+    // Before the server call: requests still in flight on the old token must
+    // not be refreshed or reported as an expired session (see authEvents).
+    markIntentionalSignOut();
 
     // Not awaited on purpose — see above.
     void authSignOut();

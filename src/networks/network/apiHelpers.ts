@@ -19,7 +19,11 @@ import {
   setStoredCompanyId,
   setTokens,
 } from '@/utils/storage';
-import { emitCompanyStatusStale, emitSessionExpired } from '@/utils/authEvents';
+import {
+  emitCompanyStatusStale,
+  emitSessionExpired,
+  isIntentionalSignOut,
+} from '@/utils/authEvents';
 
 // ★ BACKEND BASE URL ★
 // Production by default so a normal build is unchanged. Override to run
@@ -123,6 +127,14 @@ api.interceptors.response.use(
       if (extractErrorCode(error) === 'COMPANY_NOT_ACTIVE') {
         emitCompanyStatusStale();
       }
+    }
+
+    // The user just signed out on purpose: a 401 on a request that was still
+    // in flight is expected. Refreshing would fail (the refresh token was
+    // revoked) and, worse, a late failure could clear the tokens of a sign-in
+    // made seconds later.
+    if (error.response?.status === 401 && !isAuthRoute && isIntentionalSignOut()) {
+      return Promise.reject(error);
     }
 
     if (

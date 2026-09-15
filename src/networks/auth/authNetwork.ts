@@ -26,6 +26,7 @@ import {
 } from '@/features/auth/portalAccess';
 import type { Identity } from '@/store/authSlice';
 import type { TokenPair, UserRole } from '@/types';
+import { clearIntentionalSignOut } from '@/utils/authEvents';
 import type { PortalRole } from '@/utils/storage';
 
 /**
@@ -200,6 +201,8 @@ export const authLogin = async ({
     }
 
     setTokens(tokens.accessToken, tokens.refreshToken);
+    // A new session starts: its 401s are real and must be handled.
+    clearIntentionalSignOut();
 
     const identity = identitySerializer(data);
 
