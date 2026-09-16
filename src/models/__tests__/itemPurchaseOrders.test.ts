@@ -20,6 +20,8 @@ const line = (itemId: string, quantity: number, receivedQuantity = 0): PurchaseO
   taxRate: 0,
   amount: quantity * 100,
   receivedQuantity,
+  billedQuantity: 0,
+  accountId: '',
 });
 
 const po = (id: string, status: PurchaseOrderStatus, lines: PurchaseOrderLine[]): PurchaseOrder => ({
@@ -37,6 +39,10 @@ const po = (id: string, status: PurchaseOrderStatus, lines: PurchaseOrderLine[])
   total: 0,
   notes: '',
   billId: '',
+  bills: [],
+  receivedValueGross: 0,
+  billedValueGross: 0,
+  unbilledValueGross: 0,
   createdAt: '',
   updatedAt: '',
 });

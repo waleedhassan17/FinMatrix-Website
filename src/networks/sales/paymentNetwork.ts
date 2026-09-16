@@ -10,13 +10,15 @@ import {
   type PendingApproval,
 } from '@/networks/network/apiHelpers';
 import {
+  advancesSerializer,
   mapPayment,
   outstandingSerializer,
   paymentListSerializer,
   paymentSingleSerializer,
+  type PaymentApplicationPayload,
   type ReceivePaymentPayload,
 } from '@/serializers/paymentSerializer';
-import type { AllocationRow, ApiPaymentMethod, Payment } from '@/models/payment';
+import type { AllocationRow, ApiPaymentMethod, CustomerAdvance, Payment } from '@/models/payment';
 
 export interface PaymentQueryParams {
   customerId?: string;
@@ -101,6 +103,41 @@ export const receivePayment = async (
     if (isPendingApproval(payload)) {
       return { pending: true, approval: payload };
     }
+    return { pending: false, payment: mapPayment(payload) };
+  } catch (e) {
+    throw toApiError(e);
+  }
+};
+
+/** Receipts still holding unapplied money for a customer. */
+export const getCustomerAdvances = async (
+  customerId: string,
+): Promise<{ total: number; advances: CustomerAdvance[] }> => {
+  try {
+    const response = await api.get(`/payments/customer/${customerId}/advances`);
+    return advancesSerializer(unwrapEnvelope(response.data));
+  } catch (e) {
+    throw toApiError(e);
+  }
+};
+
+/**
+ * Apply money a receipt is holding to invoices. No cash moves — the server
+ * posts Dr Customer Advances / Cr Accounts Receivable. Staff get a pending
+ * approval instead.
+ */
+export const applyPaymentAdvance = async (
+  paymentId: string,
+  applications: PaymentApplicationPayload[],
+  date?: string,
+): Promise<PaymentWriteResult> => {
+  try {
+    const response = await api.post(`/payments/${paymentId}/apply`, {
+      applications,
+      ...(date ? { date } : {}),
+    });
+    const payload = unwrapEnvelope(response.data);
+    if (isPendingApproval(payload)) return { pending: true, approval: payload };
     return { pending: false, payment: mapPayment(payload) };
   } catch (e) {
     throw toApiError(e);

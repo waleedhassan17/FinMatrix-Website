@@ -28,6 +28,7 @@ import { getCreditMemoDraft } from '@/networks/delivery/completionsNetwork';
 import { createCreditMemo } from '@/networks/sales/creditMemoNetwork';
 import { creditMemoFormToPayload } from '@/serializers/creditMemoSerializer';
 import { formatMoney } from '@/utils/money';
+import { invalidateAfterPosting } from '@/features/documents/invalidateAfterPosting';
 
 const emptyForm = (): CreditMemoFormData => ({
   customerId: '',
@@ -153,9 +154,7 @@ export default function CreditMemoFormPage() {
         navigate('/my-requests', { replace: true });
         return;
       }
-      queryClient.invalidateQueries({ queryKey: ['credit-memos'] });
-      queryClient.invalidateQueries({ queryKey: ['customers'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateAfterPosting(queryClient);
       toast.success(reversal ? 'Delivery reversed' : 'Credit memo issued', {
         description: result.creditMemo.creditMemoNumber
           ? `${result.creditMemo.creditMemoNumber} has been created.`

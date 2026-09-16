@@ -44,6 +44,11 @@ import {
   getEstimateById,
   setEstimateStatus,
 } from '@/networks/sales/estimateNetwork';
+import { invalidateAfterPosting } from '@/features/documents/invalidateAfterPosting';
+import { CreditLimitDialog } from '@/features/customers/CreditLimitDialog';
+import { creditLimitError, type CreditAssessment } from '@/models/credit';
+import type { BackorderLine } from '@/models/salesOrder';
+import { backorderRefusal } from '@/networks/sales/salesOrderNetwork';
 
 export default function EstimateDetailPage() {
   const { estimateId = '' } = useParams<{ estimateId: string }>();
@@ -71,10 +76,7 @@ export default function EstimateDetailPage() {
   );
 
   const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ['estimates'] });
-    queryClient.invalidateQueries({ queryKey: ['invoices'] });
-    queryClient.invalidateQueries({ queryKey: ['sales-orders'] });
-    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    invalidateAfterPosting(queryClient);
   };
 
   const status = useMutation({
@@ -88,33 +90,58 @@ export default function EstimateDetailPage() {
       toast.error('Could not update status', { description: e.message }),
   });
 
+  const [creditIssue, setCreditIssue] = useState<CreditAssessment | null>(null);
+  const [shortItems, setShortItems] = useState<BackorderLine[] | null>(null);
+
   const toInvoice = useMutation({
-    mutationFn: () => convertEstimateToInvoice(estimateId, dueDate || undefined),
-    onSuccess: ({ invoiceId }) => {
+    mutationFn: (overrideReason?: string) =>
+      convertEstimateToInvoice(estimateId, dueDate || undefined, overrideReason),
+    onSuccess: ({ invoiceId, pending }) => {
       setConvertOpen(false);
+      setCreditIssue(null);
       invalidate();
+      if (pending) {
+        toast.success('Sent for approval', {
+          description: 'The invoice is raised once the owner approves it.',
+        });
+        return;
+      }
       toast.success('Invoice created', {
         description: 'The sale is posted and stock has been decremented.',
       });
       if (invoiceId) navigate(`/invoices/${invoiceId}`);
     },
-    // INSUFFICIENT_STOCK (422) names the item and the shortfall — the one
-    // thing that legitimately refuses a conversion.
-    onError: (e: Error) =>
-      toast.error('Could not convert to invoice', { description: e.message }),
+    // INSUFFICIENT_STOCK (422) names the item and the shortfall; a credit
+    // limit refusal opens the advance / override dialog.
+    onError: (e: Error) => {
+      const credit = creditLimitError(e);
+      if (credit) {
+        setConvertOpen(false);
+        setCreditIssue(credit);
+        return;
+      }
+      toast.error('Could not convert to invoice', { description: e.message });
+    },
   });
 
   const toSalesOrder = useMutation({
-    mutationFn: () => convertEstimateToSalesOrder(estimateId),
+    mutationFn: (acceptBackorder: boolean) => convertEstimateToSalesOrder(estimateId, acceptBackorder),
     onSuccess: ({ salesOrderId }) => {
+      setShortItems(null);
       invalidate();
       toast.success('Sales order created', {
         description: 'Nothing has been billed or posted.',
       });
       if (salesOrderId) navigate(`/sales-orders/${salesOrderId}`);
     },
-    onError: (e: Error) =>
-      toast.error('Could not convert to sales order', { description: e.message }),
+    onError: (e: Error) => {
+      const short = backorderRefusal(e);
+      if (short) {
+        setShortItems(short);
+        return;
+      }
+      toast.error('Could not convert to sales order', { description: e.message });
+    },
   });
 
   const doDelete = useMutation({
@@ -249,7 +276,7 @@ export default function EstimateDetailPage() {
                   {
                     label: 'Convert to sales order',
                     icon: ArrowRight,
-                    onSelect: () => toSalesOrder.mutate(),
+                    onSelect: () => toSalesOrder.mutate(false),
                     hidden: !(convertible && salesOrdersEnabled),
                     disabled: busy,
                   },
@@ -337,7 +364,7 @@ export default function EstimateDetailPage() {
         }
         confirmLabel="Convert and post"
         busy={toInvoice.isPending}
-        onConfirm={() => toInvoice.mutate()}
+        onConfirm={() => toInvoice.mutate(undefined)}
       >
         <DateField
           label="Payment due"
@@ -357,6 +384,33 @@ export default function EstimateDetailPage() {
         destructive
         busy={doDelete.isPending}
         onConfirm={() => doDelete.mutate()}
+      />
+      <CreditLimitDialog
+        assessment={creditIssue}
+        onOpenChange={(open) => !open && setCreditIssue(null)}
+        busy={toInvoice.isPending}
+        onOverride={(reason) => toInvoice.mutate(reason)}
+      />
+
+      <ConfirmDialog
+        open={!!shortItems}
+        onOpenChange={(open) => !open && setShortItems(null)}
+        title="Create the order with items on backorder?"
+        description={
+          <>
+            There is not enough stock for:
+            <ul className="mt-xs list-disc pl-lg">
+              {(shortItems ?? []).map((s) => (
+                <li key={s.itemId}>
+                  {s.name}: {s.requested} wanted, {s.available} available — {s.shortfall} on backorder
+                </li>
+              ))}
+            </ul>
+          </>
+        }
+        confirmLabel="Create as backorder"
+        busy={toSalesOrder.isPending}
+        onConfirm={() => toSalesOrder.mutate(true)}
       />
     </DetailLayout>
   );

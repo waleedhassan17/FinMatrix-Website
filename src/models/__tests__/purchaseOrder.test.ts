@@ -9,9 +9,11 @@ import {
   isReceivable,
   overReceivedDrafts,
   receiptDraftsToPayload,
+  hasUnbilledReceipts,
+  isRequisition,
   receivedPercent,
-  receivedValue,
   remainingOf,
+  unbilledValue,
   type PurchaseOrder,
   type PurchaseOrderLine,
   type ReceiptDraft,
@@ -32,6 +34,8 @@ const line = (
   taxRate: 0,
   amount: quantity * unitPrice,
   receivedQuantity,
+  billedQuantity: 0,
+  accountId: '',
 });
 
 const po = (lines: PurchaseOrderLine[]): PurchaseOrder => ({
@@ -49,6 +53,10 @@ const po = (lines: PurchaseOrderLine[]): PurchaseOrder => ({
   total: 0,
   notes: '',
   billId: '',
+  bills: [],
+  receivedValueGross: 0,
+  billedValueGross: 0,
+  unbilledValueGross: 0,
   createdAt: '',
   updatedAt: '',
 });
@@ -64,6 +72,7 @@ const draft = (
   ordered,
   alreadyReceived,
   arriving,
+  stock: true,
 });
 
 /**
@@ -187,8 +196,10 @@ describe('allowedTransitions', () => {
     expect(allowedTransitions('draft')).toEqual(['sent']);
   });
 
-  it('offers only closing once sent', () => {
-    expect(allowedTransitions('sent')).toEqual(['closed']);
+  it('offers back-to-requisition or closing once sent', () => {
+    // The server allows sent → draft only while nothing is received; a sent
+    // order has nothing received by definition.
+    expect(allowedTransitions('sent')).toEqual(['draft', 'closed']);
   });
 
   // The server enforces NO transition rules — it assigns the column and
@@ -202,24 +213,28 @@ describe('allowedTransitions', () => {
     },
   );
 
-  it('offers nothing from closed', () => {
-    expect(allowedTransitions('closed')).toEqual([]);
+  it('offers reopening from closed', () => {
+    expect(allowedTransitions('closed')).toEqual(['sent']);
   });
 });
 
-describe('receivedValue', () => {
-  it('values the RECEIVED quantity, not the ordered quantity', () => {
-    // Convert-to-Bill bills only what arrived; the ordered total would be 1500.
-    const order = po([line('a', 10, 4, 100), line('b', 5, 0, 100)]);
-    expect(receivedValue(order)).toBe(400);
+describe('billing per receipt', () => {
+  it('bills the server’s tax-inclusive unbilled value', () => {
+    // 147 received of 150 at 1,245 with 17% tax: the bill carries the tax.
+    const order = { ...po([line('a', 150, 147, 1245)]), unbilledValueGross: 214127.55 };
+    expect(unbilledValue(order)).toBe(214127.55);
   });
 
-  it('is zero before anything arrives', () => {
-    expect(receivedValue(po([line('a', 10, 0)]))).toBe(0);
+  it('knows when received goods are still unbilled', () => {
+    const partlyBilled = po([{ ...line('a', 150, 150), billedQuantity: 147 }]);
+    expect(hasUnbilledReceipts(partlyBilled)).toBe(true);
+    const allBilled = po([{ ...line('a', 150, 150), billedQuantity: 150 }]);
+    expect(hasUnbilledReceipts(allBilled)).toBe(false);
   });
 
-  it('rounds to two places', () => {
-    expect(receivedValue(po([line('a', 3, 3, 10.005)]))).toBe(30.02);
+  it('treats a draft as a purchase requisition', () => {
+    expect(isRequisition({ status: 'draft' })).toBe(true);
+    expect(isRequisition({ status: 'sent' })).toBe(false);
   });
 });
 

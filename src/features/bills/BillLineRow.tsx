@@ -1,9 +1,8 @@
 import { X } from 'lucide-react';
 
 import { Combobox } from '@/components/ui/Combobox';
-import { Select } from '@/components/ui/Select';
+import { TaxPercentInput } from '@/components/ui/TaxPercentInput';
 import { cn } from '@/lib/cn';
-import { TAX_OPTIONS } from '@/models/bill';
 import { formatMoney } from '@/utils/money';
 
 export interface BillLineRowProps {
@@ -104,7 +103,7 @@ export function BillLineRow({
 
       <div className="grid grid-cols-2 gap-sm">
         <label className="flex flex-col gap-xxs">
-          <span className="text-caption text-text-secondary">Amount</span>
+          <span className="text-caption text-text-secondary">Amount (excl. tax)</span>
           <input
             value={amount}
             onChange={(e) => onAmountChange(numeric(e.target.value))}
@@ -115,14 +114,8 @@ export function BillLineRow({
           />
         </label>
 
-        <Select
-          label="Tax"
-          value={taxRate}
-          onChange={onTaxRateChange}
-          options={TAX_OPTIONS as unknown as { label: string; value: string }[]}
-          disabled={readOnly}
-          compact
-        />
+        {/* Purchase tax is whatever the vendor charged — typed, not picked. */}
+        <TaxPercentInput value={taxRate} onChange={onTaxRateChange} disabled={readOnly} compact />
       </div>
 
       {/* Only worth a row of its own when tax actually changes the figure. */}

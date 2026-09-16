@@ -1,11 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Ban, Banknote, Pencil, Plus, Send, Trash2, Users } from 'lucide-react';
+import { Ban, Banknote, Pencil, Plus, ReceiptText, Send, Trash2, Users } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { DetailLayout, RailSection } from '@/components/layout/DetailLayout';
 import { MoreActionsMenu, PageHeader } from '@/components/layout/PageHeader';
+import { CreditLimitDialog } from '@/features/customers/CreditLimitDialog';
+import { invalidateAfterPosting } from '@/features/documents/invalidateAfterPosting';
+import { ApplyAdvanceDialog } from '@/features/payments/ApplyAdvanceDialog';
 import { DetailPageSkeleton, PageMessage } from '@/components/layout/PageState';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -25,6 +28,7 @@ import {
 import { DocumentActions } from '@/features/share/DocumentActions';
 import { useAdminOnly, useCapability } from '@/hooks/useCapability';
 import { cn } from '@/lib/cn';
+import { creditLimitError, type CreditAssessment } from '@/models/credit';
 import { isEditable, type Invoice } from '@/models/invoice';
 import { paymentMethodLabel } from '@/models/payment';
 import {
@@ -33,7 +37,7 @@ import {
   sendInvoice,
   voidInvoice,
 } from '@/networks/sales/invoiceNetwork';
-import { getPayments } from '@/networks/sales/paymentNetwork';
+import { getCustomerAdvances, getPayments } from '@/networks/sales/paymentNetwork';
 import { formatMoney } from '@/utils/money';
 
 export default function InvoiceDetailPage() {
@@ -46,6 +50,9 @@ export default function InvoiceDetailPage() {
 
   const [voidOpen, setVoidOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [applyOpen, setApplyOpen] = useState(false);
+  const [creditIssue, setCreditIssue] = useState<CreditAssessment | null>(null);
+  const applyCap = useCapability('payment.receive');
 
   const { data: invoice, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['invoices', invoiceId],
@@ -61,19 +68,25 @@ export default function InvoiceDetailPage() {
     enabled: !!invoice && invoice.amountPaid > 0,
   });
 
+  // Money the customer already paid that no invoice has taken — offered here
+  // so it is applied rather than recorded again as new cash.
+  const advances = useQuery({
+    queryKey: ['payments', 'advances', invoice?.customerId],
+    queryFn: () => getCustomerAdvances(invoice!.customerId),
+    enabled: !!invoice && invoice.balance > 0 && invoice.status !== 'draft' && invoice.status !== 'void',
+  });
+
   const doc = useMemo(
     () => (invoice ? invoiceDocument(invoice, company, customer) : null),
     [invoice, company, customer],
   );
 
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ['invoices'] });
-    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-  };
+  const invalidate = () => invalidateAfterPosting(queryClient);
 
   const post = useMutation({
-    mutationFn: () => sendInvoice(invoiceId),
+    mutationFn: (overrideReason?: string) => sendInvoice(invoiceId, overrideReason),
     onSuccess: () => {
+      setCreditIssue(null);
       invalidate();
       toast.success('Posted to the books', {
         description: 'The sale is now recognised in your ledger.',
@@ -82,8 +95,14 @@ export default function InvoiceDetailPage() {
     // The server's reason matters here — INSUFFICIENT_STOCK names the item and
     // the shortfall, INVOICE_ZERO_TOTAL says the invoice is empty. Replacing
     // that with "something went wrong" would strand the user.
-    onError: (e: Error) =>
-      toast.error('Could not post invoice', { description: e.message }),
+    onError: (e: Error) => {
+      const credit = creditLimitError(e);
+      if (credit) {
+        setCreditIssue(credit);
+        return;
+      }
+      toast.error('Could not post invoice', { description: e.message });
+    },
   });
 
   const doVoid = useMutation({
@@ -172,11 +191,17 @@ export default function InvoiceDetailPage() {
                       Edit
                     </Link>
                   </Button>
-                  <Button size="sm" onClick={() => post.mutate()} disabled={post.isPending}>
+                  <Button size="sm" onClick={() => post.mutate(undefined)} disabled={post.isPending}>
                     <Send className="size-4" />
                     {post.isPending ? 'Posting…' : 'Post to books'}
                   </Button>
                 </>
+              )}
+              {owing && (advances.data?.total ?? 0) > 0 && applyCap.allowed && (
+                <Button size="sm" variant="secondary" onClick={() => setApplyOpen(true)}>
+                  <ReceiptText className="size-4" />
+                  Apply advance ({formatMoney(advances.data!.total)})
+                </Button>
               )}
               {owing && (
                 <Button asChild size="sm">
@@ -329,6 +354,20 @@ export default function InvoiceDetailPage() {
       }
     >
       <DocumentPaper doc={doc} />
+
+      <ApplyAdvanceDialog
+        open={applyOpen}
+        onOpenChange={setApplyOpen}
+        customerId={invoice.customerId}
+        invoice={{ id: invoice.id, label: invoice.invoiceNumber || 'this invoice', balance: invoice.balance }}
+      />
+
+      <CreditLimitDialog
+        assessment={creditIssue}
+        onOpenChange={(open) => !open && setCreditIssue(null)}
+        busy={post.isPending}
+        onOverride={(reason) => post.mutate(reason)}
+      />
 
       <ConfirmDialog
         open={voidOpen}

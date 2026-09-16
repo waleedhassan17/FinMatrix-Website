@@ -20,6 +20,7 @@ import {
   freshLine,
   isoToday,
   validateLines,
+  validateSalesLineKinds,
   type DiscountType,
   type FormLineItem,
   type InvoiceFormData,
@@ -35,6 +36,9 @@ import {
   invoiceFormToUpdatePayload,
   invoiceToFormData,
 } from '@/serializers/invoiceSerializer';
+import { invalidateAfterPosting } from '@/features/documents/invalidateAfterPosting';
+import { CreditLimitDialog } from '@/features/customers/CreditLimitDialog';
+import { creditLimitError, type CreditAssessment } from '@/models/credit';
 
 const emptyForm = (): InvoiceFormData => ({
   customerId: '',
@@ -118,22 +122,28 @@ export default function InvoiceFormPage() {
     if (!form.customerId) errs.customerId = 'Select a customer';
     if (!form.issueDate) errs.issueDate = 'Issue date is required';
     if (!form.dueDate) errs.dueDate = 'Due date is required';
-    const lineError = validateLines(form.lines, totals);
+    const lineError =
+      validateLines(form.lines, totals) ?? validateSalesLineKinds(form.lines, inventoryEnabled);
     if (lineError) errs.lines = lineError;
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
 
   // ── Save ────────────────────────────────────────────────────────────
+  const [creditIssue, setCreditIssue] = useState<CreditAssessment | null>(null);
+
   const save = useMutation({
-    mutationFn: async (status: 'draft' | 'sent') => {
+    mutationFn: async ({ status, overrideReason }: { status: 'draft' | 'sent'; overrideReason?: string }) => {
       if (isEditing) {
         return {
           kind: 'updated' as const,
           invoice: await updateInvoice(invoiceId!, invoiceFormToUpdatePayload(form)),
         };
       }
-      const result = await createInvoice(invoiceFormToPayload(form, status));
+      const payload = invoiceFormToPayload(form, status);
+      const result = await createInvoice(
+        overrideReason ? { ...payload, creditOverride: { reason: overrideReason } } : payload,
+      );
       return { kind: 'created' as const, result };
     },
     onSuccess: (outcome) => {
@@ -158,22 +168,28 @@ export default function InvoiceFormPage() {
         return;
       }
 
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateAfterPosting(queryClient);
       toast.success('Invoice created', {
         description: `${outcome.result.invoice.invoiceNumber} has been saved.`,
       });
       navigate(`/invoices/${outcome.result.invoice.id}`, { replace: true });
     },
-    onError: (e: Error) =>
+    onError: (e: Error) => {
+      // Posting past the customer's credit limit: advance or owner override.
+      const credit = creditLimitError(e);
+      if (credit) {
+        setCreditIssue(credit);
+        return;
+      }
       // Server reasons matter here — insufficient stock, a closed period — so
       // the message is surfaced verbatim rather than replaced.
-      toast.error('Could not save invoice', { description: e.message }),
+      toast.error('Could not save invoice', { description: e.message });
+    },
   });
 
   const submit = (status: 'draft' | 'sent') => {
     if (!validate()) return;
-    save.mutate(status);
+    save.mutate({ status });
   };
 
   if (isEditing && loadingInvoice) {
@@ -270,6 +286,7 @@ export default function InvoiceFormPage() {
         itemOptions={itemOptions}
         items={items}
         inventoryEnabled={inventoryEnabled}
+        lineMode="sales"
         errors={errors}
         summaryTitle="Invoice summary"
         summaryIcon={<CreditCard className="size-4" />}
@@ -302,6 +319,15 @@ export default function InvoiceFormPage() {
           </>
         )}
       </div>
+      <CreditLimitDialog
+        assessment={creditIssue}
+        onOpenChange={(open) => !open && setCreditIssue(null)}
+        busy={save.isPending}
+        onOverride={(reason) => {
+          setCreditIssue(null);
+          save.mutate({ status: 'sent', overrideReason: reason });
+        }}
+      />
     </div>
   );
 }

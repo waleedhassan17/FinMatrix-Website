@@ -1,8 +1,9 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { ChevronRight } from 'lucide-react';
+import { ArrowDownUp, ChevronRight, RefreshCw } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Combobox } from '@/components/ui/Combobox';
 import { TablePager } from '@/components/ui/DataTable';
@@ -14,6 +15,8 @@ import { csvAmount, csvFilename, downloadCsv, toCsv, type CsvRow } from '@/model
 import {
   defaultReportRange,
   formatShortDate,
+  matchPreset,
+  presetRange,
   rangeLabel,
 } from '@/models/reportPeriod';
 import {
@@ -25,10 +28,38 @@ import { formatAmount, formatMoney } from '@/utils/money';
 
 const PAGE_SIZE = 100;
 
+type LedgerOrder = 'newest' | 'oldest';
+const ORDER_KEY = 'finmatrix.gl.order';
+
+/** The reader's last choice of order. Browser storage can be unavailable. */
+const readOrder = (): LedgerOrder => {
+  try {
+    return window.localStorage.getItem(ORDER_KEY) === 'oldest' ? 'oldest' : 'newest';
+  } catch {
+    return 'newest';
+  }
+};
+const saveOrder = (order: LedgerOrder) => {
+  try {
+    window.localStorage.setItem(ORDER_KEY, order);
+  } catch {
+    /* a private window or blocked storage: the choice just is not remembered */
+  }
+};
+
 export default function GeneralLedgerPage() {
   const navigate = useNavigate();
   const [range, setRange] = useState(defaultReportRange);
   const [accountCode, setAccountCode] = useState('');
+  // Newest first by default: the question people bring to a ledger is usually
+  // "did my posting land", and oldest-first paging put today's entries on the
+  // last page — QA's "entries are not updating". Balances stay the server's
+  // chronological running balance either way.
+  const [order, setOrderState] = useState<LedgerOrder>(readOrder);
+  const setOrder = (next: LedgerOrder) => {
+    setOrderState(next);
+    saveOrder(next);
+  };
 
   /**
    * The page number, scoped to the filter that produced it.
@@ -40,22 +71,43 @@ export default function GeneralLedgerPage() {
    * every filter change, and would leave one frame showing page 5 of a result
    * that now has two pages.
    */
-  const filterKey = `${range.startDate}|${range.endDate}|${accountCode}`;
+  const filterKey = `${range.startDate}|${range.endDate}|${accountCode}|${order}`;
   const [pageState, setPageState] = useState({ key: filterKey, page: 1 });
   const page = pageState.key === filterKey ? pageState.page : 1;
   const setPage = (next: number) => setPageState({ key: filterKey, page: next });
 
+  // Always fresh on arrival: a ledger served from cache after a posting is
+  // exactly the stale view this page exists not to show.
   const accounts = useQuery({
     queryKey: ['reports', 'ledger-accounts', range],
     queryFn: () => getLedgerAccounts(range),
     placeholderData: keepPreviousData,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
   const ledger = useQuery({
     queryKey: ['reports', 'ledger', range, accountCode],
     queryFn: () => getGeneralLedger(range, accountCode || undefined),
     placeholderData: keepPreviousData,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
+
+  /**
+   * Re-read the books. A preset period chosen before midnight ("Year to date"
+   * ending yesterday) moves on to today first.
+   */
+  const refresh = () => {
+    const yesterday = new Date(Date.now() - 86_400_000);
+    const preset = matchPreset(range, yesterday);
+    if (preset !== 'custom' && matchPreset(range) === 'custom') {
+      setRange(presetRange(preset));
+      return;
+    }
+    ledger.refetch();
+    accounts.refetch();
+  };
 
   /**
    * A searchable picker over the accounts that actually moved.
@@ -78,11 +130,16 @@ export default function GeneralLedgerPage() {
 
   // Memoised off `ledger.data` rather than with a `?? []` fallback: that fallback
   // is a fresh array every render, so the paging memo below would never hold.
-  const entries = useMemo(() => ledger.data?.entries ?? [], [ledger.data]);
+  const entries = useMemo(() => {
+    const rows = ledger.data?.entries ?? [];
+    return order === 'newest' ? [...rows].reverse() : rows;
+  }, [ledger.data, order]);
+  const opening = accountCode ? ledger.data?.openingBalances.find((b) => b.accountCode === accountCode) : undefined;
+  const closing = accountCode ? ledger.data?.closingBalances.find((b) => b.accountCode === accountCode) : undefined;
   const totalPages = Math.max(1, Math.ceil(entries.length / PAGE_SIZE));
 
   /**
-   * Paged in memory, oldest first.
+   * Paged in memory, in the order the reader chose.
    *
    * The app caps at the LAST 1000 rows and tells the user some are hidden. That
    * cap replaced an earlier bug where it took the FIRST 300 of an oldest-first
@@ -106,7 +163,9 @@ export default function GeneralLedgerPage() {
     ];
     // The whole period, not just the page on screen — a paged export would be a
     // surprise, and the point of the file is to have the lot.
-    for (const e of entries) {
+    // Exported oldest first whatever the screen shows: a ledger file reads top
+    // to bottom with its running balance.
+    for (const e of ledger.data.entries) {
       out.push([
         e.date,
         e.reference,
@@ -150,6 +209,23 @@ export default function GeneralLedgerPage() {
           />
         </div>
       }
+      actions={
+        <div className="flex flex-wrap items-center gap-xs print:hidden">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setOrder(order === 'newest' ? 'oldest' : 'newest')}
+            aria-label="Change order"
+          >
+            <ArrowDownUp className="size-4" />
+            {order === 'newest' ? 'Newest first' : 'Oldest first'}
+          </Button>
+          <Button variant="secondary" size="sm" onClick={refresh} disabled={ledger.isFetching}>
+            <RefreshCw className={ledger.isFetching ? 'size-4 animate-spin' : 'size-4'} />
+            Refresh
+          </Button>
+        </div>
+      }
       onExportCsv={exportCsv}
       pdf={{
         periodLabel: rangeLabel(range.startDate, range.endDate),
@@ -167,7 +243,7 @@ export default function GeneralLedgerPage() {
               { header: 'Balance', align: 'right', flex: 1.7 },
             ],
             rows: [
-              ...entries.map((e) => ({
+              ...(ledger.data?.entries ?? []).map((e) => ({
                 cells: [
                   formatShortDate(e.date),
                   e.reference || '—',
@@ -214,9 +290,9 @@ export default function GeneralLedgerPage() {
           />
           {/* A count, not an amount — KpiTile would render it as `Rs 120`. */}
           <CountTile
-            label="Entries"
+            label="Ledger lines"
             value={entries.length}
-            hint={`Showing ${pageRows.length} on this page`}
+            hint={`Showing ${pageRows.length} on this page, ${order === 'newest' ? 'newest' : 'oldest'} first`}
           />
         </div>
 
@@ -252,6 +328,12 @@ export default function GeneralLedgerPage() {
                 </tr>
               </thead>
               <tbody>
+                {accountCode && page === 1 && (order === 'oldest' ? opening : closing) && (
+                  <BalanceRow
+                    label={order === 'oldest' ? 'Opening balance' : 'Closing balance'}
+                    balance={(order === 'oldest' ? opening : closing)!.balance}
+                  />
+                )}
                 {pageRows.map((e, index) => (
                   <tr
                     key={`${e.sourceId}-${e.accountCode}-${index}`}
@@ -278,6 +360,11 @@ export default function GeneralLedgerPage() {
                           {e.memo}
                         </span>
                       )}
+                      {e.voided && (
+                        <span className="mt-xxs inline-block rounded-sm bg-neutral-100 px-xs text-caption text-text-secondary">
+                          Voided — reversed by a later entry
+                        </span>
+                      )}
                     </td>
                     <td className="px-md py-sm text-right tabular text-body-sm whitespace-nowrap text-text-primary">
                       {e.debit ? formatAmount(e.debit) : '—'}
@@ -293,6 +380,12 @@ export default function GeneralLedgerPage() {
                     </td>
                   </tr>
                 ))}
+                {accountCode && page === totalPages && (order === 'oldest' ? closing : opening) && (
+                  <BalanceRow
+                    label={order === 'oldest' ? 'Closing balance' : 'Opening balance'}
+                    balance={(order === 'oldest' ? closing : opening)!.balance}
+                  />
+                )}
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-text-primary">
@@ -323,11 +416,27 @@ export default function GeneralLedgerPage() {
         </Card>
 
         <p className="text-caption text-text-tertiary">
-          Oldest first. The balance column is the running balance per account, as
-          recorded at each posting. Only posted entries appear — drafts and voided
-          entries are excluded. Select a row to open its journal entry.
+          {order === 'newest' ? 'Newest first.' : 'Oldest first.'} The balance column is the
+          running balance per account, carried forward from before the period. Drafts are
+          excluded; a journal that was posted and then voided stays, beside the entry that
+          reverses it. Select a row to open its journal entry.
         </p>
       </div>
     </ReportShell>
+  );
+}
+
+/** An opening or closing balance line for the selected account. */
+function BalanceRow({ label, balance }: { label: string; balance: number }) {
+  return (
+    <tr className="border-b border-border-light bg-surface-2">
+      <td className="px-md py-sm text-label-md text-text-secondary" colSpan={5}>
+        {label}
+      </td>
+      <td className="px-md py-sm text-right tabular text-label-md whitespace-nowrap text-text-primary">
+        {formatAmount(balance)}
+      </td>
+      <td className="print:hidden" />
+    </tr>
   );
 }

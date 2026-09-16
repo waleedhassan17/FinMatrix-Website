@@ -48,8 +48,14 @@ export interface Customer {
 /** The extras GET /customers/:id returns alongside the record. */
 export interface CustomerCredit {
   limit: number;
+  /**
+   * Exposure: unpaid invoices + goods shipped on credit not yet invoiced −
+   * advances − open credit memos. What a shipment or invoice is checked against.
+   */
   used: number;
   available: number;
+  /** Money the customer paid that no invoice has taken yet. */
+  advances: number;
 }
 
 export const PAYMENT_TERMS_OPTIONS: { label: string; value: PaymentTerms }[] = [

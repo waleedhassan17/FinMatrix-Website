@@ -1,9 +1,8 @@
 import { X } from 'lucide-react';
 
 import { Combobox } from '@/components/ui/Combobox';
-import { Select } from '@/components/ui/Select';
+import { TaxPercentInput } from '@/components/ui/TaxPercentInput';
 import { cn } from '@/lib/cn';
-import { TAX_OPTIONS } from '@/models/document';
 import { formatMoney, toDecimal } from '@/utils/money';
 
 export interface VendorCreditLineRowProps {
@@ -173,14 +172,8 @@ export function VendorCreditLineRow({
           />
         </label>
 
-        <Select
-          label="Tax"
-          value={taxRate}
-          onChange={onTaxRateChange}
-          options={TAX_OPTIONS as unknown as { label: string; value: string }[]}
-          disabled={readOnly}
-          compact
-        />
+        {/* Purchase tax is whatever the vendor charged — typed, not picked. */}
+        <TaxPercentInput value={taxRate} onChange={onTaxRateChange} disabled={readOnly} compact />
       </div>
 
       {hasItem && (

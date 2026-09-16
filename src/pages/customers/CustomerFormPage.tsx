@@ -226,6 +226,7 @@ export default function CustomerFormPage() {
           <Input
             label="Credit limit (Rs)"
             placeholder="0.00"
+            hint="0 means no limit. Past the limit a shipment or invoice needs an advance or the owner's approval."
             inputMode="decimal"
             error={errors.creditLimit?.message}
             {...register('creditLimit')}

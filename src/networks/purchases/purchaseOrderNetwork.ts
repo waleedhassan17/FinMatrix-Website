@@ -4,9 +4,6 @@
 
 import {
   api,
-  ApiError,
-  extractErrorCode,
-  extractErrorMessage,
   isPendingApproval,
   toApiError,
   unwrapEnvelope,
@@ -18,7 +15,7 @@ import {
   purchaseOrderSingleSerializer,
   type PurchaseOrderWritePayload,
 } from '@/serializers/purchaseOrderSerializer';
-import { asRaw, str } from '@/serializers/documentLines';
+import { asRaw } from '@/serializers/documentLines';
 import { mapBill } from '@/serializers/billSerializer';
 import type { Bill } from '@/models/bill';
 import { ITEM_PO_SEARCH_LIMIT } from '@/models/itemPurchaseOrders';
@@ -165,53 +162,37 @@ export const receivePurchaseOrderItems = async (
   }
 };
 
-/**
- * A second Convert-to-Bill on the same PO.
- *
- * `PO_ALREADY_BILLED` carries `billId` and `billNumber` in its error body — but
- * `ApiError` keeps only the message, code and status, so those two ids would be
- * lost by the time a screen caught it. This subclass carries them through, and
- * lets the UI offer "View bill" instead of reporting a failure for something
- * that had in fact already succeeded.
- */
-export class POAlreadyBilledError extends ApiError {
-  billId: string;
-  billNumber: string;
 
-  constructor(message: string, billId: string, billNumber: string) {
-    super(message, 'PO_ALREADY_BILLED', 400);
-    this.name = 'POAlreadyBilledError';
-    this.billId = billId;
-    this.billNumber = billNumber;
-  }
+export interface CreateBillFromPOBody {
+  /** The vendor's own invoice number. Omit for BILL-YYYY-NNNN. */
+  billNumber?: string;
+  /** Defaults to today. */
+  billDate?: string;
+  /** Defaults to the bill date plus the vendor's payment terms. */
+  dueDate?: string;
+  /** Needed only for older non-stock lines saved without an expense account. */
+  defaultAccountId?: string;
 }
 
 /**
- * Raise a bill for what has been received.
- *
- * Bills **only the received quantity × unit cost**, not the ordered value, and
- * the line it writes clears GRNI against accounts payable. Refused on a second
- * attempt with PO_ALREADY_BILLED.
+ * Bill what has been received and not billed yet — once per delivery if need
+ * be. The bill carries each line's purchase tax, and stock lines clear exactly
+ * the Goods Received Not Invoiced their receipts accrued. Refused with
+ * NOTHING_TO_BILL when everything received is already billed, and with
+ * EXPENSE_ACCOUNT_REQUIRED when a non-stock line has no account.
  */
-export const createBillFromPO = async (id: string): Promise<Bill> => {
+export const createBillFromPO = async (
+  id: string,
+  body: CreateBillFromPOBody = {},
+): Promise<{ bill: Bill; purchaseOrder: PurchaseOrder | null }> => {
   try {
-    const response = await api.post(`/purchase-orders/${id}/create-bill`);
-    return mapBill(unwrapEnvelope(response.data));
+    const response = await api.post(`/purchase-orders/${id}/create-bill`, body);
+    const payload = asRaw(unwrapEnvelope(response.data));
+    return {
+      bill: mapBill(payload.bill ?? { id: payload.billId }),
+      purchaseOrder: payload.po ? mapPurchaseOrder(payload.po) : null,
+    };
   } catch (e) {
-    // Read the ids off the raw error while the body is still in reach.
-    if (extractErrorCode(e) === 'PO_ALREADY_BILLED') {
-      const body = asRaw(
-        asRaw(asRaw((e as { response?: unknown }).response).data).error,
-      );
-      const billId = str(body.billId);
-      if (billId) {
-        throw new POAlreadyBilledError(
-          extractErrorMessage(e),
-          billId,
-          str(body.billNumber),
-        );
-      }
-    }
     throw toApiError(e);
   }
 };

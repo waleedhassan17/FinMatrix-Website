@@ -41,6 +41,8 @@ import {
 import { selectUser } from '@/store/authSlice';
 import { useAppSelector } from '@/store/store';
 import { formatMoney } from '@/utils/money';
+import { CreditLimitDialog } from '@/features/customers/CreditLimitDialog';
+import { creditLimitError, type CreditAssessment } from '@/models/credit';
 
 type Dialog = 'approve' | 'reject' | 'withdraw' | null;
 
@@ -91,9 +93,12 @@ export default function ApprovalDetailPage() {
     }
   };
 
+  // An invoice this approval would post past the customer's credit limit.
+  const [creditIssue, setCreditIssue] = useState<{ assessment: CreditAssessment; comment?: string } | null>(null);
+
   const decide = useMutation({
-    mutationFn: (v: { decision: 'approve' | 'reject'; comment?: string }) =>
-      decideApproval(approvalId, v.decision, v.comment),
+    mutationFn: (v: { decision: 'approve' | 'reject'; comment?: string; creditOverrideReason?: string }) =>
+      decideApproval(approvalId, v.decision, v.comment, v.creditOverrideReason),
     onSuccess: (updated) => {
       settle(updated);
       setDialog(null);
@@ -111,7 +116,14 @@ export default function ApprovalDetailPage() {
     // The dialog stays open with the typed reason intact — the app closes it
     // first and loses the reason on failure. The row is re-read, because a failed
     // approval returns it to pending with the cause in `lastError`.
-    onError: (e: Error) => {
+    onError: (e: Error, v) => {
+      const credit = creditLimitError(e);
+      if (credit && v.decision === 'approve') {
+        setDialog(null);
+        setCreditIssue({ assessment: credit, comment: v.comment });
+        queryClient.invalidateQueries({ queryKey: ['approvals', approvalId] });
+        return;
+      }
       toast.error('Could not record the decision', { description: e.message });
       queryClient.invalidateQueries({ queryKey: ['approvals', approvalId] });
     },
@@ -358,6 +370,16 @@ export default function ApprovalDetailPage() {
         confirmLabel="Withdraw request"
         busy={withdraw.isPending}
         onConfirm={() => withdraw.mutate()}
+      />
+      <CreditLimitDialog
+        assessment={creditIssue?.assessment ?? null}
+        onOpenChange={(open) => !open && setCreditIssue(null)}
+        busy={decide.isPending}
+        onOverride={(reason) => {
+          const comment = creditIssue?.comment;
+          setCreditIssue(null);
+          decide.mutate({ decision: 'approve', comment, creditOverrideReason: reason });
+        }}
       />
     </div>
   );

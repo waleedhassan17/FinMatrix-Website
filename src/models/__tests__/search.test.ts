@@ -104,3 +104,22 @@ describe('groupHits', () => {
     expect(groups[1].hits).toHaveLength(5);
   });
 });
+
+describe('every document type is searchable', () => {
+  it('returns a purchase order and an invoice sharing digits under separate headings', () => {
+    const hits = parseSearchResults({
+      results: {
+        invoices: [{ id: 'i1', invoiceNumber: 'INV-2026-0027', customerName: 'Faisal Traders', total: '11000' }],
+        purchaseOrders: [{ id: 'p1', poNumber: 'PO-2026-0027', vendorName: 'Nishat Textile', total: '47736', status: 'draft' }],
+        payments: [{ id: 'r1', paymentNumber: 'RCT-2026-0027', customerName: 'Allama Iqbal', amount: '107250' }],
+      },
+    });
+    const groups = groupHits(hits);
+    expect(groups.map((g) => g.kind)).toEqual(['invoices', 'payments', 'purchaseOrders']);
+    const po = hits.find((h) => h.kind === 'purchaseOrders')!;
+    expect(po.title).toBe('PO-2026-0027');
+    expect(po.subtitle).toContain('Requisition');
+    expect(po.to).toBe('/purchase-orders/p1');
+    expect(hits.find((h) => h.kind === 'payments')!.to).toBe('/payments/r1');
+  });
+});

@@ -65,8 +65,9 @@ export function ReceiveItemsPanel({
       />
 
       <p className="mt-xs text-caption text-text-tertiary">
-        Enter what arrived today. Stock rises by that amount and Goods Received
-        Not Invoiced is posted against it.
+        Enter what arrived today. Stock items go on the shelf now — whether or not the
+        vendor has billed or been paid — with Goods Received Not Invoiced posted against
+        them. Expense lines move no stock.
       </p>
 
       <div className="mt-md overflow-x-auto">
@@ -96,7 +97,17 @@ export function ReceiveItemsPanel({
               return (
                 <tr key={d.lineId} className="border-b border-border-light">
                   <td className="py-sm text-body-sm text-text-primary">
-                    {d.description || '—'}
+                    <span className="block">{d.description || '—'}</span>
+                    <span
+                      className={cn(
+                        'mt-xxs inline-block rounded-sm px-xs text-caption',
+                        d.stock ? 'bg-success-lighter text-success' : 'bg-neutral-100 text-text-secondary',
+                      )}
+                    >
+                      {d.stock
+                        ? `Adds ${Math.max(parseFloat(d.arriving) || 0, 0)} to stock`
+                        : 'Expense — no stock'}
+                    </span>
                   </td>
                   <td className="py-sm text-right text-body-sm text-text-primary tabular">
                     {d.ordered}

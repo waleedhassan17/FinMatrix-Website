@@ -269,6 +269,21 @@ describe('generalLedgerSerializer', () => {
   it('defaults entries to an empty array', () => {
     expect(generalLedgerSerializer(null).entries).toEqual([]);
   });
+
+  it('flags a voided journal and reads opening and closing balances', () => {
+    const report = generalLedgerSerializer({
+      entries: [
+        { reference: 'JE-301', debit: 123.45, credit: 0, voided: true, sourceId: 'je-301' },
+        { reference: 'JE-302', debit: 0, credit: 123.45, sourceId: 'je-302' },
+      ],
+      openingBalances: [{ accountCode: '1000', accountName: 'Cash', balance: '880334.6140' }],
+      closingBalances: [{ accountCode: '1000', accountName: 'Cash', balance: 880334.61 }],
+    });
+    expect(report.entries[0].voided).toBe(true);
+    expect(report.entries[1].voided).toBe(false);
+    expect(report.openingBalances[0]).toEqual({ accountCode: '1000', accountName: 'Cash', balance: 880334.614 });
+    expect(report.closingBalances[0].balance).toBe(880334.61);
+  });
 });
 
 describe('ledgerAccountsSerializer', () => {

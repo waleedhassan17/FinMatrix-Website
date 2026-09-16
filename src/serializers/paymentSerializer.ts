@@ -7,6 +7,7 @@ import {
   unappliedOf,
   type AllocationRow,
   type ApiPaymentMethod,
+  type CustomerAdvance,
   type Payment,
   type PaymentApplication,
   type PaymentFormData,
@@ -23,6 +24,7 @@ const mapApplication = (raw: unknown): PaymentApplication => {
     // The wire calls it amountApplied on the way out and `amount` on the way
     // in. Both are read so a replayed approval payload maps too.
     amountApplied: toNumber((r.amountApplied ?? r.amount) as never),
+    appliedOn: str(r.appliedOn),
   };
 };
 
@@ -45,6 +47,7 @@ export const mapPayment = (raw: unknown): Payment => {
     customerName: str(r.customerName ?? asRaw(r.customer).name),
     paymentDate: str(r.paymentDate ?? r.date),
     paymentMethod: (str(r.paymentMethod) || 'other') as ApiPaymentMethod,
+    paymentNumber: str(r.paymentNumber),
     reference: str(r.reference),
     amount,
     bankAccountId: r.bankAccountId ? str(r.bankAccountId) : null,
@@ -52,8 +55,7 @@ export const mapPayment = (raw: unknown): Payment => {
     memo: str(r.memo ?? r.notes),
     applications,
     allocated,
-    // Derived, not sent: the remainder is retained as customer credit and
-    // shows up only as a negative customer balance.
+    // The remainder is held in 2400 Customer Advances until applied.
     unapplied: unappliedOf(amount, allocated),
     createdAt: str(r.createdAt),
     updatedAt: str(r.updatedAt),
@@ -129,6 +131,12 @@ export interface ReceivePaymentPayload {
   memo?: string;
   bankAccountId?: string;
   applications?: PaymentApplicationPayload[];
+  /**
+   * Hold what is not applied as an advance. Needed whenever nothing is
+   * applied: an empty or missing `applications` otherwise means "apply
+   * automatically, oldest invoice first".
+   */
+  holdAsAdvance?: boolean;
 }
 
 /**
@@ -143,8 +151,9 @@ export interface ReceivePaymentPayload {
  *     else { applications = await this.autoApply(...) }
  *
  * So an empty or absent array means "sweep every open invoice, oldest first" —
- * not "hold this as credit". Sending the user's ticked rows verbatim is the
- * only way their choice survives.
+ * not "hold this as an advance". Sending the user's ticked rows verbatim is the
+ * only way their choice survives, and when nothing is ticked the payload says
+ * `holdAsAdvance: true` so the server keeps the whole receipt as an advance.
  *
  * Money goes out as `.toFixed(2)` strings: every amount field is
  * `@IsNumberString`.
@@ -167,14 +176,36 @@ export const paymentFormToPayload = (
 
   if (form.mode === 'auto') return base;
 
+  const applications = form.rows
+    .filter((r) => r.checked && (parseFloat(r.applied) || 0) > 0)
+    .map((r) => ({
+      invoiceId: r.documentId,
+      amount: (parseFloat(r.applied) || 0).toFixed(2),
+    }));
+  // Nothing ticked in manual mode means "keep it all as an advance" — say so,
+  // or the server's empty-array rule would apply it to the oldest invoices.
+  if (applications.length === 0) return { ...base, holdAsAdvance: true };
+  return { ...base, applications };
+};
+
+/** `GET /payments/customer/:id/advances` → the receipts still holding money. */
+export const advancesSerializer = (
+  payload: unknown,
+): { total: number; advances: CustomerAdvance[] } => {
+  const d = asRaw(payload);
+  const rows = Array.isArray(d.advances) ? d.advances : [];
   return {
-    ...base,
-    applications: form.rows
-      .filter((r) => r.checked && (parseFloat(r.applied) || 0) > 0)
-      .map((r) => ({
-        invoiceId: r.documentId,
-        amount: (parseFloat(r.applied) || 0).toFixed(2),
-      })),
+    total: toNumber(d.total as never),
+    advances: rows.map((raw) => {
+      const r = asRaw(raw);
+      return {
+        paymentId: str(r.paymentId),
+        paymentNumber: str(r.paymentNumber),
+        paymentDate: str(r.paymentDate),
+        amount: toNumber(r.amount as never),
+        unapplied: toNumber(r.unapplied as never),
+      };
+    }),
   };
 };
 

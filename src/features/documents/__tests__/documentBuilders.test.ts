@@ -165,7 +165,7 @@ describe('purchase side', () => {
     expect(doc.share.amountLabel).toBe('Balance due');
   });
 
-  it('gives a purchase order signature lines and unit cost', () => {
+  it('titles a draft purchase order a purchase requisition, with no DRAFT stamp', () => {
     const po = {
       poNumber: 'PO-2026-0003',
       vendorName: 'Pak Dairy',
@@ -180,7 +180,15 @@ describe('purchase side', () => {
     } as unknown as PurchaseOrder;
     const doc = purchaseOrderDocument(po, company, null);
     expect(doc.priceHeader).toBe('Unit cost');
-    expect(doc.signatures).toEqual(['Prepared by', 'Authorised signature']);
-    expect(doc.stamp?.label).toBe('Draft');
+    expect(doc.kind).toBe('Purchase requisition');
+    expect(doc.meta[0].label).toBe('Requisition #');
+    expect(doc.signatures).toEqual(['Requested by', 'Approved by']);
+    expect(doc.stamp).toBeNull();
+    expect(doc.share.kind).toBe('Purchase requisition');
+
+    const sent = purchaseOrderDocument({ ...po, status: 'sent' } as PurchaseOrder, company, null);
+    expect(sent.kind).toBe('Purchase order');
+    expect(sent.meta[0].label).toBe('PO #');
+    expect(sent.signatures).toEqual(['Prepared by', 'Authorised signature']);
   });
 });

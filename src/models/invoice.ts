@@ -15,6 +15,7 @@ export {
   lineAmountOf,
   TAX_OPTIONS,
   validateLines,
+  validateSalesLineKinds,
   type DiscountType,
   type DocumentTotals,
   type FormLineItem,

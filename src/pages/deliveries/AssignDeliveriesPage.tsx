@@ -32,6 +32,8 @@ import {
   getDeliveries,
 } from '@/networks/delivery/deliveryNetwork';
 import { formatMoney } from '@/utils/money';
+import { CreditLimitDialog } from '@/features/customers/CreditLimitDialog';
+import { creditLimitError, type CreditAssessment } from '@/models/credit';
 
 const AVAILABILITY_LABEL: Record<ReturnType<typeof riderAvailability>, string> = {
   available: 'Available',
@@ -103,8 +105,10 @@ export default function AssignDeliveriesPage() {
 
   const allChosen = rows.length > 0 && chosen.length === rows.length;
 
+  const [creditIssue, setCreditIssue] = useState<CreditAssessment | null>(null);
+
   const assign = useMutation({
-    mutationFn: () => assignDeliveries(chosen.map((d) => d.id), riderId),
+    mutationFn: (overrideReason?: string) => assignDeliveries(chosen.map((d) => d.id), riderId, overrideReason),
     onSuccess: (assigned) => {
       invalidateDeliveries(queryClient);
       setSelected(new Set());
@@ -114,7 +118,15 @@ export default function AssignDeliveriesPage() {
         { description: `Dispatched to ${riderLabel(rider)}. The stock is now in Goods in Transit.` },
       );
     },
-    onError: (e: Error) => toast.error('Nothing was assigned', { description: e.message }),
+    onError: (e: Error) => {
+      // Dispatch ships on credit: past the customer's limit it needs an advance or the owner.
+      const credit = creditLimitError(e);
+      if (credit) {
+        setCreditIssue(credit);
+        return;
+      }
+      toast.error('Nothing was assigned', { description: e.message });
+    },
   });
 
   const auto = useMutation({
@@ -302,7 +314,16 @@ export default function AssignDeliveriesPage() {
         description="Each one is dispatched now: a sales order is raised and its stock moves from Inventory to Goods in Transit. It is one transaction — if any item is short, nothing is assigned."
         confirmLabel="Assign and dispatch"
         busy={assign.isPending}
-        onConfirm={() => assign.mutate()}
+        onConfirm={() => assign.mutate(undefined)}
+      />
+      <CreditLimitDialog
+        assessment={creditIssue}
+        onOpenChange={(open) => !open && setCreditIssue(null)}
+        busy={assign.isPending}
+        onOverride={(reason) => {
+          setCreditIssue(null);
+          assign.mutate(reason);
+        }}
       />
     </div>
   );

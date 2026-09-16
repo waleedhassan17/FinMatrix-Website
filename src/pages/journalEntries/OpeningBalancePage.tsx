@@ -28,6 +28,7 @@ import { getPostableAccounts } from '@/networks/accounting/accountNetwork';
 import { createJournalEntry } from '@/networks/accounting/journalEntryNetwork';
 import type { JournalLineWritePayload } from '@/serializers/journalEntrySerializer';
 import { Decimal, formatMoney, toDecimal } from '@/utils/money';
+import { invalidateAfterPosting } from '@/features/documents/invalidateAfterPosting';
 
 /**
  * Which side of the entry a row belongs to, in the user's own language.
@@ -262,9 +263,7 @@ export default function OpeningBalancePage() {
         navigate('/my-requests', { replace: true });
         return;
       }
-      queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
-      queryClient.invalidateQueries({ queryKey: ['accounts'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateAfterPosting(queryClient);
       toast.success('Opening balances posted', {
         description: result.entry.reference || undefined,
       });

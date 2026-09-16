@@ -81,12 +81,15 @@ export const decideApproval = async (
   id: string,
   decision: 'approve' | 'reject',
   comment?: string,
+  creditOverrideReason?: string,
 ): Promise<ApprovalRequest> => {
   try {
     const trimmed = comment?.trim();
     const response = await api.post(`/approvals/${id}/decide`, {
       decision,
       ...(trimmed ? { comment: trimmed } : {}),
+      // Approving an invoice past the customer's credit limit.
+      ...(creditOverrideReason ? { creditOverrideReason } : {}),
     });
     return mapApproval(unwrapEnvelope(response.data));
   } catch (e) {

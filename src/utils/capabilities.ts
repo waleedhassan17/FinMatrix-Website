@@ -204,6 +204,8 @@ export type AdminOnlyAction =
   | 'vendorCredit.delete'
   | 'bill.delete'
   | 'payment.delete'
+  // Letting a sale go past a customer's credit limit, with a reason.
+  | 'credit.override'
   | 'purchaseOrder.delete'
   // Discarding a never-dispatched delivery; refused server-side once stock moved.
   | 'delivery.delete'

@@ -19,6 +19,19 @@ export type SalesOrderStatus =
 export interface SalesOrderLine extends DocumentLine {
   /** Cumulative quantity shipped so far. The wire field of the same name. */
   quantityFulfilled: number;
+  /** Stock lines: on hand now, and the part of this line stock cannot cover. */
+  onHand: number | null;
+  backorderQty: number;
+}
+
+/** A line short of stock, as the server reports it when a backorder needs confirming. */
+export interface BackorderLine {
+  itemId: string;
+  name: string;
+  sku: string;
+  requested: number;
+  available: number;
+  shortfall: number;
 }
 
 export interface SalesOrder {
@@ -44,6 +57,8 @@ export interface SalesOrder {
   invoiceId: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Some stock line is short: the order holds goods on backorder. */
+  hasBackorder: boolean;
 }
 
 export interface SalesOrderFormData {

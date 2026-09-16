@@ -25,7 +25,9 @@ export type PurchaseOrderStatus =
   | 'closed';
 
 export const PO_STATUS_LABELS: Record<PurchaseOrderStatus, string> = {
-  draft: 'Draft',
+  // An unsent draft is a purchase REQUISITION: a request to buy that nobody
+  // outside the company has seen.
+  draft: 'Requisition',
   sent: 'Sent',
   partial: 'Partial',
   received: 'Received',
@@ -41,6 +43,20 @@ export const PO_STATUS_LABELS: Record<PurchaseOrderStatus, string> = {
 export interface PurchaseOrderLine extends DocumentLine {
   /** Cumulative quantity received so far. The wire field is `receivedQty`. */
   receivedQuantity: number;
+  /** Quantity already billed. A PO is billed per receipt: received − billed is billable. */
+  billedQuantity: number;
+  /** Expense lines: the account the bill posts to. */
+  accountId: string;
+}
+
+/** A bill raised from this purchase order. */
+export interface POBillRef {
+  id: string;
+  billNumber: string;
+  billDate: string;
+  total: number;
+  balance: number;
+  status: string;
 }
 
 export interface PurchaseOrder {
@@ -57,8 +73,15 @@ export interface PurchaseOrder {
   taxAmount: number;
   total: number;
   notes: string;
-  /** Set once converted — use it to deep-link rather than convert again. */
+  /** The latest bill raised from this order, if any. */
   billId: string;
+  /** Every bill raised from this order, oldest first. */
+  bills: POBillRef[];
+  /** Tax-inclusive — comparable with `total`, which includes tax. */
+  receivedValueGross: number;
+  billedValueGross: number;
+  /** Received but not yet billed, tax-inclusive: what "Convert to bill" raises. */
+  unbilledValueGross: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -88,14 +111,19 @@ export const allowedTransitions = (
     case 'draft':
       return ['sent'];
     case 'sent':
-      return ['closed'];
+      return ['draft', 'closed'];
     case 'partial':
     case 'received':
       return ['closed'];
+    case 'closed':
+      return ['sent'];
     default:
       return [];
   }
 };
+
+/** A draft purchase order is a requisition until it is approved and sent. */
+export const isRequisition = (po: Pick<PurchaseOrder, 'status'>): boolean => po.status === 'draft';
 
 /**
  * May this PO be edited?
@@ -126,6 +154,8 @@ export interface ReceiptDraft {
   alreadyReceived: number;
   /** What arrived today. Defaults to the remainder. */
   arriving: string;
+  /** A stock item: receiving it raises on-hand. An expense line moves no stock. */
+  stock: boolean;
 }
 
 export const remainingOf = (line: PurchaseOrderLine): number =>
@@ -141,6 +171,7 @@ export const buildReceiptDrafts = (lines: PurchaseOrderLine[]): ReceiptDraft[] =
     ordered: l.quantity,
     alreadyReceived: l.receivedQuantity,
     arriving: String(remainingOf(l)),
+    stock: Boolean(l.itemId),
   }));
 
 export interface ReceiptLinePayload {
@@ -199,17 +230,12 @@ export const hasAnyReceipt = (po: PurchaseOrder): boolean =>
   po.lines.some((l) => l.receivedQuantity > 0);
 
 /**
- * The value a Convert-to-Bill would raise.
- *
- * `create-bill` bills **only what was received** — received quantity × unit
- * cost — not the ordered value. Showing the ordered total on that confirmation
- * would misstate what the user is about to owe.
+ * The value a Convert-to-Bill would raise: goods received and not yet billed,
+ * INCLUDING their purchase tax — the bill carries the tax, so the vendor is
+ * owed (and paid) the gross amount. Server-computed.
  */
-export const receivedValue = (po: PurchaseOrder): number =>
-  po.lines
-    .reduce(
-      (acc, l) => acc.plus(toDecimal(l.receivedQuantity).times(toDecimal(l.unitPrice))),
-      new Decimal(0),
-    )
-    .toDecimalPlaces(2)
-    .toNumber();
+export const unbilledValue = (po: PurchaseOrder): number => po.unbilledValueGross;
+
+/** Anything received that no bill covers yet. */
+export const hasUnbilledReceipts = (po: PurchaseOrder): boolean =>
+  po.lines.some((l) => l.receivedQuantity > l.billedQuantity);

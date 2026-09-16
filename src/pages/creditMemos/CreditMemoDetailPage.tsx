@@ -31,6 +31,7 @@ import {
   type CreditMemoWriteResult,
 } from '@/networks/sales/creditMemoNetwork';
 import { formatMoney } from '@/utils/money';
+import { invalidateAfterPosting } from '@/features/documents/invalidateAfterPosting';
 
 export default function CreditMemoDetailPage() {
   const { creditMemoId = '' } = useParams<{ creditMemoId: string }>();
@@ -58,10 +59,7 @@ export default function CreditMemoDetailPage() {
   );
 
   const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ['credit-memos'] });
-    queryClient.invalidateQueries({ queryKey: ['invoices'] });
-    queryClient.invalidateQueries({ queryKey: ['customers'] });
-    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    invalidateAfterPosting(queryClient);
   };
 
   /**

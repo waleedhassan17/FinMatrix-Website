@@ -17,13 +17,40 @@ import { formatMoney } from '@/utils/money';
 /** Shortest query that is sent. The server returns nothing below it anyway. */
 export const MIN_SEARCH_LENGTH = 2;
 
-/** Display order: money documents first, then who they are with, then stock. */
-export const SEARCH_KINDS = ['invoices', 'bills', 'customers', 'vendors', 'inventory'] as const;
+/**
+ * Display order: money documents first, then who they are with, then stock.
+ *
+ * Every document type is searched, each under its own heading. Numbers run per
+ * type — INV-2026-0027 and PO-2026-0027 are different documents — and searching
+ * "0027" used to show only the invoice, which read as "the same number was
+ * given to both".
+ */
+export const SEARCH_KINDS = [
+  'invoices',
+  'bills',
+  'payments',
+  'purchaseOrders',
+  'salesOrders',
+  'estimates',
+  'creditMemos',
+  'vendorCredits',
+  'journalEntries',
+  'customers',
+  'vendors',
+  'inventory',
+] as const;
 export type SearchKind = (typeof SEARCH_KINDS)[number];
 
 export const SEARCH_KIND_LABEL: Record<SearchKind, string> = {
   invoices: 'Invoices',
   bills: 'Bills',
+  payments: 'Customer receipts',
+  purchaseOrders: 'Purchase orders & requisitions',
+  salesOrders: 'Sales orders',
+  estimates: 'Estimates',
+  creditMemos: 'Credit memos',
+  vendorCredits: 'Vendor credits',
+  journalEntries: 'Journal entries',
   customers: 'Customers',
   vendors: 'Vendors',
   inventory: 'Inventory',
@@ -94,6 +121,45 @@ const MAPPERS: Record<SearchKind, (row: Raw, id: string) => Omit<SearchHit, 'id'
     subtitle: line(text(row.sku), `Qty ${quantity(row.quantityOnHand)}`, text(row.category)),
     to: `/inventory/${id}`,
   }),
+  payments: (row, id) => ({
+    title: text(row.paymentNumber) || text(row.reference) || 'Receipt',
+    subtitle: line(text(row.customerName), amount(row.amount), text(row.reference)),
+    to: `/payments/${id}`,
+  }),
+  purchaseOrders: (row, id) => ({
+    title: text(row.poNumber) || 'Purchase order',
+    subtitle: line(
+      text(row.vendorName),
+      amount(row.total),
+      text(row.status) === 'draft' ? 'Requisition' : status(row.status),
+    ),
+    to: `/purchase-orders/${id}`,
+  }),
+  salesOrders: (row, id) => ({
+    title: text(row.orderNumber) || 'Sales order',
+    subtitle: line(text(row.customerName), amount(row.total), status(row.status)),
+    to: `/sales-orders/${id}`,
+  }),
+  estimates: (row, id) => ({
+    title: text(row.estimateNumber) || 'Estimate',
+    subtitle: line(text(row.customerName), amount(row.total), status(row.status)),
+    to: `/estimates/${id}`,
+  }),
+  creditMemos: (row, id) => ({
+    title: text(row.creditMemoNumber) || 'Credit memo',
+    subtitle: line(text(row.customerName), amount(row.total), status(row.status)),
+    to: `/credit-memos/${id}`,
+  }),
+  vendorCredits: (row, id) => ({
+    title: text(row.vendorCreditNumber) || 'Vendor credit',
+    subtitle: line(text(row.vendorName), amount(row.total), status(row.status)),
+    to: `/vendor-credits/${id}`,
+  }),
+  journalEntries: (row, id) => ({
+    title: text(row.reference) || 'Journal entry',
+    subtitle: line(text(row.memo), amount(row.totalDebits), status(row.status)),
+    to: `/journal-entries/${id}`,
+  }),
 };
 
 /** The unwrapped `/search` body → hits, in SEARCH_KINDS order. */
@@ -128,11 +194,19 @@ export function visibleHits(
   role: UserRole | null | undefined,
   features: Partial<Record<string, boolean>> | null | undefined,
 ): SearchHit[] {
-  return hits.filter(
-    (hit) =>
-      isPathAllowedForRole(hit.to, role) &&
-      !(hit.kind === 'inventory' && features?.inventory === false),
-  );
+  const gate: Partial<Record<SearchKind, string>> = {
+    inventory: 'inventory',
+    purchaseOrders: 'purchaseOrders',
+    salesOrders: 'salesOrders',
+    estimates: 'estimates',
+    creditMemos: 'creditMemos',
+    vendorCredits: 'creditMemos',
+    journalEntries: 'journalEntries',
+  };
+  return hits.filter((hit) => {
+    const feature = gate[hit.kind];
+    return isPathAllowedForRole(hit.to, role) && !(feature && features?.[feature] === false);
+  });
 }
 
 /** Hits grouped by kind, at most `perGroup` in each, empty groups left out. */

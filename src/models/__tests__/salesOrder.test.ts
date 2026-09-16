@@ -28,6 +28,8 @@ const line = (
   taxRate: 0,
   amount: quantity * 100,
   quantityFulfilled,
+  onHand: null,
+  backorderQty: 0,
 });
 
 /**

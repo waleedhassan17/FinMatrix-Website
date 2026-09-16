@@ -107,9 +107,17 @@ export const updateInvoice = async (
  * Can fail late with 422 INSUFFICIENT_STOCK when a line carries an `itemId`
  * whose quantity on hand will not cover it.
  */
-export const sendInvoice = async (id: string): Promise<Invoice> => {
+/**
+ * Post a draft. `creditOverrideReason` is the owner's reason for letting it go
+ * past the customer's credit limit (refused otherwise with
+ * CREDIT_LIMIT_EXCEEDED).
+ */
+export const sendInvoice = async (id: string, creditOverrideReason?: string): Promise<Invoice> => {
   try {
-    const response = await api.post(`/invoices/${id}/send`);
+    const response = await api.post(
+      `/invoices/${id}/send`,
+      creditOverrideReason ? { creditOverride: { reason: creditOverrideReason } } : {},
+    );
     return mapInvoice(unwrapEnvelope(response.data));
   } catch (e) {
     throw toApiError(e);

@@ -19,10 +19,16 @@ import {
 } from '@/serializers/documentLines';
 import { toNumber } from '@/utils/money';
 
-const mapSalesOrderLine = (raw: unknown): SalesOrderLine => ({
-  ...mapDocumentLine(raw),
-  quantityFulfilled: toNumber(asRaw(raw).quantityFulfilled as never),
-});
+const mapSalesOrderLine = (raw: unknown): SalesOrderLine => {
+  const r = asRaw(raw);
+  const stock = r.stock ? asRaw(r.stock) : null;
+  return {
+    ...mapDocumentLine(raw),
+    quantityFulfilled: toNumber(r.quantityFulfilled as never),
+    onHand: stock ? toNumber(stock.onHand as never) : null,
+    backorderQty: toNumber((r.backorderQty ?? 0) as never),
+  };
+};
 
 export const mapSalesOrder = (raw: unknown): SalesOrder => {
   const r = asRaw(raw);
@@ -48,6 +54,7 @@ export const mapSalesOrder = (raw: unknown): SalesOrder => {
     notes: str(r.notes),
     sourceEstimateId: r.sourceEstimateId ? str(r.sourceEstimateId) : null,
     invoiceId: r.invoiceId ? str(r.invoiceId) : null,
+    hasBackorder: r.hasBackorder === true,
     createdAt: str(r.createdAt),
     updatedAt: str(r.updatedAt),
   };

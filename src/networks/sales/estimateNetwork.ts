@@ -2,7 +2,7 @@
 // FinMatrix Web — Estimate Network
 // ═══════════════════════════════════════════════════════
 
-import { api, toApiError, unwrapEnvelope } from '@/networks/network/apiHelpers';
+import { api, isPendingApproval, toApiError, unwrapEnvelope } from '@/networks/network/apiHelpers';
 import {
   convertResultSerializer,
   estimateListSerializer,
@@ -113,16 +113,18 @@ export const setEstimateStatus = async (
 export const convertEstimateToInvoice = async (
   id: string,
   dueDate?: string,
-): Promise<{ estimate: Estimate | null; invoiceId: string | null }> => {
+  creditOverrideReason?: string,
+): Promise<{ estimate: Estimate | null; invoiceId: string | null; pending: boolean }> => {
   try {
-    const response = await api.post(
-      `/estimates/${id}/convert-to-invoice`,
-      dueDate ? { dueDate } : {},
-    );
-    const { estimate, createdId } = convertResultSerializer(
-      unwrapEnvelope(response.data),
-    );
-    return { estimate, invoiceId: createdId };
+    const response = await api.post(`/estimates/${id}/convert-to-invoice`, {
+      ...(dueDate ? { dueDate } : {}),
+      ...(creditOverrideReason ? { creditOverride: { reason: creditOverrideReason } } : {}),
+    });
+    const payload = unwrapEnvelope(response.data);
+    // A staff conversion posts an invoice, so the owner approves it first.
+    if (isPendingApproval(payload)) return { estimate: null, invoiceId: null, pending: true };
+    const { estimate, createdId } = convertResultSerializer(payload);
+    return { estimate, invoiceId: createdId, pending: false };
   } catch (e) {
     throw toApiError(e);
   }
@@ -131,9 +133,13 @@ export const convertEstimateToInvoice = async (
 /** Convert to a sales order. Posts nothing to the ledger. */
 export const convertEstimateToSalesOrder = async (
   id: string,
+  acceptBackorder = false,
 ): Promise<{ estimate: Estimate | null; salesOrderId: string | null }> => {
   try {
-    const response = await api.post(`/estimates/${id}/convert-to-sales-order`, {});
+    const response = await api.post(
+      `/estimates/${id}/convert-to-sales-order`,
+      acceptBackorder ? { acceptBackorder } : {},
+    );
     const { estimate, createdId } = convertResultSerializer(
       unwrapEnvelope(response.data),
     );

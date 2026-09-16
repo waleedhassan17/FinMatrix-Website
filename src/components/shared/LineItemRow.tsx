@@ -2,6 +2,7 @@ import { X } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { Select } from '@/components/ui/Select';
+import { TaxPercentInput } from '@/components/ui/TaxPercentInput';
 import { cn } from '@/lib/cn';
 import { TAX_OPTIONS } from '@/models/invoice';
 import { formatMoney } from '@/utils/money';
@@ -32,6 +33,15 @@ export interface LineItemRowProps {
   priceLabel?: string;
   /** "Item 1" by default; a PO calls them lines. */
   itemLabel?: string;
+  /**
+   * 'manual' types the percentage (purchases: whatever the vendor charges);
+   * 'select' picks from the company's sales rates.
+   */
+  taxInput?: 'select' | 'manual';
+  /** Defaults to "Line total". A purchase line says it excludes tax. */
+  totalLabel?: string;
+  /** Show the tax and the tax-inclusive amount under the line total. */
+  showTaxBreakdown?: boolean;
 }
 
 /**
@@ -67,7 +77,12 @@ export function LineItemRow({
   quantityLabel = 'Qty',
   priceLabel = 'Rate',
   itemLabel = 'Item',
+  taxInput = 'select',
+  totalLabel = 'Line total',
+  showTaxBreakdown = false,
 }: LineItemRowProps) {
+  const rate = parseFloat(taxRate) || 0;
+  const lineTax = Math.round(lineAmount * rate) / 100;
   const numeric = (v: string) => v.replace(/[^0-9.]/g, '');
 
   const fieldClass =
@@ -127,19 +142,29 @@ export function LineItemRow({
           />
         </label>
 
-        <Select
-          label="Tax"
-          value={taxRate}
-          onChange={onTaxRateChange}
-          options={TAX_OPTIONS as unknown as { label: string; value: string }[]}
-          disabled={readOnly}
-          compact
-          containerClassName="col-span-2 sm:col-span-1"
-        />
+        {taxInput === 'manual' ? (
+          <TaxPercentInput
+            value={taxRate}
+            onChange={onTaxRateChange}
+            disabled={readOnly}
+            compact
+            containerClassName="col-span-2 sm:col-span-1"
+          />
+        ) : (
+          <Select
+            label="Tax"
+            value={taxRate}
+            onChange={onTaxRateChange}
+            options={TAX_OPTIONS as unknown as { label: string; value: string }[]}
+            disabled={readOnly}
+            compact
+            containerClassName="col-span-2 sm:col-span-1"
+          />
+        )}
       </div>
 
       <div className="mt-sm flex items-center justify-between border-t border-border-light pt-sm">
-        <span className="text-body-sm text-text-secondary">Line total</span>
+        <span className="text-body-sm text-text-secondary">{totalLabel}</span>
         {/* shrink-0 so a long figure is never clipped — the label gives way
             instead. A truncated amount in a ledger is worse than a cramped
             label. */}
@@ -147,6 +172,11 @@ export function LineItemRow({
           {formatMoney(lineAmount)}
         </span>
       </div>
+      {showTaxBreakdown && rate > 0 && (
+        <p className="mt-xxs text-right text-caption text-text-tertiary tabular">
+          Tax {rate}%: {formatMoney(lineTax)} · Incl. tax {formatMoney(lineAmount + lineTax)}
+        </p>
+      )}
     </div>
   );
 }

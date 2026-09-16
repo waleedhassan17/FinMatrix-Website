@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FileText, RotateCcw, Users } from 'lucide-react';
+import { FileText, ReceiptText, RotateCcw, Users } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { DetailLayout, RailSection } from '@/components/layout/DetailLayout';
 import { MoreActionsMenu, PageHeader } from '@/components/layout/PageHeader';
 import { DetailPageSkeleton, PageMessage } from '@/components/layout/PageState';
+import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { KeyValueList } from '@/components/ui/KeyValueList';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -17,8 +18,10 @@ import { documentPdfBlob } from '@/features/documents/documentPdf';
 import { PartyCard } from '@/features/documents/PartyCard';
 import { paymentReceiptDocument } from '@/features/documents/receiptBuilders';
 import { useDocumentCompany, useDocumentCustomer } from '@/features/documents/useDocumentContext';
+import { invalidateAfterPosting } from '@/features/documents/invalidateAfterPosting';
+import { ApplyAdvanceDialog } from '@/features/payments/ApplyAdvanceDialog';
 import { DocumentActions } from '@/features/share/DocumentActions';
-import { useAdminOnly } from '@/hooks/useCapability';
+import { useAdminOnly, useCapability } from '@/hooks/useCapability';
 import { paymentMethodLabel } from '@/models/payment';
 import { deletePayment, getPaymentById } from '@/networks/sales/paymentNetwork';
 import { formatMoney } from '@/utils/money';
@@ -30,6 +33,8 @@ export default function PaymentDetailPage() {
   const canDelete = useAdminOnly('payment.delete');
 
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [applyOpen, setApplyOpen] = useState(false);
+  const applyCap = useCapability('payment.receive');
 
   const { data: payment, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['payments', paymentId],
@@ -46,10 +51,7 @@ export default function PaymentDetailPage() {
   const doDelete = useMutation({
     mutationFn: () => deletePayment(paymentId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['payments'] });
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['customers'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateAfterPosting(queryClient);
       toast.success('Payment reversed', {
         description: 'The invoices it settled are open again.',
       });
@@ -82,7 +84,7 @@ export default function PaymentDetailPage() {
           title={doc.number}
           status={
             payment.unapplied > 0 ? (
-              <StatusBadge status="partial" label="Part held as credit" />
+              <StatusBadge status="partial" label="Advance held" />
             ) : (
               <StatusBadge status="paid" label="Applied" />
             )
@@ -100,6 +102,12 @@ export default function PaymentDetailPage() {
           ]}
           actions={
             <>
+              {payment.unapplied > 0 && applyCap.allowed && (
+                <Button onClick={() => setApplyOpen(true)}>
+                  <ReceiptText className="size-4" />
+                  {applyCap.submitLabel('Apply to invoices')}
+                </Button>
+              )}
               <DocumentActions
                 document={doc.share}
                 getPdf={() => documentPdfBlob(doc)}
@@ -129,7 +137,7 @@ export default function PaymentDetailPage() {
             label="Amount received"
             amount={payment.amount}
             tone="success"
-            note={payment.unapplied > 0 ? `${formatMoney(payment.unapplied)} held as customer credit` : undefined}
+            note={payment.unapplied > 0 ? `${formatMoney(payment.unapplied)} held as customer advance` : undefined}
             noteTone="warning"
             progress={{
               value: payment.allocated,
@@ -150,12 +158,12 @@ export default function PaymentDetailPage() {
           <RailSection title="Applied to">
             {payment.applications.length === 0 ? (
               <p className="text-body-sm text-text-tertiary">
-                Nothing was applied — the whole amount is held as a customer credit.
+                Nothing was applied — the whole amount is held as a customer advance.
               </p>
             ) : (
               <ul className="-mx-sm flex flex-col">
                 {payment.applications.map((a) => (
-                  <li key={a.invoiceId}>
+                  <li key={`${a.invoiceId}-${a.appliedOn}`}>
                     <Link
                       to={`/invoices/${a.invoiceId}`}
                       className="flex items-center justify-between gap-sm rounded-md px-sm py-xs hover:bg-surface-hover"
@@ -164,7 +172,12 @@ export default function PaymentDetailPage() {
                         <FileText className="size-4 shrink-0 text-text-tertiary" aria-hidden="true" />
                         <span className="truncate">{a.invoiceNumber || a.invoiceId.slice(0, 8)}</span>
                       </span>
-                      <span className="text-label-md text-text-primary tabular">{formatMoney(a.amountApplied)}</span>
+                      <span className="flex flex-col items-end">
+                        <span className="text-label-md text-text-primary tabular">{formatMoney(a.amountApplied)}</span>
+                        {a.appliedOn && (
+                          <span className="text-caption text-text-tertiary">Applied {docDate(a.appliedOn)}</span>
+                        )}
+                      </span>
                     </Link>
                   </li>
                 ))}
@@ -185,6 +198,13 @@ export default function PaymentDetailPage() {
       }
     >
       <DocumentPaper doc={doc} />
+
+      <ApplyAdvanceDialog
+        open={applyOpen}
+        onOpenChange={setApplyOpen}
+        customerId={payment.customerId}
+        payment={{ id: payment.id, label: doc.number, unapplied: payment.unapplied }}
+      />
 
       <ConfirmDialog
         open={deleteOpen}

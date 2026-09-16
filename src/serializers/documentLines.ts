@@ -50,6 +50,8 @@ export interface DocumentLineWritePayload {
   unitPrice: string;
   taxRate: string;
   itemId?: string;
+  /** 'item' sells stock; 'service' is a declared service or charge. */
+  lineKind?: 'item' | 'service';
 }
 
 /**
@@ -71,7 +73,10 @@ export const linesToPayload = (
     quantity: String(parseFloat(line.quantity) || 0),
     unitPrice: String(parseFloat(line.unitPrice) || 0),
     taxRate: String(parseFloat(line.taxRate) || 0),
-    ...(line.itemId ? { itemId: line.itemId } : {}),
+    ...(line.itemId ? { itemId: line.itemId, lineKind: 'item' as const } : {}),
+    // A line with no item is a service only when the user said so; left
+    // unmarked, the server refuses it where the company tracks inventory.
+    ...(!line.itemId && line.lineKind === 'service' ? { lineKind: 'service' as const } : {}),
   }));
 
 let importedSeq = 0;
@@ -81,6 +86,9 @@ export const linesToForm = (lines: DocumentLine[]): FormLineItem[] =>
   lines.map((l) => ({
     id: l.id || `imported_${++importedSeq}`,
     itemId: l.itemId,
+    // A saved line without an item was a service (or free text, before the
+    // rule): editing it keeps it that way.
+    lineKind: l.itemId ? ('item' as const) : ('service' as const),
     description: l.description,
     quantity: String(l.quantity),
     unitPrice: String(l.unitPrice),

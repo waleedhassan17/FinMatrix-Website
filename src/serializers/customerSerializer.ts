@@ -156,6 +156,7 @@ export const customerDetailSerializer = (
         c.available != null
           ? toNumber(c.available as never)
           : Math.max(customer.creditLimit - customer.balance, 0),
+      advances: toNumber((c.advances ?? 0) as never),
     },
   };
 };

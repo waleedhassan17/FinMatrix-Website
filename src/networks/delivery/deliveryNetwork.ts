@@ -74,9 +74,15 @@ export const createDelivery = async (body: object): Promise<Delivery> => {
 export const assignDeliveries = async (
   deliveryIds: string[],
   personnelId: string,
+  creditOverrideReason?: string,
 ): Promise<Delivery[]> => {
   try {
-    const response = await api.post('/deliveries/assign', { deliveryIds, personnelId });
+    const response = await api.post('/deliveries/assign', {
+      deliveryIds,
+      personnelId,
+      // Dispatch ships on credit: past a customer's limit only the owner may send it.
+      ...(creditOverrideReason ? { creditOverride: { reason: creditOverrideReason } } : {}),
+    });
     const data = unwrapEnvelope<{ deliveries?: unknown[] }>(response.data);
     return (Array.isArray(data?.deliveries) ? data.deliveries : []).map(mapDelivery);
   } catch (e) {

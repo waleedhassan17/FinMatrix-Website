@@ -33,6 +33,7 @@ import {
   updateBill,
 } from '@/networks/purchases/billNetwork';
 import { billFormToPayload, billToFormData } from '@/serializers/billSerializer';
+import { invalidateAfterPosting } from '@/features/documents/invalidateAfterPosting';
 
 const emptyForm = (): BillFormData => ({
   vendorId: '',
@@ -189,9 +190,7 @@ export default function BillFormPage() {
         return;
       }
 
-      queryClient.invalidateQueries({ queryKey: ['bills'] });
-      queryClient.invalidateQueries({ queryKey: ['vendors'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateAfterPosting(queryClient);
       toast.success(
         outcome.result.bill.status === 'draft' ? 'Draft saved' : 'Bill recorded',
       );

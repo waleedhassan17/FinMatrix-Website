@@ -28,8 +28,9 @@ export function paymentReceiptDocument(
   customer?: Customer | null,
 ): DocumentModel {
   const party = partyForDocument('Received from', p.customerName, customerPartySource(customer));
-  // There is no payment number; the reference, or a stable short id, stands in.
-  const number = p.reference || `PMT-${p.id.slice(0, 8).toUpperCase()}`;
+  // RCT-YYYY-NNNN from the server; a receipt recorded before numbers existed
+  // falls back to its reference, then a stable short id.
+  const number = p.paymentNumber || p.reference || `RCT-${p.id.slice(0, 8).toUpperCase()}`;
 
   const lines =
     p.applications.length > 0
@@ -44,7 +45,7 @@ export function paymentReceiptDocument(
       : [
           {
             description: 'Payment on account',
-            secondary: 'Held as customer credit',
+            secondary: 'Held as customer advance',
             quantity: null,
             unitPrice: null,
             taxRate: 0,
@@ -69,7 +70,7 @@ export function paymentReceiptDocument(
     lines,
     totals: [
       { label: 'Applied to invoices', value: p.allocated },
-      ...(p.unapplied > 0 ? [{ label: 'Held as credit', value: p.unapplied }] : []),
+      ...(p.unapplied > 0 ? [{ label: 'Held as advance', value: p.unapplied }] : []),
       { label: 'Amount received', value: p.amount, grand: true, dividerBefore: true, tone: 'success' as const },
     ],
     notes: [{ title: 'Notes', text: p.memo }],

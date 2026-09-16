@@ -27,6 +27,7 @@ import {
 import { getVendorCreditAccounts } from '@/networks/accounting/accountNetwork';
 import { createVendorCredit } from '@/networks/purchases/vendorCreditNetwork';
 import { vendorCreditFormToPayload } from '@/serializers/vendorCreditSerializer';
+import { invalidateAfterPosting } from '@/features/documents/invalidateAfterPosting';
 
 const emptyForm = (): VendorCreditFormData => ({
   vendorId: '',
@@ -149,9 +150,7 @@ export default function VendorCreditFormPage() {
         navigate('/my-requests', { replace: true });
         return;
       }
-      queryClient.invalidateQueries({ queryKey: ['vendor-credits'] });
-      queryClient.invalidateQueries({ queryKey: ['vendors'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateAfterPosting(queryClient);
       toast.success('Vendor credit recorded', {
         description: result.vendorCredit.vendorCreditNumber
           ? `${result.vendorCredit.vendorCreditNumber} has been created.`

@@ -10,6 +10,7 @@ import { Card, SectionHeader } from '@/components/ui/Card';
 import { Combobox } from '@/components/ui/Combobox';
 import { DateField, Textarea } from '@/components/ui/Field';
 import { SummaryPanel, SummaryRow } from '@/components/ui/SummaryPanel';
+import { taxPercentError } from '@/components/ui/TaxPercentInput';
 import {
   useInventoryOptions,
   useVendorOptions,
@@ -28,6 +29,7 @@ import {
   isPOEditable,
   type PurchaseOrderFormData,
 } from '@/models/purchaseOrder';
+import { getBillableAccounts } from '@/networks/accounting/accountNetwork';
 import { getItem } from '@/networks/inventory/inventoryNetwork';
 import {
   createPurchaseOrder,
@@ -66,6 +68,31 @@ export default function POFormPage() {
   } = useInventoryOptions();
 
   const [form, setForm] = useState<PurchaseOrderFormData>(emptyForm);
+
+  // Non-stock lines are billed to an expense account, chosen here rather than
+  // falling back to Cost of Goods Sold when the bill is raised.
+  const { data: billable = [] } = useQuery({
+    queryKey: ['accounts', 'billable'],
+    queryFn: getBillableAccounts,
+  });
+  const expenseOptions = useMemo(
+    () =>
+      billable
+        .filter((a) => a.type === 'expense')
+        .map((a) => ({ value: a.id, label: `${a.accountNumber} · ${a.name}` })),
+    [billable],
+  );
+  // Stock items only — a typed product line is what never reached inventory.
+  const stockOptions = useMemo(
+    () =>
+      items.map((i) => ({
+        value: i.id,
+        label: `${i.sku ? `${i.sku} · ` : ''}${i.name} · on hand ${i.quantityOnHand}`,
+      })),
+    [items],
+  );
+  void itemOptions;
+  const newLine = (kind: 'item' | 'expense'): FormLineItem => ({ ...freshLine(), lineKind: kind });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Raised from an inventory item's "Create PO": the form starts from that
@@ -82,6 +109,16 @@ export default function POFormPage() {
   useEffect(() => {
     if (existing) setForm(purchaseOrderToFormData(existing));
   }, [existing]);
+
+  // A new order starts with a stock line where the company tracks inventory.
+  useEffect(() => {
+    if (isEditing) return;
+    setForm((f) =>
+      f.lines.length === 1 && !f.lines[0].lineKind
+        ? { ...f, lines: [{ ...f.lines[0], lineKind: inventoryEnabled ? 'item' : 'expense' }] }
+        : f,
+    );
+  }, [inventoryEnabled, isEditing]);
 
   useEffect(() => {
     const preset = searchParams.get('vendorId');
@@ -152,6 +189,14 @@ export default function POFormPage() {
     if (!form.orderDate) errs.orderDate = 'Order date is required';
     const lineError = validateLines(form.lines, totals);
     if (lineError) errs.lines = lineError;
+    form.lines.forEach((l, i) => {
+      if (errs.lines) return;
+      const kind = l.lineKind ?? (l.itemId ? 'item' : 'expense');
+      if (kind === 'item' && !l.itemId) errs.lines = `Line ${i + 1}: pick the inventory item it buys.`;
+      else if (kind === 'expense' && !l.itemId && !l.accountId)
+        errs.lines = `Line ${i + 1}: choose the expense account for this non-stock purchase.`;
+      else if (taxPercentError(l.taxRate)) errs.lines = `Line ${i + 1}: ${taxPercentError(l.taxRate)}.`;
+    });
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -322,14 +367,27 @@ export default function POFormPage() {
         <SectionHeader
           title="Order lines"
           right={
-            <Button
-              size="sm"
-              className="rounded-full"
-              onClick={() => patch({ lines: [...form.lines, freshLine()] })}
-            >
-              <Plus className="size-4" />
-              Add line
-            </Button>
+            <div className="flex flex-wrap gap-xs">
+              {inventoryEnabled && (
+                <Button
+                  size="sm"
+                  className="rounded-full"
+                  onClick={() => patch({ lines: [...form.lines, newLine('item')] })}
+                >
+                  <Plus className="size-4" />
+                  Stock item
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant={inventoryEnabled ? 'secondary' : 'primary'}
+                className="rounded-full"
+                onClick={() => patch({ lines: [...form.lines, newLine('expense')] })}
+              >
+                <Plus className="size-4" />
+                {inventoryEnabled ? 'Expense / service (no stock)' : 'Add line'}
+              </Button>
+            </div>
           }
         />
 
@@ -355,6 +413,10 @@ export default function POFormPage() {
               itemLabel="Line"
               quantityLabel="Ordered"
               priceLabel="Unit cost"
+              // Purchase tax is what the vendor charges — typed, not picked.
+              taxInput="manual"
+              totalLabel="Line total (excl. tax)"
+              showTaxBreakdown
               onDescriptionChange={(v) => updateLine(line.id, 'description', v)}
               onQuantityChange={(v) => updateLine(line.id, 'quantity', v)}
               onUnitPriceChange={(v) => updateLine(line.id, 'unitPrice', v)}
@@ -364,17 +426,27 @@ export default function POFormPage() {
               }
               canDelete={form.lines.length > 1}
               topSlot={
-                inventoryEnabled ? (
+                (line.lineKind ?? (line.itemId ? 'item' : 'expense')) === 'item' ? (
                   <Combobox
-                    label="Inventory item (optional)"
+                    label="Inventory item *"
                     value={line.itemId}
                     onChange={(v) => selectItem(line.id, v)}
-                    options={itemOptions}
-                    placeholder="Link an inventory item…"
-                    searchPlaceholder="Search items…"
+                    options={stockOptions}
+                    placeholder="Pick the stock item this line buys…"
+                    searchPlaceholder="Search by SKU or name…"
                     compact
                   />
-                ) : undefined
+                ) : (
+                  <Combobox
+                    label="Expense account *"
+                    value={line.accountId ?? ''}
+                    onChange={(v) => updateLine(line.id, 'accountId', v)}
+                    options={expenseOptions}
+                    placeholder="Where this purchase is expensed…"
+                    searchPlaceholder="Search accounts…"
+                    compact
+                  />
+                )
               }
             />
           ))}
@@ -398,7 +470,7 @@ export default function POFormPage() {
         icon={<ShoppingCart className="size-4" />}
         total={{ label: 'Order total', value: totals.total }}
       >
-        <SummaryRow label="Subtotal" value={totals.subtotal} />
+        <SummaryRow label="Subtotal (excl. tax)" value={totals.subtotal} />
         <SummaryRow label="Tax" value={totals.taxAmount} />
       </SummaryPanel>
 

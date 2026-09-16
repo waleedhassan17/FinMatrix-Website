@@ -72,6 +72,12 @@ export interface DocumentFormSectionsProps {
   readOnly?: boolean;
   /** Explains why editing is off, when it is. */
   readOnlyNote?: string;
+  /**
+   * 'sales' — estimates, sales orders and invoices: where the company tracks
+   * inventory, a line is a stock item or a declared service/charge, and the
+   * stock on hand is shown. 'free' keeps the optional item picker (credit memos).
+   */
+  lineMode?: 'sales' | 'free';
 }
 
 export function DocumentFormSections({
@@ -95,7 +101,12 @@ export function DocumentFormSections({
   showDiscount = true,
   readOnly,
   readOnlyNote,
+  lineMode = 'free',
 }: DocumentFormSectionsProps) {
+  const salesRules = lineMode === 'sales' && inventoryEnabled;
+  const kindOf = (l: FormLineItem) => l.lineKind ?? (l.itemId ? 'item' : salesRules ? 'item' : 'service');
+  const stockLabel = (i: InventoryItemOption) =>
+    `${i.sku ? `${i.sku} · ` : ''}${i.name} · ${i.quantityOnHand} on hand`;
   const updateLine = (id: string, field: keyof FormLineItem, value: string) =>
     onLinesChange(
       lines.map((l) => (l.id === id ? { ...l, [field]: value } : l)),
@@ -125,7 +136,27 @@ export function DocumentFormSections({
         <SectionHeader
           title="Line items"
           right={
-            readOnly ? undefined : (
+            readOnly ? undefined : salesRules ? (
+              <div className="flex flex-wrap gap-xs">
+                <Button
+                  size="sm"
+                  className="rounded-full"
+                  onClick={() => onLinesChange([...lines, { ...freshLine(), lineKind: 'item' }])}
+                >
+                  <Plus className="size-4" />
+                  Stock item
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="rounded-full"
+                  onClick={() => onLinesChange([...lines, { ...freshLine(), lineKind: 'service' }])}
+                >
+                  <Plus className="size-4" />
+                  Service / charge
+                </Button>
+              </div>
+            ) : (
               <Button
                 size="sm"
                 className="rounded-full"
@@ -169,7 +200,27 @@ export function DocumentFormSections({
               canDelete={lines.length > 1}
               readOnly={readOnly}
               topSlot={
-                inventoryEnabled ? (
+                salesRules ? (
+                  kindOf(line) === 'item' ? (
+                    <div className="flex flex-col gap-xxs">
+                      <Combobox
+                        label="Inventory item *"
+                        value={line.itemId}
+                        onChange={(v) => selectItem(line.id, v)}
+                        options={items.map((i) => ({ value: i.id, label: stockLabel(i) }))}
+                        placeholder="Pick the stock item this line sells…"
+                        searchPlaceholder="Search by SKU or name…"
+                        disabled={readOnly}
+                        compact
+                      />
+                      <StockChip item={items.find((i) => i.id === line.itemId)} quantity={line.quantity} />
+                    </div>
+                  ) : (
+                    <p className="rounded-sm bg-neutral-100 px-sm py-xxs text-caption text-text-secondary">
+                      Service / charge — no stock. Use a stock item for anything you sell off the shelf.
+                    </p>
+                  )
+                ) : inventoryEnabled ? (
                   <Combobox
                     label="Inventory item (optional)"
                     value={line.itemId}
@@ -254,3 +305,27 @@ export function DocumentFormSections({
 }
 
 export default DocumentFormSections;
+
+/**
+ * What the shelf holds for this line's item. On hand only: other orders'
+ * promises are counted by the server, which asks to confirm a backorder when
+ * the order is saved.
+ */
+function StockChip({ item, quantity }: { item?: InventoryItemOption; quantity: string }) {
+  if (!item) return null;
+  const want = parseFloat(quantity) || 0;
+  const short = want - item.quantityOnHand;
+  return (
+    <span
+      className={
+        short > 0
+          ? 'self-start rounded-sm bg-warning-lighter px-xs text-caption text-warning'
+          : 'self-start rounded-sm bg-success-lighter px-xs text-caption text-success'
+      }
+    >
+      {short > 0
+        ? `Only ${item.quantityOnHand} on hand — ${short} would be on backorder`
+        : `${item.quantityOnHand} on hand`}
+    </span>
+  );
+}

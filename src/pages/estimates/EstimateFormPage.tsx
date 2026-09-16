@@ -19,6 +19,7 @@ import {
   freshLine,
   isoToday,
   validateLines,
+  validateSalesLineKinds,
   type DiscountType,
   type FormLineItem,
 } from '@/models/document';
@@ -92,7 +93,8 @@ export default function EstimateFormPage() {
     const errs: Record<string, string> = {};
     if (!form.customerId) errs.customerId = 'Select a customer';
     if (!form.estimateDate) errs.estimateDate = 'Estimate date is required';
-    const lineError = validateLines(form.lines, totals);
+    const lineError =
+      validateLines(form.lines, totals) ?? validateSalesLineKinds(form.lines, inventoryEnabled);
     if (lineError) errs.lines = lineError;
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -204,6 +206,7 @@ export default function EstimateFormPage() {
         itemOptions={itemOptions}
         items={items}
         inventoryEnabled={inventoryEnabled}
+        lineMode="sales"
         errors={errors}
         summaryTitle="Estimate summary"
         summaryIcon={<FileText className="size-4" />}

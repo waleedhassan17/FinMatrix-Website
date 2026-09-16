@@ -5,6 +5,7 @@
 // are load-bearing — the wire and the UI disagree on several field names, and
 // list and detail responses are shaped differently from each other.
 
+import { linesToPayload } from '@/serializers/documentLines';
 import {
   type DiscountType,
   type FormLineItem,
@@ -129,6 +130,8 @@ export interface InvoiceWritePayload {
   discountValue: string;
   notes?: string;
   lines: InvoiceLineWritePayload[];
+  /** Owner only: post past the customer's credit limit, with a reason. */
+  creditOverride?: { reason: string };
 }
 
 /**
@@ -155,13 +158,9 @@ export const invoiceFormToPayload = (
   discountType: form.discountType,
   discountValue: String(parseFloat(form.discountValue) || 0),
   notes: form.notes.trim() || undefined,
-  lines: form.lines.map((line) => ({
-    description: line.description.trim(),
-    quantity: String(parseFloat(line.quantity) || 0),
-    unitPrice: String(parseFloat(line.unitPrice) || 0),
-    taxRate: String(parseFloat(line.taxRate) || 0),
-    ...(line.itemId ? { itemId: line.itemId } : {}),
-  })),
+  // Same rules as every sales document (documentLines.linesToPayload): an
+  // item line says 'item'; a line without one is a service only if marked so.
+  lines: linesToPayload(form.lines),
 });
 
 /**
@@ -192,6 +191,7 @@ export const invoiceToFormData = (invoice: Invoice): InvoiceFormData => ({
     (l): FormLineItem => ({
       id: l.id || `imported_${++importedLineSeq}`,
       itemId: l.itemId,
+      lineKind: l.itemId ? 'item' : 'service',
       description: l.description,
       quantity: String(l.quantity),
       unitPrice: String(l.unitPrice),

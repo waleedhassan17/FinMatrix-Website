@@ -35,6 +35,8 @@ import {
 import { isoToday } from '@/models/document';
 import { createDelivery } from '@/networks/delivery/deliveryNetwork';
 import { formatMoney, toDecimal } from '@/utils/money';
+import { CreditLimitDialog } from '@/features/customers/CreditLimitDialog';
+import { creditLimitError, type CreditAssessment } from '@/models/credit';
 
 /** Radix Select will not hold an empty value, so "no rider" needs a word. */
 const NO_RIDER = 'none';
@@ -144,8 +146,13 @@ export default function CreateDeliveryPage() {
       lines: f.lines.length > 1 ? f.lines.filter((l) => l.key !== key) : [newLineDraft()],
     }));
 
+  const [creditIssue, setCreditIssue] = useState<CreditAssessment | null>(null);
+
   const save = useMutation({
-    mutationFn: () => createDelivery(deliveryPayload(form, customer?.name ?? '', stock)),
+    mutationFn: (overrideReason?: string) => {
+      const body = deliveryPayload(form, customer?.name ?? '', stock);
+      return createDelivery(overrideReason ? { ...body, creditOverride: { reason: overrideReason } } : body);
+    },
     onSuccess: (d) => {
       invalidateDeliveries(queryClient);
       setConfirming(false);
@@ -158,6 +165,12 @@ export default function CreateDeliveryPage() {
     },
     onError: (e: Error) => {
       setConfirming(false);
+      // Dispatching on credit past the customer's limit.
+      const credit = creditLimitError(e);
+      if (credit) {
+        setCreditIssue(credit);
+        return;
+      }
       toast.error('Could not create the delivery', { description: e.message });
     },
   });
@@ -168,7 +181,7 @@ export default function CreateDeliveryPage() {
     setErrors(e);
     if (hasDeliveryErrors(e)) return;
     if (dispatching) setConfirming(true);
-    else save.mutate();
+    else save.mutate(undefined);
   };
 
   if (!enabled) {
@@ -397,7 +410,16 @@ export default function CreateDeliveryPage() {
         )} of goods leave the shelf. The sale itself posts only when the rider’s completion is approved.`}
         confirmLabel="Create and dispatch"
         busy={save.isPending}
-        onConfirm={() => save.mutate()}
+        onConfirm={() => save.mutate(undefined)}
+      />
+      <CreditLimitDialog
+        assessment={creditIssue}
+        onOpenChange={(open) => !open && setCreditIssue(null)}
+        busy={save.isPending}
+        onOverride={(reason) => {
+          setCreditIssue(null);
+          save.mutate(reason);
+        }}
       />
     </form>
   );

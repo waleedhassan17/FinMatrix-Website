@@ -31,6 +31,7 @@ import {
   type VendorCreditWriteResult,
 } from '@/networks/purchases/vendorCreditNetwork';
 import { formatMoney } from '@/utils/money';
+import { invalidateAfterPosting } from '@/features/documents/invalidateAfterPosting';
 
 export default function VendorCreditDetailPage() {
   const { vendorCreditId = '' } = useParams<{ vendorCreditId: string }>();
@@ -76,9 +77,7 @@ export default function VendorCreditDetailPage() {
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['vendor-credits'] });
     // Applying a credit moves a bill's balance, so the AP lists are stale too.
-    queryClient.invalidateQueries({ queryKey: ['bills'] });
-    queryClient.invalidateQueries({ queryKey: ['vendors'] });
-    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    invalidateAfterPosting(queryClient);
   };
 
   /**

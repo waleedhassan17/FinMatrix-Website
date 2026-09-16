@@ -8,7 +8,10 @@ import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { Combobox } from '@/components/ui/Combobox';
 import { DateField } from '@/components/ui/Field';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { DocumentFormSections } from '@/features/documents/DocumentFormSections';
+import type { BackorderLine } from '@/models/salesOrder';
+import { formatMoney } from '@/utils/money';
 import {
   useCustomerOptions,
   useInventoryOptions,
@@ -18,11 +21,13 @@ import {
   freshLine,
   isoToday,
   validateLines,
+  validateSalesLineKinds,
   type DiscountType,
   type FormLineItem,
 } from '@/models/document';
 import { areLinesEditable, type SalesOrderFormData } from '@/models/salesOrder';
 import {
+  backorderRefusal,
   createSalesOrder,
   getSalesOrderById,
   updateSalesOrder,
@@ -94,30 +99,49 @@ export default function SalesOrderFormPage() {
     if (!form.customerId) errs.customerId = 'Select a customer';
     if (!form.orderDate) errs.orderDate = 'Order date is required';
     if (linesEditable) {
-      const lineError = validateLines(form.lines, totals);
+      const lineError =
+        validateLines(form.lines, totals) ?? validateSalesLineKinds(form.lines, inventoryEnabled);
       if (lineError) errs.lines = lineError;
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
 
+  // Items the server says are short: saving needs the user's say-so.
+  const [shortItems, setShortItems] = useState<BackorderLine[] | null>(null);
+
   const save = useMutation({
-    mutationFn: () =>
+    mutationFn: (acceptBackorder: boolean) =>
       isEditing
         ? updateSalesOrder(
             salesOrderId!,
             salesOrderFormToUpdatePayload(form, linesEditable),
+            acceptBackorder,
           )
-        : createSalesOrder(salesOrderFormToPayload(form)),
+        : createSalesOrder(salesOrderFormToPayload(form), acceptBackorder),
     onSuccess: (order) => {
+      setShortItems(null);
       queryClient.invalidateQueries({ queryKey: ['sales-orders'] });
       toast.success(isEditing ? 'Sales order updated' : 'Sales order created', {
         description: order.orderNumber ? `${order.orderNumber} has been saved.` : undefined,
       });
+      // Not a block — an order only promises goods — but say it early.
+      if (order.creditCheck && !order.creditCheck.withinLimit) {
+        toast.warning('Over the credit limit', {
+          description: `Shipping all of it would take the customer to ${formatMoney(order.creditCheck.exposure)} against a limit of ${formatMoney(order.creditCheck.limit)}. An advance of ${formatMoney(order.creditCheck.requiredAdvance)} will be needed before it ships.`,
+          duration: 12_000,
+        });
+      }
       navigate(`/sales-orders/${order.id}`, { replace: true });
     },
-    onError: (e: Error) =>
-      toast.error('Could not save sales order', { description: e.message }),
+    onError: (e: Error) => {
+      const short = backorderRefusal(e);
+      if (short) {
+        setShortItems(short);
+        return;
+      }
+      toast.error('Could not save sales order', { description: e.message });
+    },
   });
 
   if (isEditing && isLoading) {
@@ -201,6 +225,7 @@ export default function SalesOrderFormPage() {
         itemOptions={itemOptions}
         items={items}
         inventoryEnabled={inventoryEnabled}
+        lineMode="sales"
         errors={errors}
         summaryTitle="Order summary"
         summaryIcon={<ClipboardList className="size-4" />}
@@ -221,13 +246,37 @@ export default function SalesOrderFormPage() {
         {/* salesOrder.create is 'direct' for both roles. */}
         <Button
           onClick={() => {
-            if (validate()) save.mutate();
+            if (validate()) save.mutate(false);
           }}
           disabled={busy}
         >
           {busy ? 'Saving…' : isEditing ? 'Save changes' : 'Save sales order'}
         </Button>
       </div>
+      <ConfirmDialog
+        open={!!shortItems}
+        onOpenChange={(open) => !open && setShortItems(null)}
+        title="Save with items on backorder?"
+        description={
+          <>
+            There is not enough stock for:
+            <ul className="mt-xs list-disc pl-lg">
+              {(shortItems ?? []).map((s) => (
+                <li key={s.itemId}>
+                  {s.sku ? `${s.sku} · ` : ''}
+                  {s.name}: ordering {s.requested}, {s.available} available — {s.shortfall} on backorder
+                </li>
+              ))}
+            </ul>
+            <span className="mt-xs block">
+              The order can be saved, but those quantities cannot ship or be invoiced until stock arrives.
+            </span>
+          </>
+        }
+        confirmLabel="Save as backorder"
+        busy={save.isPending}
+        onConfirm={() => save.mutate(true)}
+      />
     </div>
   );
 }

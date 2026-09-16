@@ -249,15 +249,29 @@ export const extractErrorCode = (error: unknown): string | undefined => {
   return (error as { code?: string })?.code;
 };
 
-/** An Error that reaches a screen with its server code and status intact. */
+/**
+ * The structured `error.details` the server attaches to some refusals — the
+ * short items of a backorder, the breakdown of a credit-limit check.
+ */
+export const extractErrorDetails = (error: unknown): unknown => {
+  if (axios.isAxiosError(error)) {
+    const data = error.response?.data as { error?: { details?: unknown } } | undefined;
+    return data?.error?.details;
+  }
+  return (error as { details?: unknown })?.details;
+};
+
+/** An Error that reaches a screen with its server code, status and details intact. */
 export class ApiError extends Error {
   code?: string;
   status?: number;
-  constructor(message: string, code?: string, status?: number) {
+  details?: unknown;
+  constructor(message: string, code?: string, status?: number, details?: unknown) {
     super(message);
     this.name = 'ApiError';
     this.code = code;
     this.status = status;
+    this.details = details;
   }
 }
 
@@ -270,6 +284,7 @@ export const toApiError = (error: unknown): ApiError =>
     extractErrorMessage(error),
     extractErrorCode(error),
     axios.isAxiosError(error) ? error.response?.status : undefined,
+    extractErrorDetails(error),
   );
 
 // ─── Response unwrapping ────────────────────────────

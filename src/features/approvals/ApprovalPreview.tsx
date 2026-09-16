@@ -189,7 +189,8 @@ function PurchaseOrderPreview({ request }: { request: ApprovalRequest }) {
 
   return (
     <DocumentView
-      title="Purchase order"
+      // A PO request is committed as a draft: a purchase requisition.
+      title="Purchase requisition"
       counterpartyLabel="Supplier"
       counterpartyName={vendors.get(text(p.vendorId))?.name ?? '—'}
       meta={meta}

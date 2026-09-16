@@ -123,7 +123,8 @@ export default function CustomerDetailPage() {
             label="Total purchases"
             value={formatMoney(customer.totalPurchases)}
           />
-          <Figure label="Credit limit" value={formatMoney(credit.limit)} />
+          <Figure label="Credit limit" value={credit.limit > 0 ? formatMoney(credit.limit) : 'No limit'} />
+          {credit.advances > 0 && <Figure label="Advances held" value={formatMoney(credit.advances)} />}
         </div>
 
         {/* Hidden entirely when there is no limit — a usage bar against zero
@@ -138,7 +139,10 @@ export default function CustomerDetailPage() {
             </div>
             <p className="mt-xxs text-caption text-text-secondary tabular">
               {formatMoney(credit.used)} of {formatMoney(credit.limit)} used ·{' '}
-              {formatMoney(credit.available)} available
+              {formatMoney(Math.max(credit.available, 0))} available
+            </p>
+            <p className="mt-xxs text-caption text-text-tertiary">
+              Used = unpaid invoices and goods shipped on credit, less advances and credits.
             </p>
           </div>
         )}

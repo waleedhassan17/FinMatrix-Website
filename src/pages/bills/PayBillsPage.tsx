@@ -26,6 +26,7 @@ import { PAYMENT_METHOD_OPTIONS, type ApiPaymentMethod } from '@/models/payment'
 import { getDepositAccounts } from '@/networks/accounting/accountNetwork';
 import { getPayableBills, payBills } from '@/networks/purchases/billNetwork';
 import { formatMoney } from '@/utils/money';
+import { invalidateAfterPosting } from '@/features/documents/invalidateAfterPosting';
 
 interface PayBillsForm {
   vendorId: string;
@@ -171,9 +172,7 @@ export default function PayBillsPage() {
         return;
       }
 
-      queryClient.invalidateQueries({ queryKey: ['bills'] });
-      queryClient.invalidateQueries({ queryKey: ['vendors'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateAfterPosting(queryClient);
 
       // A receipt rather than a toast: this is money out of the bank, and the
       // person who pressed the button should see what it did. `replace` so

@@ -19,11 +19,23 @@ export type DiscountType = 'percent' | 'amount' | 'none';
  * A line as the form holds it: all strings, because every field is a text
  * input and because the server's DTOs are `@IsNumberString` anyway.
  */
+/**
+ * What a line is, when the company tracks inventory.
+ *   item    — an inventory item (sales: relieves stock; purchases: adds stock)
+ *   service — a typed sales line with no stock: a service or charge
+ *   expense — a typed purchase line with no stock, billed to an expense account
+ */
+export type LineKind = 'item' | 'service' | 'expense';
+
 export interface FormLineItem {
   /** Client-only key, for React and for targeting updates. Never sent. */
   id: string;
   /** Links the line to stock. Drives COGS and the stock decrement server-side. */
   itemId: string;
+  /** Unset on companies without inventory, where every line is free text. */
+  lineKind?: LineKind;
+  /** Purchase expense lines only: the expense account the bill posts to. */
+  accountId?: string;
   description: string;
   quantity: string;
   unitPrice: string;
@@ -158,6 +170,24 @@ export const validateLines = (
   // round trip and a confusing error.
   if (totals.total <= 0) return 'The total must be above zero';
   return null;
+};
+
+/**
+ * In a company that tracks inventory, every sales line is either a stock item
+ * or a declared service/charge. A typed product — "Roar-X Drinks", not in the
+ * catalogue — used to save, and invoicing it posted revenue with no cost and
+ * moved no stock. The server refuses it (LINE_ITEM_REQUIRED); this says so
+ * before the round trip.
+ */
+export const validateSalesLineKinds = (
+  lines: FormLineItem[],
+  inventoryEnabled: boolean,
+): string | null => {
+  if (!inventoryEnabled) return null;
+  const index = lines.findIndex((l) => (l.lineKind ?? 'item') === 'item' && !l.itemId);
+  return index === -1
+    ? null
+    : `Line ${index + 1}: pick the inventory item it sells, or make it a service / charge line.`;
 };
 
 // ─── Dates ──────────────────────────────────────────────────────────────

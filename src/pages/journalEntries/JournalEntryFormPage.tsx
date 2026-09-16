@@ -24,6 +24,7 @@ import { getPostableAccounts } from '@/networks/accounting/accountNetwork';
 import { createJournalEntry } from '@/networks/accounting/journalEntryNetwork';
 import { journalFormToPayload } from '@/serializers/journalEntrySerializer';
 import { formatMoney } from '@/utils/money';
+import { invalidateAfterPosting } from '@/features/documents/invalidateAfterPosting';
 
 export default function JournalEntryFormPage() {
   const navigate = useNavigate();
@@ -79,8 +80,7 @@ export default function JournalEntryFormPage() {
       queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
       // A posted entry moves account balances, so every chart reader is stale.
       if (status === 'posted') {
-        queryClient.invalidateQueries({ queryKey: ['accounts'] });
-        queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+        invalidateAfterPosting(queryClient);
       }
       toast.success(status === 'posted' ? 'Entry posted' : 'Draft saved', {
         description: result.entry.reference || undefined,

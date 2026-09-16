@@ -17,6 +17,9 @@ import { MoreActionsMenu, PageHeader } from '@/components/layout/PageHeader';
 import { DetailPageSkeleton, PageMessage } from '@/components/layout/PageState';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { Combobox } from '@/components/ui/Combobox';
+import { DateField } from '@/components/ui/Field';
+import { Input } from '@/components/ui/Input';
 import { KeyValueList } from '@/components/ui/KeyValueList';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { AmountSummary } from '@/features/documents/AmountSummary';
@@ -30,25 +33,30 @@ import { ReceiveItemsPanel } from '@/features/purchaseOrders/ReceiveItemsPanel';
 import { DocumentActions } from '@/features/share/DocumentActions';
 import { useAdminOnly, useCapability } from '@/hooks/useCapability';
 import { cn } from '@/lib/cn';
+import { addDays, isoToday } from '@/models/document';
+import { PAYMENT_TERMS_DAYS } from '@/models/customer';
 import {
   buildReceiptDrafts,
   hasAnyReceipt,
+  hasUnbilledReceipts,
   isPOEditable,
   isReceivable,
+  isRequisition,
   receiptDraftsToPayload,
   receivedPercent,
-  receivedValue,
   type ReceiptDraft,
 } from '@/models/purchaseOrder';
+import { getBillableAccounts } from '@/networks/accounting/accountNetwork';
+import { ApiError } from '@/networks/network/apiHelpers';
 import {
   createBillFromPO,
   deletePurchaseOrder,
   getPurchaseOrderById,
-  POAlreadyBilledError,
   receivePurchaseOrderItems,
   setPurchaseOrderStatus,
 } from '@/networks/purchases/purchaseOrderNetwork';
 import { formatMoney } from '@/utils/money';
+import { invalidateAfterPosting } from '@/features/documents/invalidateAfterPosting';
 
 export default function PODetailPage() {
   const { poId = '' } = useParams<{ poId: string }>();
@@ -65,12 +73,14 @@ export default function PODetailPage() {
   const [confirmClose, setConfirmClose] = useState(false);
   const [confirmBill, setConfirmBill] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  // Set when a second Convert-to-Bill is refused; the existing bill is linked
-  // rather than the refusal being reported as a failure.
-  const [existingBill, setExistingBill] = useState<{
-    id: string;
-    number: string;
-  } | null>(null);
+  // The bill form inside the Convert dialog. Everything is optional: the
+  // server numbers it, dates it today and sets the due date from the vendor's
+  // terms when these are left blank.
+  const [billNumber, setBillNumber] = useState('');
+  const [billDate, setBillDate] = useState(isoToday());
+  const [dueDate, setDueDate] = useState('');
+  const [expenseAccountId, setExpenseAccountId] = useState('');
+  const [needsExpenseAccount, setNeedsExpenseAccount] = useState(false);
 
   const { data: po, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['purchase-orders', poId],
@@ -82,9 +92,14 @@ export default function PODetailPage() {
   const doc = useMemo(() => (po ? purchaseOrderDocument(po, company, vendor) : null), [po, company, vendor]);
 
   const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
-    queryClient.invalidateQueries({ queryKey: ['inventory'] });
+    invalidateAfterPosting(queryClient);
   };
+
+  const { data: billable = [] } = useQuery({
+    queryKey: ['accounts', 'billable'],
+    queryFn: getBillableAccounts,
+    enabled: needsExpenseAccount,
+  });
 
   const changeStatus = useMutation({
     mutationFn: (status: 'sent' | 'closed') =>
@@ -92,7 +107,7 @@ export default function PODetailPage() {
     onSuccess: (updated) => {
       invalidate();
       toast.success(
-        updated.status === 'sent' ? 'Sent to vendor' : 'Purchase order closed',
+        updated.status === 'closed' ? 'Purchase order closed' : 'Approved and sent to the vendor',
       );
     },
     onError: (e: Error) =>
@@ -119,22 +134,26 @@ export default function PODetailPage() {
   });
 
   const convert = useMutation({
-    mutationFn: () => createBillFromPO(poId),
-    onSuccess: (bill) => {
+    mutationFn: () =>
+      createBillFromPO(poId, {
+        billNumber: billNumber.trim() || undefined,
+        billDate: billDate || undefined,
+        dueDate: dueDate || undefined,
+        defaultAccountId: expenseAccountId || undefined,
+      }),
+    onSuccess: ({ bill }) => {
       invalidate();
-      queryClient.invalidateQueries({ queryKey: ['bills'] });
-      queryClient.invalidateQueries({ queryKey: ['vendors'] });
+      setConfirmBill(false);
       toast.success('Bill created', {
-        description: `${bill.billNumber || 'The bill'} covers what has been received.`,
+        description: `${bill.billNumber || 'The bill'} covers the goods received and not billed yet, tax included.`,
       });
       navigate(`/bills/${bill.id}`);
     },
     onError: (e: Error) => {
-      if (e instanceof POAlreadyBilledError) {
-        setExistingBill({ id: e.billId, number: e.billNumber });
-        toast.info('This order has already been billed', {
-          description: 'Open the existing bill instead of raising another.',
-        });
+      // An older non-stock line saved without an expense account: ask for one.
+      if (e instanceof ApiError && e.code === 'EXPENSE_ACCOUNT_REQUIRED') {
+        setNeedsExpenseAccount(true);
+        toast.info('Choose an expense account', { description: e.message });
         return;
       }
       toast.error('Could not create the bill', { description: e.message });
@@ -167,19 +186,40 @@ export default function PODetailPage() {
     );
   }
 
-  const billId = existingBill?.id || po.billId;
+  const requisition = isRequisition(po);
   const received = hasAnyReceipt(po);
+  const unbilled = hasUnbilledReceipts(po);
   const canReceive = isReceivable(po.status) && statusCap.allowed;
   // Edit is gated twice: the capability (false for staff) AND draft-only,
-  // because PATCH rebuilds every line and zeroes what was received.
+  // because PATCH rebuilds every line.
   const canEdit = editCap.allowed && isPOEditable(po.status);
-  const receivedAmount = receivedValue(po);
+  // Tax-inclusive, like the order total they sit beside.
+  const receivedAmount = po.receivedValueGross;
+  const billedAmount = po.billedValueGross;
+  const unbilledAmount = po.unbilledValueGross;
+  const vendorTermsDays = vendor ? (PAYMENT_TERMS_DAYS as Record<string, number>)[vendor.paymentTerms] ?? 30 : 30;
 
   // On screen only: what has arrived is the buyer's working figure, not something
   // the vendor's copy of the order should carry.
   const screenDoc = received
-    ? { ...doc, totals: [...doc.totals, { label: 'Received so far', value: receivedAmount, dividerBefore: true }] }
+    ? {
+        ...doc,
+        totals: [
+          ...doc.totals,
+          { label: 'Received so far (incl. tax)', value: receivedAmount, dividerBefore: true },
+          { label: 'Billed so far (incl. tax)', value: billedAmount },
+        ],
+      }
     : doc;
+
+  const openBillDialog = () => {
+    setBillNumber('');
+    setBillDate(isoToday());
+    setDueDate(addDays(isoToday(), vendorTermsDays));
+    setExpenseAccountId('');
+    setNeedsExpenseAccount(false);
+    setConfirmBill(true);
+  };
 
   const startReceiving = () => {
     setDrafts(buildReceiptDrafts(po.lines));
@@ -191,8 +231,8 @@ export default function PODetailPage() {
       header={
         <PageHeader
           back={{ to: '/purchase-orders', label: 'Purchase orders' }}
-          title={po.poNumber || 'Purchase order'}
-          status={<StatusBadge status={po.status} />}
+          title={po.poNumber || (requisition ? 'Purchase requisition' : 'Purchase order')}
+          status={<StatusBadge status={po.status} label={requisition ? 'Requisition' : undefined} />}
           meta={[
             <Link
               key="vendor"
@@ -215,10 +255,10 @@ export default function PODetailPage() {
                 </Button>
               )}
 
-              {po.status === 'draft' && statusCap.allowed && (
+              {requisition && statusCap.allowed && (
                 <Button size="sm" onClick={() => setConfirmSend(true)} disabled={changeStatus.isPending}>
                   <Send className="size-4" />
-                  Send to vendor
+                  Approve &amp; send
                 </Button>
               )}
 
@@ -229,23 +269,13 @@ export default function PODetailPage() {
                 </Button>
               )}
 
-              {/* Only offered once something has actually arrived: create-bill
-                  bills the received quantity, so with nothing received it would
-                  raise a bill for zero. */}
-              {billId ? (
-                <Button asChild variant="secondary" size="sm">
-                  <Link to={`/bills/${billId}`}>
-                    <FileText className="size-4" />
-                    View bill
-                  </Link>
+              {/* Offered whenever goods have arrived that no bill covers yet —
+                  once per delivery if need be. */}
+              {unbilled && !requisition && po.status !== 'closed' && (
+                <Button variant="secondary" size="sm" onClick={openBillDialog}>
+                  <FileText className="size-4" />
+                  Convert to bill
                 </Button>
-              ) : (
-                received && (
-                  <Button variant="secondary" size="sm" onClick={() => setConfirmBill(true)}>
-                    <FileText className="size-4" />
-                    Convert to bill
-                  </Button>
-                )
               )}
 
               <DocumentActions
@@ -261,14 +291,14 @@ export default function PODetailPage() {
                     label: 'Close order',
                     icon: XCircle,
                     onSelect: () => setConfirmClose(true),
-                    hidden: !(po.status !== 'closed' && po.status !== 'draft' && statusCap.allowed),
+                    hidden: !(po.status !== 'closed' && !requisition && statusCap.allowed),
                   },
                   {
                     label: 'Delete order',
                     icon: Trash2,
                     destructive: true,
                     onSelect: () => setConfirmDelete(true),
-                    hidden: !canDelete,
+                    hidden: !(canDelete && !received && po.bills.length === 0),
                   },
                 ]}
               />
@@ -279,10 +309,10 @@ export default function PODetailPage() {
       aside={
         <>
           <AmountSummary
-            label="Order total"
+            label={requisition ? 'Requisition total' : 'Order total'}
             amount={po.total}
             progress={
-              po.status === 'draft'
+              requisition
                 ? undefined
                 : {
                     value: receivedAmount,
@@ -290,15 +320,15 @@ export default function PODetailPage() {
                     label: 'Received',
                     tone: 'primary',
                     caption: received
-                      ? `${formatMoney(receivedAmount)} of ${formatMoney(po.total)} received`
+                      ? `Received ${formatMoney(receivedAmount)} of ${formatMoney(po.total)} · Billed ${formatMoney(billedAmount)}`
                       : 'Nothing received yet',
                   }
             }
           >
-            {po.status === 'draft' && (
+            {requisition && (
               <p className="mt-xs text-caption text-text-secondary">
-                A draft — send it to the vendor when it is ready. A purchase order posts
-                nothing to the ledger.
+                A purchase requisition — approve it and send it to the vendor to make it a purchase
+                order. Nothing posts to the ledger until goods are received.
               </p>
             )}
           </AmountSummary>
@@ -310,24 +340,31 @@ export default function PODetailPage() {
             loading={!vendor}
           />
 
-          {billId && (
-            <RailSection title="Bill">
-              <Link
-                to={`/bills/${billId}`}
-                className="flex items-center justify-between gap-sm rounded-md text-body-sm text-primary hover:underline"
-              >
-                <span className="inline-flex items-center gap-xs">
-                  <FileText className="size-4" aria-hidden="true" />
-                  {existingBill?.number || 'Open the bill for this order'}
-                </span>
-              </Link>
+          {po.bills.length > 0 && (
+            <RailSection title={po.bills.length === 1 ? 'Bill' : 'Bills'}>
+              <ul className="-mx-sm flex flex-col">
+                {po.bills.map((b) => (
+                  <li key={b.id}>
+                    <Link
+                      to={`/bills/${b.id}`}
+                      className="flex items-center justify-between gap-sm rounded-md px-sm py-xs hover:bg-surface-hover"
+                    >
+                      <span className="inline-flex min-w-0 items-center gap-xs text-label-md text-text-primary">
+                        <FileText className="size-4 shrink-0 text-text-tertiary" aria-hidden="true" />
+                        <span className="truncate">{b.billNumber}</span>
+                      </span>
+                      <span className="text-label-md text-text-primary tabular">{formatMoney(b.total)}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
             </RailSection>
           )}
 
           <RailSection title="Details">
             <KeyValueList
               items={[
-                { label: 'PO #', value: po.poNumber || '—' },
+                { label: requisition ? 'Requisition #' : 'PO #', value: po.poNumber || '—' },
                 { label: 'Lines', value: String(po.lines.length) },
                 { label: 'Created', value: docDate(po.createdAt), hidden: !po.createdAt },
                 { label: 'Last updated', value: docDate(po.updatedAt), hidden: !po.updatedAt },
@@ -349,10 +386,11 @@ export default function PODetailPage() {
 
       <DocumentPaper
         doc={screenDoc}
-        lineExtraHeader="Received"
+        // A requisition has had nothing received against it — no column.
+        lineExtraHeader={requisition ? undefined : 'Received'}
         // The extra-column slot built for sales-order fulfilment, reused
         // unchanged — the two progress readouts are the same idea.
-        lineExtra={(_line, i) => {
+        lineExtra={requisition ? undefined : (_line, i) => {
           const l = po.lines[i];
           if (!l) return null;
           const pct = receivedPercent(l);
@@ -378,9 +416,9 @@ export default function PODetailPage() {
       <ConfirmDialog
         open={confirmSend}
         onOpenChange={setConfirmSend}
-        title="Send this order to the vendor?"
-        description="This marks the order as sent. It posts nothing to the ledger — a purchase order is a commitment, not a transaction."
-        confirmLabel="Send to vendor"
+        title="Approve this requisition and send it to the vendor?"
+        description="It becomes a purchase order that goods can be received against. It posts nothing to the ledger — a purchase order is a commitment, not a transaction."
+        confirmLabel="Approve & send"
         busy={changeStatus.isPending}
         onConfirm={() => changeStatus.mutate('sent')}
       />
@@ -390,9 +428,11 @@ export default function PODetailPage() {
         onOpenChange={setConfirmClose}
         title="Close this order?"
         description={
-          received
-            ? 'Closing stops any further receipts against this order. What has already been received stays booked in.'
-            : 'Closing stops any further receipts against this order. Nothing has been received.'
+          unbilled
+            ? 'Goods received on this order have not been billed yet. Bill them first — a closed order cannot be billed.'
+            : received
+              ? 'Closing stops any further receipts against this order. What has already been received stays booked in.'
+              : 'Closing stops any further receipts against this order. Nothing has been received.'
         }
         confirmLabel="Close order"
         busy={changeStatus.isPending}
@@ -402,25 +442,58 @@ export default function PODetailPage() {
       <ConfirmDialog
         open={confirmBill}
         onOpenChange={setConfirmBill}
-        title="Raise a bill for what has arrived?"
+        title="Bill the goods received"
         description={
           <>
-            A bill for <strong>{formatMoney(receivedAmount)}</strong> will be raised against{' '}
-            {doc.party?.name || 'this vendor'} — the received quantity at the ordered cost, not the
-            full order value of {formatMoney(po.total)}. It clears Goods Received Not Invoiced
-            against accounts payable. An order can only be billed once.
+            Bill <strong>{doc.party?.name || 'this vendor'}</strong>{' '}
+            <strong>{formatMoney(unbilledAmount)}</strong> (tax included) for the goods received and not
+            billed yet. You pay the vendor this amount, tax included. Goods that arrive later can be
+            billed separately.
           </>
         }
-        confirmLabel="Create bill"
+        confirmLabel={convert.isPending ? 'Creating…' : 'Create bill'}
         busy={convert.isPending}
+        confirmDisabled={needsExpenseAccount && !expenseAccountId}
         onConfirm={() => convert.mutate()}
-      />
+      >
+        <div className="grid gap-md sm:grid-cols-2">
+          <Input
+            label="Vendor's invoice #"
+            value={billNumber}
+            onChange={(e) => setBillNumber(e.target.value)}
+            placeholder="Optional"
+            hint="Left blank, the bill is numbered BILL-YYYY-NNNN."
+            containerClassName="sm:col-span-2"
+          />
+          <DateField label="Bill date" value={billDate} onChange={setBillDate} />
+          <DateField
+            label="Due date"
+            value={dueDate}
+            onChange={setDueDate}
+            min={billDate}
+            hint={`Vendor terms: ${vendorTermsDays} days.`}
+          />
+          {needsExpenseAccount && (
+            <Combobox
+              label="Expense account for non-stock lines *"
+              value={expenseAccountId}
+              onChange={setExpenseAccountId}
+              options={billable
+                .filter((a) => a.type === 'expense')
+                .map((a) => ({ value: a.id, label: `${a.accountNumber} · ${a.name}` }))}
+              placeholder="Choose an account…"
+              searchPlaceholder="Search accounts…"
+              containerClassName="sm:col-span-2"
+            />
+          )}
+        </div>
+      </ConfirmDialog>
 
       <ConfirmDialog
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
         title="Delete this purchase order?"
-        description="This cannot be undone. An order with received stock or a bill against it will be refused by the server."
+        description="This cannot be undone. Only an order with nothing received and no bill can be deleted; its number is not reused."
         confirmLabel="Delete order"
         destructive
         busy={remove.isPending}

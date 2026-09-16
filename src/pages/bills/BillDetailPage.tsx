@@ -29,6 +29,7 @@ import {
   postBill,
 } from '@/networks/purchases/billNetwork';
 import { formatMoney } from '@/utils/money';
+import { invalidateAfterPosting } from '@/features/documents/invalidateAfterPosting';
 
 export default function BillDetailPage() {
   const { billId = '' } = useParams<{ billId: string }>();
@@ -59,9 +60,7 @@ export default function BillDetailPage() {
   const post = useMutation({
     mutationFn: () => postBill(billId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bills'] });
-      queryClient.invalidateQueries({ queryKey: ['vendors'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateAfterPosting(queryClient);
       toast.success('Bill posted', {
         description: 'Accounts payable now carries this balance.',
       });
@@ -73,8 +72,7 @@ export default function BillDetailPage() {
   const remove = useMutation({
     mutationFn: () => deleteBill(billId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bills'] });
-      queryClient.invalidateQueries({ queryKey: ['vendors'] });
+      invalidateAfterPosting(queryClient);
       toast.success('Bill deleted');
       navigate('/bills', { replace: true });
     },

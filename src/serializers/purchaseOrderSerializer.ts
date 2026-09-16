@@ -37,6 +37,8 @@ const mapPOLine = (raw: unknown): PurchaseOrderLine => {
     taxRate: toNumber(r.taxRate as never),
     amount: toNumber((r.lineTotal ?? r.amount) as never),
     receivedQuantity: toNumber((r.receivedQty ?? r.receivedQuantity) as never),
+    billedQuantity: toNumber((r.billedQty ?? r.billedQuantity) as never),
+    accountId: str(r.accountId),
   };
 };
 
@@ -60,6 +62,20 @@ export const mapPurchaseOrder = (raw: unknown): PurchaseOrder => {
     total: toNumber(r.total as never),
     notes: str(r.notes ?? r.memo),
     billId: str(r.billId),
+    bills: (Array.isArray(r.bills) ? r.bills : []).map((raw) => {
+      const b = asRaw(raw);
+      return {
+        id: str(b.id),
+        billNumber: str(b.billNumber),
+        billDate: str(b.billDate),
+        total: toNumber(b.total as never),
+        balance: toNumber(b.balance as never),
+        status: str(b.status),
+      };
+    }),
+    receivedValueGross: toNumber(r.receivedValueGross as never),
+    billedValueGross: toNumber(r.billedValueGross as never),
+    unbilledValueGross: toNumber(r.unbilledValueGross as never),
     createdAt: str(r.createdAt),
     updatedAt: str(r.updatedAt),
   };
@@ -98,8 +114,11 @@ export interface POLineWritePayload {
   description: string;
   orderedQty: string;
   unitCost: string;
+  /** Typed by hand — whatever the vendor charges, 0 to 100. */
   taxRate: string;
+  lineKind?: 'item' | 'expense';
   itemId?: string;
+  accountId?: string;
 }
 
 export interface PurchaseOrderWritePayload {
@@ -127,6 +146,8 @@ export const purchaseOrderToFormData = (
       quantity: String(l.quantity),
       unitPrice: String(l.unitPrice),
       taxRate: String(l.taxRate),
+      lineKind: l.itemId ? 'item' : 'expense',
+      accountId: l.accountId,
     }),
   ),
   notes: po.notes,
@@ -151,7 +172,11 @@ export const purchaseOrderFormToPayload = (
     orderedQty: String(parseFloat(l.quantity) || 0),
     unitCost: String(parseFloat(l.unitPrice) || 0),
     taxRate: String(parseFloat(l.taxRate) || 0),
-    ...(l.itemId ? { itemId: l.itemId } : {}),
+    // A stock line names its item; anything else is an expense line and names
+    // the account it will be billed to.
+    ...(l.itemId
+      ? { lineKind: 'item' as const, itemId: l.itemId }
+      : { lineKind: 'expense' as const, ...(l.accountId ? { accountId: l.accountId } : {}) }),
   })),
   ...(form.expectedDate ? { expectedDate: form.expectedDate } : {}),
   ...(form.notes.trim() ? { notes: form.notes.trim() } : {}),

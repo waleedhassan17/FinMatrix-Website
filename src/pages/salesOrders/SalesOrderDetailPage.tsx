@@ -27,7 +27,9 @@ import { DocumentPaper } from '@/features/documents/DocumentPaper';
 import { documentPdfBlob } from '@/features/documents/documentPdf';
 import { PartyCard } from '@/features/documents/PartyCard';
 import { useDocumentCompany, useDocumentCustomer } from '@/features/documents/useDocumentContext';
+import { CreditLimitDialog } from '@/features/customers/CreditLimitDialog';
 import { FulfilDialog } from '@/features/salesOrders/FulfilDialog';
+import { creditLimitError, type CreditAssessment } from '@/models/credit';
 import { DocumentActions } from '@/features/share/DocumentActions';
 import { useAdminOnly, useIsOwner } from '@/hooks/useCapability';
 import { cn } from '@/lib/cn';
@@ -49,6 +51,7 @@ import {
   fulfillSalesOrder,
   getSalesOrderById,
 } from '@/networks/sales/salesOrderNetwork';
+import { invalidateAfterPosting } from '@/features/documents/invalidateAfterPosting';
 
 export default function SalesOrderDetailPage() {
   const { salesOrderId = '' } = useParams<{ salesOrderId: string }>();
@@ -63,6 +66,11 @@ export default function SalesOrderDetailPage() {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [dueDate, setDueDate] = useState(addDays(isoToday(), 30));
+  // A shipment or invoice the credit limit refused, and how to retry it.
+  const [creditIssue, setCreditIssue] = useState<{
+    assessment: CreditAssessment;
+    retry: (reason: string) => void;
+  } | null>(null);
 
   const { data: order, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['sales-orders', salesOrderId],
@@ -77,37 +85,62 @@ export default function SalesOrderDetailPage() {
   );
 
   const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ['sales-orders'] });
-    queryClient.invalidateQueries({ queryKey: ['invoices'] });
-    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    invalidateAfterPosting(queryClient);
   };
 
   const fulfil = useMutation({
-    mutationFn: (lines: FulfilLinePayload[]) =>
-      fulfillSalesOrder(salesOrderId, lines),
+    mutationFn: ({ lines, overrideReason }: { lines: FulfilLinePayload[]; overrideReason?: string }) =>
+      fulfillSalesOrder(salesOrderId, lines, overrideReason),
     onSuccess: (updated) => {
       setFulfilOpen(false);
+      setCreditIssue(null);
       invalidate();
       toast.success('Shipment recorded', {
         description: `The order is now ${updated.status}.`,
       });
     },
-    onError: (e: Error) =>
-      toast.error('Could not record shipment', { description: e.message }),
+    onError: (e: Error, vars) => {
+      // Goods leaving on credit past the customer's limit.
+      const credit = creditLimitError(e);
+      if (credit) {
+        setFulfilOpen(false);
+        setCreditIssue({
+          assessment: credit,
+          retry: (reason) => fulfil.mutate({ lines: vars.lines, overrideReason: reason }),
+        });
+        return;
+      }
+      toast.error('Could not record shipment', { description: e.message });
+    },
   });
 
   const toInvoice = useMutation({
-    mutationFn: () => convertSalesOrderToInvoice(salesOrderId, dueDate || undefined),
-    onSuccess: ({ invoiceId }) => {
+    mutationFn: (overrideReason?: string) =>
+      convertSalesOrderToInvoice(salesOrderId, dueDate || undefined, overrideReason),
+    onSuccess: ({ invoiceId, pending }) => {
       setConvertOpen(false);
+      setCreditIssue(null);
       invalidate();
+      if (pending) {
+        toast.success('Sent for approval', {
+          description: 'The invoice is raised once the owner approves it.',
+        });
+        return;
+      }
       toast.success('Invoice created', {
         description: 'The sale is posted and stock has been decremented.',
       });
       if (invoiceId) navigate(`/invoices/${invoiceId}`);
     },
-    onError: (e: Error) =>
-      toast.error('Could not create invoice', { description: e.message }),
+    onError: (e: Error) => {
+      const credit = creditLimitError(e);
+      if (credit) {
+        setConvertOpen(false);
+        setCreditIssue({ assessment: credit, retry: (reason) => toInvoice.mutate(reason) });
+        return;
+      }
+      toast.error('Could not create invoice', { description: e.message });
+    },
   });
 
   const doCancel = useMutation({
@@ -188,13 +221,13 @@ export default function SalesOrderDetailPage() {
                 </Button>
               )}
 
-              {/* Admin only, same reasoning as the estimate route: this posts a
-                  real invoice with no maker-checker branch, so a staff caller
-                  would recognise revenue without approval. */}
-              {isInvoiceable(order.status) && isOwner && (
+              {/* Converting posts an invoice. The owner converts directly; a staff
+                  member's conversion goes to the owner for approval, as a
+                  directly raised invoice does. */}
+              {isInvoiceable(order.status) && (
                 <Button size="sm" onClick={() => setConvertOpen(true)} disabled={busy}>
                   <FileText className="size-4" />
-                  Convert to invoice
+                  {isOwner ? 'Convert to invoice' : 'Request invoice'}
                 </Button>
               )}
 
@@ -297,8 +330,15 @@ export default function SalesOrderDetailPage() {
     >
       {!isOwner && isInvoiceable(order.status) && (
         <p className="rounded-md bg-primary-tint p-md text-body-sm text-text-primary">
-          Invoicing an order posts the sale and moves stock, so it is the owner&rsquo;s action.
-          Record shipments here and ask them to invoice.
+          Invoicing an order posts the sale and moves stock, so the owner approves it. A request
+          you send appears in their approvals.
+        </p>
+      )}
+
+      {order.hasBackorder && isInvoiceable(order.status) && (
+        <p className="rounded-md bg-warning-lighter p-md text-body-sm text-text-primary">
+          Some items on this order are on backorder — there is not enough stock to ship all of it.
+          It cannot be shipped or invoiced beyond what is on hand until stock arrives.
         </p>
       )}
 
@@ -323,7 +363,16 @@ export default function SalesOrderDetailPage() {
         onOpenChange={setFulfilOpen}
         lines={order.lines}
         busy={fulfil.isPending}
-        onSubmit={(payload) => fulfil.mutate(payload)}
+        onSubmit={(payload) => fulfil.mutate({ lines: payload })}
+      />
+
+      <CreditLimitDialog
+        assessment={creditIssue?.assessment ?? null}
+        onOpenChange={(open) => {
+          if (!open) setCreditIssue(null);
+        }}
+        busy={fulfil.isPending || toInvoice.isPending}
+        onOverride={(reason) => creditIssue?.retry(reason)}
       />
 
       <ConfirmDialog
@@ -346,7 +395,7 @@ export default function SalesOrderDetailPage() {
         }
         confirmLabel="Convert and post"
         busy={toInvoice.isPending}
-        onConfirm={() => toInvoice.mutate()}
+        onConfirm={() => toInvoice.mutate(undefined)}
       >
         <DateField
           label="Payment due"
@@ -396,6 +445,12 @@ function FulfilmentCell({ line }: { line: SalesOrderLine }) {
           style={{ width: `${pct}%` }}
         />
       </div>
+      {line.backorderQty > 0 && (
+        <div className="mt-xxs text-caption text-warning tabular">Backorder {line.backorderQty}</div>
+      )}
+      {line.onHand !== null && line.backorderQty === 0 && line.quantityFulfilled < line.quantity && (
+        <div className="mt-xxs text-caption text-text-tertiary tabular">{line.onHand} on hand</div>
+      )}
     </div>
   );
 }

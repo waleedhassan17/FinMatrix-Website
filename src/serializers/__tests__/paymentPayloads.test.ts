@@ -53,11 +53,14 @@ describe('paymentFormToPayload — the allocation contract', () => {
     expect(p).not.toHaveProperty('applications');
   });
 
-  it('excludes unticked rows and zero allocations', () => {
+  it('excludes unticked rows and zero allocations — and then holds it all as an advance', () => {
     const p = paymentFormToPayload(
       form({ rows: [row('a', 300, true, '0'), row('b', 400, false, '400')] }),
     );
-    expect(p.applications).toEqual([]);
+    // An empty applications array would mean "apply automatically" to the
+    // server; nothing ticked has to say so explicitly instead.
+    expect(p.applications).toBeUndefined();
+    expect(p.holdAsAdvance).toBe(true);
   });
 
   it('sends every money field as a .toFixed(2) string', () => {

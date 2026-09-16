@@ -44,6 +44,8 @@ import {
 } from '@/networks/delivery/deliveryNetwork';
 import { statusLabel } from '@/theme/status';
 import { formatMoney, toDecimal } from '@/utils/money';
+import { CreditLimitDialog } from '@/features/customers/CreditLimitDialog';
+import { creditLimitError, type CreditAssessment } from '@/models/credit';
 
 /**
  * One delivery, end to end: where it is going, who has it, what is on it,
@@ -122,8 +124,10 @@ export default function DeliveryDetailPage() {
     onError: (e: Error) => toast.error('Could not update the delivery', { description: e.message }),
   });
 
+  const [creditIssue, setCreditIssue] = useState<CreditAssessment | null>(null);
+
   const assign = useMutation({
-    mutationFn: () => assignDeliveries([deliveryId], riderId),
+    mutationFn: (overrideReason?: string) => assignDeliveries([deliveryId], riderId, overrideReason),
     onSuccess: () => {
       done();
       setRiderId('');
@@ -131,7 +135,15 @@ export default function DeliveryDetailPage() {
         description: 'A sales order was raised and the stock moved to Goods in Transit.',
       });
     },
-    onError: (e: Error) => toast.error('Could not assign', { description: e.message }),
+    onError: (e: Error) => {
+      // Dispatch ships on credit: past the customer's limit it needs an advance or the owner.
+      const credit = creditLimitError(e);
+      if (credit) {
+        setCreditIssue(credit);
+        return;
+      }
+      toast.error('Could not assign', { description: e.message });
+    },
   });
 
   const auto = useMutation({
@@ -391,7 +403,7 @@ export default function DeliveryDetailPage() {
                 <div className="flex flex-wrap gap-xs">
                   <Button
                     disabled={!riderId || assign.isPending}
-                    onClick={() => assign.mutate()}
+                    onClick={() => assign.mutate(undefined)}
                   >
                     <UserPlus className="size-4" />
                     {assign.isPending ? 'Assigning…' : 'Assign'}
@@ -493,6 +505,15 @@ export default function DeliveryDetailPage() {
         destructive
         busy={remove.isPending}
         onConfirm={() => remove.mutate()}
+      />
+      <CreditLimitDialog
+        assessment={creditIssue}
+        onOpenChange={(open) => !open && setCreditIssue(null)}
+        busy={assign.isPending}
+        onOverride={(reason) => {
+          setCreditIssue(null);
+          assign.mutate(reason);
+        }}
       />
     </div>
   );

@@ -5,12 +5,14 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/Button';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { Combobox } from '@/components/ui/Combobox';
 import { DateField, Textarea } from '@/components/ui/Field';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { SummaryPanel, SummaryRow } from '@/components/ui/SummaryPanel';
+import { invalidateAfterPosting } from '@/features/documents/invalidateAfterPosting';
 import { AllocationTable } from '@/features/payments/AllocationTable';
 import { useCustomerOptions } from '@/features/documents/useDocumentPickers';
 import { useCapability } from '@/hooks/useCapability';
@@ -30,9 +32,11 @@ import {
 } from '@/models/payment';
 import { getDepositAccounts } from '@/networks/accounting/accountNetwork';
 import {
+  getCustomerAdvances,
   getOutstandingInvoices,
   receivePayment,
 } from '@/networks/sales/paymentNetwork';
+import { formatMoney } from '@/utils/money';
 import { paymentFormToPayload } from '@/serializers/paymentSerializer';
 
 const emptyForm = (): PaymentFormData => ({
@@ -58,6 +62,9 @@ export default function ReceivePaymentPage() {
 
   const [form, setForm] = useState<PaymentFormData>(emptyForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // Asked before saving a receipt that leaves money unapplied while invoices
+  // are still open — the situation behind QA's duplicate receipt.
+  const [holdConfirmOpen, setHoldConfirmOpen] = useState(false);
   // One key per form instance, so a double-submit or a retry replays the
   // stored response instead of banking the receipt twice.
   const idempotencyKey = useRef(crypto.randomUUID());
@@ -73,6 +80,15 @@ export default function ReceivePaymentPage() {
     queryKey: ['payments', 'outstanding', form.customerId],
     queryFn: () => getOutstandingInvoices(form.customerId),
     enabled: Boolean(form.customerId),
+    staleTime: 0,
+  });
+
+  // Money this customer already paid that no invoice has taken yet.
+  const { data: advances } = useQuery({
+    queryKey: ['payments', 'advances', form.customerId],
+    queryFn: () => getCustomerAdvances(form.customerId),
+    enabled: Boolean(form.customerId),
+    staleTime: 0,
   });
 
   // Seed the rows whenever the customer's open invoices arrive, honouring an
@@ -83,9 +99,10 @@ export default function ReceivePaymentPage() {
     const rows = outstanding.map((r) =>
       r.documentId === preselect ? { ...r, checked: true } : r,
     );
+    // An amount handed over (e.g. "record the advance a credit limit needs").
     const seedAmount = preselect
       ? String(rows.find((r) => r.documentId === preselect)?.balance ?? '')
-      : '';
+      : (searchParams.get('amount') ?? '');
     setForm((f) => ({
       ...f,
       amount: f.amount || seedAmount,
@@ -143,11 +160,6 @@ export default function ReceivePaymentPage() {
       errs.rows = 'Allocations add up to more than the payment';
     } else if (hasOverApplied) {
       errs.rows = 'An invoice is allocated more than it owes';
-    } else if (form.mode === 'manual' && allocated === 0 && form.rows.length > 0) {
-      // An empty applications array is what triggers the server's FIFO sweep,
-      // so "manual mode, nothing ticked" cannot mean what it looks like.
-      errs.rows =
-        'Tick at least one invoice, or switch to "Apply automatically" to let the server allocate.';
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -166,14 +178,11 @@ export default function ReceivePaymentPage() {
         navigate('/my-requests', { replace: true });
         return;
       }
-      queryClient.invalidateQueries({ queryKey: ['payments'] });
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['customers'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateAfterPosting(queryClient);
       toast.success('Payment recorded', {
         description:
           result.payment.unapplied > 0
-            ? 'The unapplied remainder is held as a customer credit.'
+            ? 'The unapplied remainder is held as a customer advance.'
             : undefined,
       });
       navigate(`/payments/${result.payment.id}`, { replace: true });
@@ -210,6 +219,29 @@ export default function ReceivePaymentPage() {
             This payment will be sent to the owner for approval. Nothing is banked
             and the invoices stay unpaid until they approve it.
           </p>
+        </div>
+      )}
+
+      {advances && advances.total > 0 && (
+        <div className="flex items-start gap-sm rounded-md border border-warning-light bg-warning-lighter p-md">
+          <Info className="mt-[2px] size-4 shrink-0 text-warning" />
+          <div className="text-body-sm text-text-primary">
+            <p>
+              <strong>{form.customerName || 'This customer'}</strong> already holds{' '}
+              <strong>{formatMoney(advances.total)}</strong> in advances. If this is the money
+              they already paid, apply the advance instead of recording new cash — recording
+              it again would count the same money twice.
+            </p>
+            <ul className="mt-xs flex flex-wrap gap-sm">
+              {advances.advances.map((a) => (
+                <li key={a.paymentId}>
+                  <Link to={`/payments/${a.paymentId}`} className="text-label-md text-primary hover:underline">
+                    {a.paymentNumber || 'Receipt'} · {formatMoney(a.unapplied)} available
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       )}
 
@@ -259,7 +291,7 @@ export default function ReceivePaymentPage() {
             value={form.reference}
             onChange={(e) => patch({ reference: e.target.value })}
             placeholder="e.g. CHQ-12345"
-            hint="A payment has no number — this is how you will find it later."
+            hint="The cheque or transfer number. The receipt gets its own RCT number."
           />
 
           <Select
@@ -309,7 +341,7 @@ export default function ReceivePaymentPage() {
         {form.mode === 'auto' ? (
           <p className="mt-md rounded-md bg-surface-2 p-md text-body-sm text-text-secondary">
             The server will apply this payment across the customer&rsquo;s open
-            invoices, oldest due date first, and hold any remainder as a credit.
+            invoices, oldest due date first, and hold any remainder as an advance.
             You will not choose which invoices it settles.
           </p>
         ) : loadingRows ? (
@@ -332,7 +364,7 @@ export default function ReceivePaymentPage() {
                 const filled = payInFull(form.rows);
                 patch({ rows: filled.rows, amount: filled.amount });
               }}
-              emptyText="This customer has no open invoices. The whole payment will be held as a credit on their account."
+              emptyText="This customer has no open invoices. The whole payment will be held as an advance on their account."
               disabled={busy}
             />
           </div>
@@ -393,13 +425,46 @@ export default function ReceivePaymentPage() {
         </p>
       )}
 
+      <ConfirmDialog
+        open={holdConfirmOpen}
+        onOpenChange={setHoldConfirmOpen}
+        title="Keep the remainder as an advance?"
+        description={
+          <>
+            {formatMoney(unapplied)} of this payment is not applied, while{' '}
+            {form.rows
+              .filter((r) => r.balance - (r.checked ? parseFloat(r.applied) || 0 : 0) > 0.001)
+              .map((r) => r.documentNumber)
+              .join(', ')}{' '}
+            still owe money. It will be held as a customer advance and can be applied later — or go
+            back and apply it now.
+          </>
+        }
+        confirmLabel="Keep as advance"
+        cancelLabel="Go back and apply"
+        busy={busy}
+        onConfirm={() => {
+          setHoldConfirmOpen(false);
+          save.mutate();
+        }}
+      />
+
       <div className="flex flex-wrap justify-end gap-sm pb-xl">
         <Button asChild variant="secondary" disabled={busy}>
           <Link to="/payments">Cancel</Link>
         </Button>
         <Button
           onClick={() => {
-            if (validate()) save.mutate();
+            if (!validate()) return;
+            // Money left unapplied while invoices still owe: make it a choice.
+            const stillOwed = form.rows.some(
+              (r) => r.balance - (r.checked ? parseFloat(r.applied) || 0 : 0) > 0.001,
+            );
+            if (form.mode === 'manual' && unapplied > 0 && stillOwed) {
+              setHoldConfirmOpen(true);
+              return;
+            }
+            save.mutate();
           }}
           disabled={busy}
         >
@@ -412,6 +477,6 @@ export default function ReceivePaymentPage() {
 
 function formatUnappliedNote(mode: AllocationMode): string {
   return mode === 'auto'
-    ? 'Whatever the automatic sweep cannot apply will be held as a credit on the customer’s account.'
-    : 'The unapplied remainder will be held as a credit on the customer’s account.';
+    ? 'Whatever the automatic sweep cannot apply will be held as an advance on the customer’s account (Customer Advances).'
+    : 'The unapplied remainder will be held as an advance on the customer’s account (Customer Advances), ready to apply to a later invoice.';
 }

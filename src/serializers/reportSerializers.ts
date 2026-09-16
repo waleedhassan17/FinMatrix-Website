@@ -264,6 +264,18 @@ export interface LedgerEntry {
   sourceType: string;
   /** The journal entry behind the row — what the drill-through links to. */
   sourceId: string;
+  /**
+   * A manual journal that was posted and later voided. It stays in the ledger
+   * beside the reversal that cancels it, as it does in the trial balance.
+   */
+  voided: boolean;
+}
+
+export interface LedgerAccountBalance {
+  accountCode: string;
+  accountName: string;
+  /** Debit-positive, like the running balance. */
+  balance: number;
 }
 
 export interface GeneralLedgerReport {
@@ -272,8 +284,22 @@ export interface GeneralLedgerReport {
   accountCode: string | null;
   /** **Oldest first.** The running balance depends on that order. */
   entries: LedgerEntry[];
+  /** Balance brought forward into the period, per account in view. */
+  openingBalances: LedgerAccountBalance[];
+  /** Balance at the end of the period, per account in view. */
+  closingBalances: LedgerAccountBalance[];
   totals: { debit: number; credit: number };
 }
+
+const mapAccountBalances = (value: unknown): LedgerAccountBalance[] =>
+  lines(value).map((raw) => {
+    const b = asRaw(raw);
+    return {
+      accountCode: str(b.accountCode),
+      accountName: str(b.accountName),
+      balance: toNumber(b.balance as never),
+    };
+  });
 
 export const generalLedgerSerializer = (payload: unknown): GeneralLedgerReport => {
   const r = asRaw(payload);
@@ -295,8 +321,11 @@ export const generalLedgerSerializer = (payload: unknown): GeneralLedgerReport =
         balance: toNumber(e.balance as never),
         sourceType: str(e.sourceType),
         sourceId: str(e.sourceId),
+        voided: e.voided === true,
       };
     }),
+    openingBalances: mapAccountBalances(r.openingBalances),
+    closingBalances: mapAccountBalances(r.closingBalances),
     totals: {
       debit: toNumber(totals.debit as never),
       credit: toNumber(totals.credit as never),

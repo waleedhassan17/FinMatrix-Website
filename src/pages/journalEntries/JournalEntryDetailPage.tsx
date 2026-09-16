@@ -32,6 +32,7 @@ import {
   type JournalWriteResult,
 } from '@/networks/accounting/journalEntryNetwork';
 import { formatMoney } from '@/utils/money';
+import { invalidateAfterPosting } from '@/features/documents/invalidateAfterPosting';
 
 export default function JournalEntryDetailPage() {
   const { journalEntryId = '' } = useParams<{ journalEntryId: string }>();
@@ -68,8 +69,7 @@ export default function JournalEntryDetailPage() {
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
     // Posting, or voiding a posted entry, moves account balances.
-    queryClient.invalidateQueries({ queryKey: ['accounts'] });
-    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    invalidateAfterPosting(queryClient);
   };
 
   const settle = (

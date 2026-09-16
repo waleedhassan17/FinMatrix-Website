@@ -25,7 +25,7 @@ type Tab = 'all' | PurchaseOrderStatus;
 
 const TABS: [Tab, string][] = [
   ['all', 'All'],
-  ['draft', 'Draft'],
+  ['draft', 'Requisitions'],
   ['sent', 'Sent'],
   ['partial', 'Partial'],
   ['received', 'Received'],

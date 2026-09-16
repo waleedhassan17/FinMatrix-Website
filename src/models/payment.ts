@@ -51,6 +51,27 @@ export interface PaymentApplication {
   invoiceId: string;
   invoiceNumber: string;
   amountApplied: number;
+  /**
+   * Set when an advance the receipt was holding was applied later, on this
+   * date, with its own Dr Customer Advances / Cr A/R entry. Empty when the
+   * money was applied as the receipt was recorded.
+   */
+  appliedOn: string;
+}
+
+/**
+ * Money a customer has paid that no invoice has taken yet.
+ *
+ * It sits in 2400 Customer Advances (a liability) until applied. Showing it
+ * before a new receipt is recorded is what prevents banking the same money
+ * twice to settle an invoice the advance could have covered.
+ */
+export interface CustomerAdvance {
+  paymentId: string;
+  paymentNumber: string;
+  paymentDate: string;
+  amount: number;
+  unapplied: number;
 }
 
 export interface Payment {
@@ -60,11 +81,9 @@ export interface Payment {
   customerName: string;
   paymentDate: string;
   paymentMethod: ApiPaymentMethod;
-  /**
-   * Free text. There is NO payment number: the entity has no sequence column,
-   * unlike credit memos which get CM-<year>-NNNN. This and the id are the only
-   * handles a user has on a payment.
-   */
+  /** RCT-YYYY-NNNN, issued by the server. */
+  paymentNumber: string;
+  /** The customer's own reference — cheque or transfer number. Free text. */
   reference: string;
   amount: number;
   bankAccountId: string | null;
@@ -72,7 +91,7 @@ export interface Payment {
   applications: PaymentApplication[];
   /** Σ applications. Derived — the server sends no such field. */
   allocated: number;
-  /** amount − allocated, floored at zero. Retained as customer credit. */
+  /** amount − allocated, floored at zero. Held as a customer advance (2400). */
   unapplied: number;
   createdAt: string;
   updatedAt: string;

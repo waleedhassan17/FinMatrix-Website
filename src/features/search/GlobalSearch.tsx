@@ -1,12 +1,19 @@
 import * as Popover from '@radix-ui/react-popover';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import {
+  BookOpen,
+  ClipboardList,
+  FileMinus,
   FileText,
   Loader2,
   Package,
   Receipt,
+  ReceiptText,
+  ShoppingCart,
   Store,
+  Undo2,
   Users,
+  Wallet,
   type LucideIcon,
 } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
@@ -30,6 +37,13 @@ import { useAppSelector } from '@/store/store';
 const KIND_ICON: Record<SearchKind, LucideIcon> = {
   invoices: FileText,
   bills: Receipt,
+  payments: Wallet,
+  purchaseOrders: ShoppingCart,
+  salesOrders: ClipboardList,
+  estimates: ReceiptText,
+  creditMemos: FileMinus,
+  vendorCredits: Undo2,
+  journalEntries: BookOpen,
   customers: Users,
   vendors: Store,
   inventory: Package,

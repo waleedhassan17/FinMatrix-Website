@@ -242,13 +242,18 @@ export function creditMemoDocument(cm: CreditMemo, company: DocCompany, customer
 
 export function purchaseOrderDocument(po: PurchaseOrder, company: DocCompany, vendor?: Vendor | null): DocumentModel {
   const party = partyForDocument('Vendor', po.vendorName, vendorPartySource(vendor));
+  // An unsent draft is a purchase REQUISITION — an internal request to buy. It
+  // says so in its heading instead of carrying a DRAFT watermark over a
+  // "Purchase order" it is not yet.
+  const requisition = po.status === 'draft';
+  const kind = requisition ? 'Purchase requisition' : 'Purchase order';
   return {
-    kind: 'Purchase order',
+    kind,
     number: po.poNumber,
     company,
     party,
     meta: meta(
-      { label: 'PO #', value: po.poNumber },
+      { label: requisition ? 'Requisition #' : 'PO #', value: po.poNumber },
       { label: 'Order date', value: docDate(po.orderDate) },
       { label: 'Expected delivery', value: docDate(po.expectedDate) },
       { label: 'Terms', value: termsLabel(vendor?.paymentTerms) },
@@ -262,10 +267,10 @@ export function purchaseOrderDocument(po: PurchaseOrder, company: DocCompany, ve
       { label: 'Total', value: po.total, grand: true, dividerBefore: true },
     ],
     notes: [{ title: 'Notes', text: po.notes }],
-    signatures: ['Prepared by', 'Authorised signature'],
-    stamp: stampFor(po.status),
+    signatures: requisition ? ['Requested by', 'Approved by'] : ['Prepared by', 'Authorised signature'],
+    stamp: requisition ? null : stampFor(po.status),
     share: {
-      kind: 'Purchase order',
+      kind,
       number: po.poNumber,
       partyName: party.name,
       partyEmail: party.email,

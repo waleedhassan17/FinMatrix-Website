@@ -5,7 +5,8 @@
 // map grants to the warehouse tier alone. Callers must gate on
 // useFeature('salesOrders') or every call here is a 403.
 
-import { api, toApiError, unwrapEnvelope } from '@/networks/network/apiHelpers';
+import { toCreditAssessment, type CreditAssessment } from '@/models/credit';
+import { api, ApiError, isPendingApproval, toApiError, unwrapEnvelope } from '@/networks/network/apiHelpers';
 import {
   mapSalesOrder,
   salesOrderConvertSerializer,
@@ -14,6 +15,7 @@ import {
   type SalesOrderWritePayload,
 } from '@/serializers/salesOrderSerializer';
 import type {
+  BackorderLine,
   FulfilLinePayload,
   SalesOrder,
   SalesOrderStatus,
@@ -58,15 +60,46 @@ export const getSalesOrderById = async (
   }
 };
 
+/** The credit warning a saved order carries: shipping all of it would pass the limit. */
+export type SavedSalesOrder = SalesOrder & { creditCheck: CreditAssessment | null };
+
+const withCreditCheck = (payload: unknown): SavedSalesOrder => ({
+  ...mapSalesOrder(payload),
+  creditCheck: toCreditAssessment((payload as { creditCheck?: unknown } | null)?.creditCheck),
+});
+
+/**
+ * Create an order. Asking for more than is available answers 409
+ * BACKORDER_CONFIRMATION_REQUIRED (details.lines lists the short items) unless
+ * `acceptBackorder` is set.
+ */
 export const createSalesOrder = async (
   data: SalesOrderWritePayload,
-): Promise<SalesOrder> => {
+  acceptBackorder = false,
+): Promise<SavedSalesOrder> => {
   try {
-    const response = await api.post('/sales-orders', data);
-    return mapSalesOrder(unwrapEnvelope(response.data));
+    const response = await api.post('/sales-orders', acceptBackorder ? { ...data, acceptBackorder } : data);
+    return withCreditCheck(unwrapEnvelope(response.data));
   } catch (e) {
     throw toApiError(e);
   }
+};
+
+/** The short items behind a BACKORDER_CONFIRMATION_REQUIRED refusal, or null. */
+export const backorderRefusal = (e: unknown): BackorderLine[] | null => {
+  if (!(e instanceof ApiError) || e.code !== 'BACKORDER_CONFIRMATION_REQUIRED') return null;
+  const lines = (e.details as { lines?: unknown[] } | undefined)?.lines ?? [];
+  return lines.map((raw) => {
+    const r = (raw ?? {}) as Record<string, unknown>;
+    return {
+      itemId: String(r.itemId ?? ''),
+      name: String(r.name ?? ''),
+      sku: String(r.sku ?? ''),
+      requested: Number(r.requested ?? 0),
+      available: Number(r.available ?? 0),
+      shortfall: Number(r.shortfall ?? 0),
+    };
+  });
 };
 
 /**
@@ -80,10 +113,11 @@ export const createSalesOrder = async (
 export const updateSalesOrder = async (
   id: string,
   data: Record<string, unknown>,
-): Promise<SalesOrder> => {
+  acceptBackorder = false,
+): Promise<SavedSalesOrder> => {
   try {
-    const response = await api.patch(`/sales-orders/${id}`, data);
-    return mapSalesOrder(unwrapEnvelope(response.data));
+    const response = await api.patch(`/sales-orders/${id}`, acceptBackorder ? { ...data, acceptBackorder } : data);
+    return withCreditCheck(unwrapEnvelope(response.data));
   } catch (e) {
     throw toApiError(e);
   }
@@ -106,9 +140,13 @@ export const updateSalesOrder = async (
 export const fulfillSalesOrder = async (
   id: string,
   lines: FulfilLinePayload[],
+  creditOverrideReason?: string,
 ): Promise<SalesOrder> => {
   try {
-    const response = await api.post(`/sales-orders/${id}/fulfill`, { lines });
+    const response = await api.post(`/sales-orders/${id}/fulfill`, {
+      lines,
+      ...(creditOverrideReason ? { creditOverride: { reason: creditOverrideReason } } : {}),
+    });
     return mapSalesOrder(unwrapEnvelope(response.data));
   } catch (e) {
     throw toApiError(e);
@@ -125,13 +163,17 @@ export const fulfillSalesOrder = async (
 export const convertSalesOrderToInvoice = async (
   id: string,
   dueDate?: string,
-): Promise<{ salesOrder: SalesOrder | null; invoiceId: string | null }> => {
+  creditOverrideReason?: string,
+): Promise<{ salesOrder: SalesOrder | null; invoiceId: string | null; pending: boolean }> => {
   try {
-    const response = await api.post(
-      `/sales-orders/${id}/convert-to-invoice`,
-      dueDate ? { dueDate } : {},
-    );
-    return salesOrderConvertSerializer(unwrapEnvelope(response.data));
+    const response = await api.post(`/sales-orders/${id}/convert-to-invoice`, {
+      ...(dueDate ? { dueDate } : {}),
+      ...(creditOverrideReason ? { creditOverride: { reason: creditOverrideReason } } : {}),
+    });
+    const payload = unwrapEnvelope(response.data);
+    // Staff conversions post an invoice, so the owner signs them off first.
+    if (isPendingApproval(payload)) return { salesOrder: null, invoiceId: null, pending: true };
+    return { ...salesOrderConvertSerializer(payload), pending: false };
   } catch (e) {
     throw toApiError(e);
   }
