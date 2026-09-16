@@ -17,6 +17,7 @@
 // Pushing a delivery to `delivered` through the status endpoint recognises
 // nothing, so this console never offers it: completion goes through approval.
 
+import { taxPercentError } from '@/models/taxRate';
 import type { UserRole } from '@/types';
 import { capabilityFor, type CapabilityOutcome } from '@/utils/capabilities';
 import { Decimal, toDecimal } from '@/utils/money';
@@ -258,7 +259,6 @@ export interface DeliveryErrors {
 
 const WHOLE = /^\d+$/;
 const PRICE = /^\d+(\.\d{1,2})?$/;
-const RATE = /^\d+(\.\d{1,4})?$/;
 const clean = (v: string) => v.replace(/[,\s]/g, '');
 
 export const hasDeliveryErrors = (e: DeliveryErrors): boolean =>
@@ -309,8 +309,8 @@ export const validateDelivery = (
     const p = clean(l.unitPrice);
     if (!PRICE.test(p) || !toDecimal(p).greaterThan(0)) le.unitPrice = 'Enter a price above 0.';
 
-    const t = clean(l.taxRate || '0');
-    if (!RATE.test(t) || toDecimal(t).greaterThan(100)) le.taxRate = '0–100%.';
+    const taxError = taxPercentError(clean(l.taxRate || '0'));
+    if (taxError) le.taxRate = taxError;
 
     if (Object.keys(le).length) e.line[l.key] = le;
   }
@@ -379,7 +379,7 @@ export const draftTotals = (lines: DeliveryLineDraft[]) => {
     if (!WHOLE.test(q) || !PRICE.test(p)) continue;
     const base = toDecimal(q).times(toDecimal(p));
     subtotal = subtotal.plus(base);
-    if (RATE.test(t)) tax = tax.plus(base.times(toDecimal(t)).dividedBy(100));
+    if (!taxPercentError(t)) tax = tax.plus(base.times(toDecimal(t)).dividedBy(100));
   }
   return {
     subtotal: subtotal.toDecimalPlaces(2).toNumber(),

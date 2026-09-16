@@ -11,6 +11,7 @@
 
 import Decimal from 'decimal.js';
 
+import { lineTaxError } from '@/models/taxRate';
 import { toDecimal, type MoneyInput } from '@/utils/money';
 
 export type DiscountType = 'percent' | 'amount' | 'none';
@@ -51,20 +52,6 @@ export const freshLine = (): FormLineItem => ({
   unitPrice: '',
   taxRate: '0',
 });
-
-/**
- * The tax rates both clients offer. Hardcoded in each today.
- *
- * `GET /taxes/rates` is live and would be the better source, but switching one
- * client and not the other is how they start disagreeing about what a line is
- * taxed at — so they move together or not at all. See the plan's follow-ups.
- */
-export const TAX_OPTIONS = [
-  { label: '0 %', value: '0' },
-  { label: '5 %', value: '5' },
-  { label: '10 %', value: '10' },
-  { label: '17 %', value: '17' },
-] as const;
 
 export const DISCOUNT_TYPE_OPTIONS = [
   { label: 'No discount', value: 'none' as const },
@@ -166,6 +153,8 @@ export const validateLines = (
       !(parseFloat(l.unitPrice) > 0),
   );
   if (incomplete) return 'Every line needs a description, a quantity and a rate';
+  const taxError = lineTaxError(lines);
+  if (taxError) return taxError;
   // The server refuses to post a zero-total document; catching it here saves a
   // round trip and a confusing error.
   if (totals.total <= 0) return 'The total must be above zero';

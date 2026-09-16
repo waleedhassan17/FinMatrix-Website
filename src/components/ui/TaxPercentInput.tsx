@@ -1,20 +1,12 @@
 import { useId } from 'react';
 
 import { cn } from '@/lib/cn';
+import { taxPercentError } from '@/models/taxRate';
 
 /**
- * Purchase tax is whatever the vendor charged — 0, 10, 12.5, 17 — so it is
- * typed, not picked from a fixed list. 0 to 100 with up to four decimals, the
- * same rule the server applies.
+ * The tax field on every document line. Tax is typed, never picked from a fixed
+ * list — see models/taxRate.ts for the rule and where it applies.
  */
-export const taxPercentError = (value: string): string | undefined => {
-  const text = value.trim();
-  if (text === '') return undefined;
-  if (!/^\d{1,3}(\.\d{1,4})?$/.test(text)) return 'Enter a percentage like 17 or 12.5';
-  const rate = Number(text);
-  return rate >= 0 && rate <= 100 ? undefined : 'Tax must be between 0% and 100%';
-};
-
 export function TaxPercentInput({
   value,
   onChange,

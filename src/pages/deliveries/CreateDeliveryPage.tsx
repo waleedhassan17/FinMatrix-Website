@@ -289,9 +289,11 @@ export default function CreateDeliveryPage() {
                 <Input
                   label="Tax %"
                   value={l.taxRate}
-                  onChange={(e) => setLine(l.key, { taxRate: e.target.value })}
+                  onChange={(e) => setLine(l.key, { taxRate: e.target.value.replace(/[^0-9.]/g, '') })}
                   inputMode="decimal"
-                  className="tabular"
+                  placeholder="0"
+                  className="text-right tabular"
+                  trailing={<span className="text-body-sm text-text-tertiary">%</span>}
                   error={le.taxRate}
                 />
                 <div>

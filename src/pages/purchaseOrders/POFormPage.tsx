@@ -10,7 +10,6 @@ import { Card, SectionHeader } from '@/components/ui/Card';
 import { Combobox } from '@/components/ui/Combobox';
 import { DateField, Textarea } from '@/components/ui/Field';
 import { SummaryPanel, SummaryRow } from '@/components/ui/SummaryPanel';
-import { taxPercentError } from '@/components/ui/TaxPercentInput';
 import {
   useInventoryOptions,
   useVendorOptions,
@@ -195,7 +194,6 @@ export default function POFormPage() {
       if (kind === 'item' && !l.itemId) errs.lines = `Line ${i + 1}: pick the inventory item it buys.`;
       else if (kind === 'expense' && !l.itemId && !l.accountId)
         errs.lines = `Line ${i + 1}: choose the expense account for this non-stock purchase.`;
-      else if (taxPercentError(l.taxRate)) errs.lines = `Line ${i + 1}: ${taxPercentError(l.taxRate)}.`;
     });
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -413,8 +411,6 @@ export default function POFormPage() {
               itemLabel="Line"
               quantityLabel="Ordered"
               priceLabel="Unit cost"
-              // Purchase tax is what the vendor charges — typed, not picked.
-              taxInput="manual"
               totalLabel="Line total (excl. tax)"
               showTaxBreakdown
               onDescriptionChange={(v) => updateLine(line.id, 'description', v)}

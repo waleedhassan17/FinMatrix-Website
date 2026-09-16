@@ -20,6 +20,7 @@
 // There is still no refund — a credit memo can be paid back in cash, a vendor
 // credit can only be applied or voided — so `canRefund` has no counterpart.
 
+import { lineTaxError } from '@/models/taxRate';
 import { Decimal, toDecimal } from '@/utils/money';
 
 export type VendorCreditStatus = 'open' | 'applied' | 'closed' | 'void';
@@ -184,6 +185,9 @@ export const validateVendorCreditLines = (
   if (itemWithoutQuantity) {
     return 'A returned item needs a quantity.';
   }
+
+  const taxError = lineTaxError(lines);
+  if (taxError) return taxError;
 
   if (computeVendorCreditTotals(usable).total <= 0) {
     return 'The credit total must be more than zero.';

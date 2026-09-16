@@ -14,9 +14,10 @@
 
 import Decimal from 'decimal.js';
 
+import { lineTaxError } from '@/models/taxRate';
 import { toDecimal, type MoneyInput } from '@/utils/money';
 
-export { addDays, isoDate, isoToday, TAX_OPTIONS } from '@/models/document';
+export { addDays, isoDate, isoToday } from '@/models/document';
 
 /**
  * `draft | open` on create; the rest are reached by paying or posting.
@@ -176,6 +177,8 @@ export const validateBillLines = (
     return 'Every line needs a description';
   if (lines.some((l) => !(parseFloat(l.amount) > 0)))
     return 'Every line needs an amount above zero';
+  const taxError = lineTaxError(lines);
+  if (taxError) return taxError;
   if (totals.total <= 0) return 'The total must be above zero';
   return null;
 };

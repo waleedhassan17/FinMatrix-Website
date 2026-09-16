@@ -1,10 +1,8 @@
 import { X } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-import { Select } from '@/components/ui/Select';
 import { TaxPercentInput } from '@/components/ui/TaxPercentInput';
 import { cn } from '@/lib/cn';
-import { TAX_OPTIONS } from '@/models/invoice';
 import { formatMoney } from '@/utils/money';
 
 export interface LineItemRowProps {
@@ -33,11 +31,6 @@ export interface LineItemRowProps {
   priceLabel?: string;
   /** "Item 1" by default; a PO calls them lines. */
   itemLabel?: string;
-  /**
-   * 'manual' types the percentage (purchases: whatever the vendor charges);
-   * 'select' picks from the company's sales rates.
-   */
-  taxInput?: 'select' | 'manual';
   /** Defaults to "Line total". A purchase line says it excludes tax. */
   totalLabel?: string;
   /** Show the tax and the tax-inclusive amount under the line total. */
@@ -77,7 +70,6 @@ export function LineItemRow({
   quantityLabel = 'Qty',
   priceLabel = 'Rate',
   itemLabel = 'Item',
-  taxInput = 'select',
   totalLabel = 'Line total',
   showTaxBreakdown = false,
 }: LineItemRowProps) {
@@ -142,25 +134,14 @@ export function LineItemRow({
           />
         </label>
 
-        {taxInput === 'manual' ? (
-          <TaxPercentInput
-            value={taxRate}
-            onChange={onTaxRateChange}
-            disabled={readOnly}
-            compact
-            containerClassName="col-span-2 sm:col-span-1"
-          />
-        ) : (
-          <Select
-            label="Tax"
-            value={taxRate}
-            onChange={onTaxRateChange}
-            options={TAX_OPTIONS as unknown as { label: string; value: string }[]}
-            disabled={readOnly}
-            compact
-            containerClassName="col-span-2 sm:col-span-1"
-          />
-        )}
+        {/* Typed on every document — the rate is whatever applies, not a preset. */}
+        <TaxPercentInput
+          value={taxRate}
+          onChange={onTaxRateChange}
+          disabled={readOnly}
+          compact
+          containerClassName="col-span-2 sm:col-span-1"
+        />
       </div>
 
       <div className="mt-sm flex items-center justify-between border-t border-border-light pt-sm">
