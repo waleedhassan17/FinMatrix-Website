@@ -57,6 +57,13 @@ export interface PaymentApplication {
    * money was applied as the receipt was recorded.
    */
   appliedOn: string;
+  /**
+   * The invoice's total and what is still owing on it now (null when the
+   * server did not say — e.g. a replayed approval payload). A receipt for part
+   * of an invoice uses these to show the balance left in receivables.
+   */
+  invoiceTotal: number | null;
+  invoiceBalance: number | null;
 }
 
 /**

@@ -25,6 +25,8 @@ const mapApplication = (raw: unknown): PaymentApplication => {
     // in. Both are read so a replayed approval payload maps too.
     amountApplied: toNumber((r.amountApplied ?? r.amount) as never),
     appliedOn: str(r.appliedOn),
+    invoiceTotal: r.invoiceTotal == null ? null : toNumber(r.invoiceTotal as never),
+    invoiceBalance: r.invoiceBalance == null ? null : toNumber(r.invoiceBalance as never),
   };
 };
 

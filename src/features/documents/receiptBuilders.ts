@@ -36,7 +36,14 @@ export function paymentReceiptDocument(
     p.applications.length > 0
       ? p.applications.map((a) => ({
           description: `Invoice ${a.invoiceNumber || a.invoiceId.slice(0, 8)}`,
-          secondary: 'Applied to invoice',
+          // A part-payment leaves the rest in receivables; say so, so the
+          // customer (and the books) can see nothing went missing.
+          secondary:
+            a.invoiceTotal != null && a.invoiceBalance != null
+              ? `Invoice total ${formatMoney(a.invoiceTotal)} · ${
+                  a.invoiceBalance > 0.005 ? `${formatMoney(a.invoiceBalance)} still owing` : 'settled in full'
+                }`
+              : 'Applied to invoice',
           quantity: null,
           unitPrice: null,
           taxRate: 0,

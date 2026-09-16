@@ -177,6 +177,13 @@ export default function PaymentDetailPage() {
                         {a.appliedOn && (
                           <span className="text-caption text-text-tertiary">Applied {docDate(a.appliedOn)}</span>
                         )}
+                        {a.invoiceBalance != null && (
+                          <span className="text-caption text-text-tertiary tabular">
+                            {a.invoiceBalance > 0.005
+                              ? `${formatMoney(a.invoiceBalance)} still owing`
+                              : 'Invoice settled'}
+                          </span>
+                        )}
                       </span>
                     </Link>
                   </li>

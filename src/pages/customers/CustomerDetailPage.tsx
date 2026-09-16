@@ -118,7 +118,10 @@ export default function CustomerDetailPage() {
 
       <Card className="p-lg">
         <div className="grid gap-md sm:grid-cols-3">
-          <Figure label="Outstanding balance" value={formatMoney(customer.balance)} />
+          {/* Open invoices less open credit memos. Advances are shown on their
+              own, never netted in, so money held for the customer does not
+              read as a negative receivable. */}
+          <Figure label="Receivable (invoices − credits)" value={formatMoney(customer.balance)} />
           <Figure
             label="Total purchases"
             value={formatMoney(customer.totalPurchases)}
