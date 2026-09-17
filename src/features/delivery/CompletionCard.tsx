@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -13,8 +14,11 @@ import { invalidateDeliveries } from '@/features/delivery/invalidateDeliveries';
 import { useRole } from '@/hooks/useCapability';
 import { cn } from '@/lib/cn';
 import {
+  PAID_STATUS_LABELS,
   REVIEW_REASON_MIN,
+  cashCountError,
   completionActions,
+  completionSettlement,
   completionUnits,
   formatWhen,
   reviewerLabel,
@@ -25,7 +29,7 @@ import {
   rejectCompletion,
   undoCompletion,
 } from '@/networks/delivery/completionsNetwork';
-import { formatMoney } from '@/utils/money';
+import { formatMoney, toDecimal } from '@/utils/money';
 
 const STATUS_LABEL: Record<Completion['status'], string> = {
   pending: 'Awaiting sign-off',
@@ -71,6 +75,12 @@ export function CompletionCard({
   const actions = completionActions(role, c);
   const units = completionUnits(c);
   const [dialog, setDialog] = useState<Dialog>(null);
+  // The owner's count of the cash the rider handed in; starts at the rider's figure.
+  const [cashText, setCashText] = useState('');
+  const collectsAtDoor = c.amountDue > 0.005;
+  const cashError = collectsAtDoor ? cashCountError(cashText, c.amountDue) : undefined;
+  const counted = collectsAtDoor && !cashError ? toDecimal(cashText.replace(/[,\s]/g, '')).toNumber() : undefined;
+  const settled = completionSettlement(c, dialog === 'approve' ? counted : undefined);
 
   const done = () => {
     invalidateDeliveries(queryClient);
@@ -78,7 +88,15 @@ export function CompletionCard({
   };
 
   const approve = useMutation({
-    mutationFn: () => approveCompletion(c.id),
+    // The count goes to the server only when it differs from the rider's figure;
+    // the server then records both on the audit trail.
+    mutationFn: () =>
+      approveCompletion(
+        c.id,
+        counted !== undefined && Math.abs(counted - c.amountCollected) > 0.005
+          ? { amountCollected: counted.toFixed(2) }
+          : {},
+      ),
     onSuccess: () => {
       done();
       toast.success('Delivery approved', {
@@ -114,7 +132,15 @@ export function CompletionCard({
     onError: (e: Error) => toast.error('Could not undo', { description: e.message }),
   });
 
-  const debit = c.paidStatus === 'paid' ? 'Cash (1000)' : 'Accounts Receivable';
+  // How the sale is settled, in words. A prepaid delivery used to read
+  // "Collected in cash" here, because only the rider's flag was looked at.
+  const settlementLine = (x: ReturnType<typeof completionSettlement>): string => {
+    const parts: string[] = [];
+    if (x.advance > 0) parts.push(`${formatMoney(x.advance)} paid in advance`);
+    if (x.cash > 0) parts.push(`${formatMoney(x.cash)} collected in cash`);
+    if (x.onAccount > 0) parts.push(`${formatMoney(x.onAccount)} on account`);
+    return parts.length ? parts.join(' · ') : 'Nothing to settle';
+  };
   const rider = c.personnelName || riderName || 'the rider';
   const title = c.deliveryReference || reference || 'Delivery';
   const undoIsRequest = actions.undo === 'request';
@@ -149,7 +175,7 @@ export function CompletionCard({
           </p>
           <p className="text-h4 tabular text-text-primary">{formatMoney(c.saleAmount)}</p>
           <p className="text-caption text-text-tertiary">
-            {c.paidStatus === 'paid' ? 'Collected in cash' : 'On account'}
+            {c.status === 'pending' ? settlementLine(settled) : PAID_STATUS_LABELS[c.paidStatus]}
           </p>
         </div>
       </div>
@@ -202,7 +228,12 @@ export function CompletionCard({
       {c.status === 'pending' && (actions.approve || actions.waiting || actions.reject) && (
         <div className="mt-md flex flex-wrap items-center gap-sm border-t border-border-light pt-md">
           {actions.approve && (
-            <Button onClick={() => setDialog('approve')}>
+            <Button
+              onClick={() => {
+                setCashText(c.amountCollected.toFixed(2));
+                setDialog('approve');
+              }}
+            >
               <Check className="size-4" />
               Approve
             </Button>
@@ -271,13 +302,48 @@ export function CompletionCard({
         title="Approve this delivery?"
         description={`This is the sale. It recognises ${formatMoney(
           c.saleAmount,
-        )} — Dr ${debit} / Cr Sales and tax — then Dr Cost of Goods Sold / Cr Goods in Transit for the ${
+        )} — Dr Accounts Receivable / Cr Sales and tax — then Dr Cost of Goods Sold / Cr Goods in Transit for the ${
           units.delivered
         } delivered.${units.returned > 0 ? ` The ${units.returned} returned go back on the shelf.` : ''}`}
         confirmLabel="Approve and post the sale"
         busy={approve.isPending}
+        confirmDisabled={!!cashError}
         onConfirm={() => approve.mutate()}
-      />
+      >
+        <div className="flex flex-col gap-sm">
+          {collectsAtDoor ? (
+            <Input
+              label={`Cash handed in by ${rider}`}
+              value={cashText}
+              onChange={(e) => setCashText(e.target.value)}
+              inputMode="decimal"
+              className="tabular"
+              error={cashError}
+              hint={`${formatMoney(c.amountDue)} was due at the door. The rider reported ${formatMoney(
+                c.amountCollected,
+              )}. Change it if the count differs — both figures are kept.`}
+            />
+          ) : (
+            <p className="text-body-sm text-text-secondary">
+              Nothing was due at the door — the customer paid in advance. The rider collected no cash.
+            </p>
+          )}
+          <dl className="grid grid-cols-[1fr_auto] gap-x-md gap-y-xxs rounded-md bg-surface-2 p-md text-body-sm">
+            {settled.advance > 0 && (
+              <>
+                <dt className="text-text-secondary">Advance applied · Customer Advances (2400)</dt>
+                <dd className="text-right tabular text-text-primary">{formatMoney(settled.advance)}</dd>
+              </>
+            )}
+            <dt className="text-text-secondary">Cash received · Cash (1000)</dt>
+            <dd className="text-right tabular text-text-primary">{formatMoney(settled.cash)}</dd>
+            <dt className="text-text-secondary">Left in Accounts Receivable</dt>
+            <dd className="text-right tabular text-text-primary">{formatMoney(settled.onAccount)}</dd>
+            <dt className="text-label-md text-text-primary">Recorded as</dt>
+            <dd className="text-right text-label-md text-text-primary">{PAID_STATUS_LABELS[settled.status]}</dd>
+          </dl>
+        </div>
+      </ConfirmDialog>
 
       <ConfirmDialog
         open={dialog === 'reject'}

@@ -9,9 +9,15 @@
 //              in Transit (Dr 1250 / Cr 1200). Staff do this directly.
 //   REJECT     The rider could not complete it. Stock comes back (Dr 1200 /
 //              Cr 1250) and NO sale is recognised. Staff may do this directly.
-//   APPROVE    The sale: Dr A/R or Cash / Cr Sales / Cr Tax, then Dr COGS /
-//              Cr Goods in Transit. The largest ledger event in the product —
-//              the OWNER's signature alone.
+//   ADVANCE    Money the customer paid before dispatch, fully or in part: a
+//              receipt held in Customer Advances (Dr Cash / Cr 2400). The owner
+//              records it with the delivery; staff send the delivery for
+//              approval, and nothing exists until it is approved.
+//   APPROVE    The sale: Dr A/R / Cr Sales / Cr Tax, settled from what was paid
+//              — the advance (Dr 2400 / Cr A/R), the rider's cash (Dr Cash /
+//              Cr A/R), the rest left in A/R — then Dr COGS / Cr Goods in
+//              Transit. The largest ledger event in the product — the OWNER's
+//              signature alone.
 //   UNDO       Reverses that recognised revenue. Owner direct; staff ask.
 //
 // Pushing a delivery to `delivered` through the status endpoint recognises
@@ -109,6 +115,20 @@ export const OPERATOR_ACTION_COPY: Record<
   returned: { label: 'Mark returned', title: 'Mark this delivery returned?', confirm: 'Mark returned' },
 };
 
+// ─── Payment ────────────────────────────────────────────
+
+/**
+ * How much of a delivery's sale is paid. Before approval it is the rider's
+ * answer; once approved it is always what the invoice says.
+ */
+export type PaidStatus = 'paid' | 'partial' | 'unpaid';
+
+export const PAID_STATUS_LABELS: Record<PaidStatus, string> = {
+  paid: 'Paid',
+  partial: 'Part paid',
+  unpaid: 'Not paid',
+};
+
 // ─── Deliveries ─────────────────────────────────────────
 
 export interface DeliveryLine {
@@ -140,8 +160,15 @@ export interface Delivery {
   completedAt: string;
   notes: string;
   cancelReason: string;
-  paidStatus: 'paid' | 'unpaid' | null;
+  paidStatus: PaidStatus | null;
+  /** Paid for in full before dispatch. */
   prepaid: boolean;
+  /** Paid before dispatch, fully or in part. Zero when nothing was. */
+  advanceAmount: number;
+  /** The receipt holding the advance; null on older prepaid deliveries. */
+  advancePaymentId: string | null;
+  /** Cash taken at the door — the rider's figure, final once approved. */
+  amountCollected: number | null;
   salesOrderId: string | null;
   invoiceId: string | null;
   /** `in_transit` once dispatched; `committed` once the sale is recognised. */
@@ -216,8 +243,20 @@ export interface DeliveryLineDraft {
   taxRate: string;
 }
 
+/** What the customer has paid when the delivery is created. */
+export type AdvanceChoice = 'none' | 'full' | 'part';
+
+export const ADVANCE_OPTIONS: ReadonlyArray<{ value: AdvanceChoice; label: string }> = [
+  { value: 'none', label: 'Nothing yet — the rider collects on delivery' },
+  { value: 'full', label: 'All of it, before dispatch' },
+  { value: 'part', label: 'Part of it, before dispatch' },
+];
+
 export interface DeliveryForm {
   customerId: string;
+  advance: AdvanceChoice;
+  /** Only read when `advance` is 'part'. */
+  advanceAmount: string;
   priority: DeliveryPriority;
   preferredDate: string;
   preferredTimeSlot: string;
@@ -238,6 +277,8 @@ export const newLineDraft = (): DeliveryLineDraft => ({
 
 export const emptyDeliveryForm = (): DeliveryForm => ({
   customerId: '',
+  advance: 'none',
+  advanceAmount: '',
   priority: 'normal',
   preferredDate: '',
   preferredTimeSlot: '',
@@ -253,6 +294,7 @@ export interface StockInfo {
 
 export interface DeliveryErrors {
   customerId?: string;
+  advanceAmount?: string;
   lines?: string;
   line: Record<string, { itemId?: string; quantity?: string; unitPrice?: string; taxRate?: string }>;
 }
@@ -262,7 +304,7 @@ const PRICE = /^\d+(\.\d{1,2})?$/;
 const clean = (v: string) => v.replace(/[,\s]/g, '');
 
 export const hasDeliveryErrors = (e: DeliveryErrors): boolean =>
-  !!e.customerId || !!e.lines || Object.keys(e.line).length > 0;
+  !!e.customerId || !!e.advanceAmount || !!e.lines || Object.keys(e.line).length > 0;
 
 /**
  * Client-side mirror of what the server will refuse:
@@ -314,6 +356,18 @@ export const validateDelivery = (
 
     if (Object.keys(le).length) e.line[l.key] = le;
   }
+
+  // A part advance is more than nothing and less than the order; the server
+  // refuses anything above the order total.
+  if (form.advance === 'part') {
+    const a = clean(form.advanceAmount);
+    const total = toDecimal(draftTotals(form.lines).total);
+    if (!PRICE.test(a) || !toDecimal(a).greaterThan(0)) {
+      e.advanceAmount = 'Enter the amount paid, above 0.';
+    } else if (total.greaterThan(0) && !toDecimal(a).lessThan(total)) {
+      e.advanceAmount = 'That is the whole order — choose “All of it” instead.';
+    }
+  }
   return e;
 };
 
@@ -321,10 +375,11 @@ export const validateDelivery = (
  * The CreateDeliveryDto body.
  *
  * Quantities go as integers and prices as numbers — the DTO transforms and
- * validates them with @IsInt / @IsNumber. `prePaid` is deliberately never
- * sent: it makes the service raise an invoice and a payment directly, which
- * would let a staff member recognise revenue and bank cash without the
- * owner's sign-off.
+ * validates them with @IsInt / @IsNumber.
+ *
+ * An advance goes as `prePaid: true` (the whole order, priced by the server)
+ * or `advanceAmount`. It records cash received, so the server takes it from
+ * the owner directly and turns a staff member's into a request for the owner.
  */
 export const deliveryPayload = (
   form: DeliveryForm,
@@ -339,6 +394,8 @@ export const deliveryPayload = (
     preferredTimeSlot?: string;
     notes?: string;
     personnelId?: string;
+    prePaid?: boolean;
+    advanceAmount?: string;
     items: Array<{
       itemId: string;
       itemName?: string;
@@ -364,7 +421,19 @@ export const deliveryPayload = (
   if (form.preferredTimeSlot.trim()) body.preferredTimeSlot = form.preferredTimeSlot.trim();
   if (form.notes.trim()) body.notes = form.notes.trim();
   if (form.personnelId) body.personnelId = form.personnelId;
+  if (form.advance === 'full') body.prePaid = true;
+  if (form.advance === 'part') body.advanceAmount = toDecimal(clean(form.advanceAmount)).toFixed(2);
   return body;
+};
+
+/** The advance a create form will record, as a number — zero for none. */
+export const draftAdvance = (form: Pick<DeliveryForm, 'advance' | 'advanceAmount' | 'lines'>): number => {
+  if (form.advance === 'full') return draftTotals(form.lines).total;
+  if (form.advance === 'part') {
+    const a = clean(form.advanceAmount);
+    return PRICE.test(a) ? toDecimal(a).toNumber() : 0;
+  }
+  return 0;
 };
 
 /** Running totals for the create form. Unparseable lines count as zero. */
@@ -561,14 +630,63 @@ export interface Completion {
     billPhotoCapturedAt: string | null;
     verificationMethod: string;
   };
-  paidStatus: 'paid' | 'unpaid';
+  paidStatus: PaidStatus;
   prepaid: boolean;
   ledgerStatus: string;
   customerId: string | null;
   customerName: string;
   /** What approving will recognise: delivered × price, tax included. */
   saleAmount: number;
+  /** Paid before dispatch. */
+  advanceAmount: number;
+  /** The part of the advance this sale uses (never more than the sale). */
+  advanceApplied: number;
+  /** What the advance leaves for the door. */
+  amountDue: number;
+  /** Cash the rider collected — their figure until approval. */
+  amountCollected: number;
+  /** Left for Accounts Receivable. */
+  balanceDue: number;
 }
+
+/**
+ * How a completion's sale is settled, in the order approval applies it.
+ * With `cashCounted` it shows what approving with the owner's own count
+ * would record instead of the rider's figure.
+ */
+export const completionSettlement = (
+  c: Pick<Completion, 'saleAmount' | 'advanceApplied' | 'amountDue' | 'amountCollected'>,
+  cashCounted?: number,
+) => {
+  const due = toDecimal(c.amountDue);
+  const cash = Decimal.min(Decimal.max(toDecimal(cashCounted ?? c.amountCollected), 0), due);
+  const onAccount = due.minus(cash);
+  const status: PaidStatus = !onAccount.greaterThan('0.005')
+    ? 'paid'
+    : cash.greaterThan(0) || toDecimal(c.advanceApplied).greaterThan(0)
+      ? 'partial'
+      : 'unpaid';
+  return {
+    advance: toDecimal(c.advanceApplied).toDecimalPlaces(2).toNumber(),
+    cash: cash.toDecimalPlaces(2).toNumber(),
+    onAccount: onAccount.toDecimalPlaces(2).toNumber(),
+    status,
+  };
+};
+
+/**
+ * The owner's cash count: a number from zero up to what was due at the door.
+ * Mirrors the server's collectionFromAmount, which refuses the rest.
+ */
+export const cashCountError = (raw: string, amountDue: number): string | undefined => {
+  const v = clean(raw);
+  if (v === '') return 'Enter the cash the rider handed in (0 if none).';
+  if (!PRICE.test(v)) return 'Enter an amount, e.g. 1500 or 1500.50.';
+  if (toDecimal(v).greaterThan(toDecimal(amountDue).plus('0.005'))) {
+    return `No more than the ${toDecimal(amountDue).toFixed(2)} due.`;
+  }
+  return undefined;
+};
 
 /** Minimum for a rejection note and a staff undo reason — both server rules. */
 export const REVIEW_REASON_MIN = 5;
@@ -661,12 +779,16 @@ export interface DeliveryCreditMemoDraft {
   /** Zero when the delivery was prepaid or already collected. */
   invoiceBalance: number;
   /**
-   * A credit sale still owes money, so the credit clears its invoice. A
-   * prepaid or doorstep-collected one has nothing left to settle, so the money
-   * goes back out as cash.
+   * What the customer still owes is cleared from the invoice; what they have
+   * already paid goes back out as cash.
+   *   apply_to_invoice   nothing was paid
+   *   refund_cash        everything was paid (prepaid, or collected)
+   *   apply_then_refund  part was paid
    */
-  settlement: 'apply_to_invoice' | 'refund_cash';
+  settlement: 'apply_to_invoice' | 'refund_cash' | 'apply_then_refund';
   settlementAmount: number;
+  /** Cash going back to the customer. */
+  refundAmount: number;
   date: string;
   reason: string;
   lines: Array<{
@@ -684,13 +806,16 @@ export interface DeliveryCreditMemoDraft {
  * refunded when there is nothing to settle), and recorded on the delivery so
  * it cannot be reversed twice.
  */
-export const creditMemoReversalFields = (draft: DeliveryCreditMemoDraft) => ({
-  ...(draft.originalInvoiceId ? { originalInvoiceId: draft.originalInvoiceId } : {}),
-  ...(draft.settlement === 'apply_to_invoice' && draft.originalInvoiceId
-    ? { applyToInvoiceId: draft.originalInvoiceId }
-    : { refundRemainderToCash: true }),
-  reversesDeliveryRequestId: draft.deliveryRequestId,
-});
+export const creditMemoReversalFields = (draft: DeliveryCreditMemoDraft) => {
+  const applies = draft.settlement !== 'refund_cash' && !!draft.originalInvoiceId;
+  const refunds = draft.settlement !== 'apply_to_invoice' || !draft.originalInvoiceId;
+  return {
+    ...(draft.originalInvoiceId ? { originalInvoiceId: draft.originalInvoiceId } : {}),
+    ...(applies ? { applyToInvoiceId: draft.originalInvoiceId as string } : {}),
+    ...(refunds ? { refundRemainderToCash: true } : {}),
+    reversesDeliveryRequestId: draft.deliveryRequestId,
+  };
+};
 
 /** Who signed it off — which AUTHORITY, not just which person. */
 export const reviewerLabel = (c: Pick<Completion, 'status' | 'reviewerRole'>): string => {

@@ -97,6 +97,13 @@ describe('approvalAmount', () => {
     expect(approvalAmount(req('journal', { draftEntryId: 'je-1' }))).toBe(null);
   });
 
+  it('is the advance for a delivery request — given, or the whole order when prepaid', () => {
+    const items = [{ itemId: 'i1', orderedQty: 2, unitPrice: 150, taxRate: 10 }];
+    expect(approvalAmount(req('delivery_advance', { advanceAmount: '100', items }))).toBe(100);
+    expect(approvalAmount(req('delivery_advance', { prePaid: true, items }))).toBe(330);
+    expect(approvalAmount(req('delivery_advance', { items }))).toBe(null);
+  });
+
   it('is null — never NaN — for a malformed payload', () => {
     expect(approvalAmount(req('invoice', {}))).toBe(null);
     expect(approvalAmount(req('bill_payment', { applications: 'nope' }))).toBe(null);
@@ -192,6 +199,9 @@ describe('invalidationKeysFor', () => {
     expect(invalidationKeysFor('invoice').map((k) => k[0])).toContain('invoices');
     expect(invalidationKeysFor('bill_payment').map((k) => k[0])).toContain('bills');
     expect(invalidationKeysFor('invoice_payment').map((k) => k[0])).toContain('payments');
+    expect(invalidationKeysFor('delivery_advance').map((k) => k[0])).toEqual(
+      expect.arrayContaining(['deliveries', 'inventory', 'payments']),
+    );
   });
 });
 

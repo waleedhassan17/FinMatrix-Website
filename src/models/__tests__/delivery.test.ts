@@ -3,11 +3,14 @@ import { describe, expect, it } from 'vitest';
 import {
   DELIVERY_STATUSES,
   LEGAL_TRANSITIONS,
+  cashCountError,
   completionActions,
+  completionSettlement,
   completionUnits,
   creditMemoReversalFields,
   deliveryPayload,
   deliveryValue,
+  draftAdvance,
   draftTotals,
   emptyDeliveryForm,
   generateRiderPassword,
@@ -134,7 +137,7 @@ describe('create delivery', () => {
     expect(e.line.a?.unitPrice).toBeTruthy();
   });
 
-  it('builds the DTO with integer quantities, numeric prices and no prePaid', () => {
+  it('builds the DTO with integer quantities, numeric prices and no advance by default', () => {
     const body = deliveryPayload(
       form({ personnelId: 'rider-1', notes: '  gate 2  ' }),
       'Madina Wholesale',
@@ -149,6 +152,24 @@ describe('create delivery', () => {
       items: [{ itemId: 'rice', itemName: 'Basmati 5kg', orderedQty: 4, unitPrice: 1000, taxRate: 17 }],
     });
     expect(body).not.toHaveProperty('prePaid');
+    expect(body).not.toHaveProperty('advanceAmount');
+  });
+
+  it('sends a full advance as prePaid and a part advance as its amount', () => {
+    expect(deliveryPayload(form({ advance: 'full' }), 'X', stock)).toMatchObject({ prePaid: true });
+    const part = deliveryPayload(form({ advance: 'part', advanceAmount: '1,500' }), 'X', stock);
+    expect(part).toMatchObject({ advanceAmount: '1500.00' });
+    expect(part).not.toHaveProperty('prePaid');
+    expect(draftAdvance(form({ advance: 'full' }))).toBe(4680);
+    expect(draftAdvance(form({ advance: 'part', advanceAmount: '1500' }))).toBe(1500);
+    expect(draftAdvance(form())).toBe(0);
+  });
+
+  it('a part advance must be above zero and below the order total', () => {
+    expect(validateDelivery(form({ advance: 'part', advanceAmount: '' }), stock).advanceAmount).toBeTruthy();
+    expect(validateDelivery(form({ advance: 'part', advanceAmount: '0' }), stock).advanceAmount).toBeTruthy();
+    expect(validateDelivery(form({ advance: 'part', advanceAmount: '4680' }), stock).advanceAmount).toMatch(/whole order/);
+    expect(hasDeliveryErrors(validateDelivery(form({ advance: 'part', advanceAmount: '2000' }), stock))).toBe(false);
   });
 
   it('omits the rider when creating unassigned', () => {
@@ -218,8 +239,9 @@ describe('completion capability split', () => {
       originalInvoiceId: 'inv-1',
       invoiceNumber: 'INV-1',
       invoiceBalance: 1200,
-      settlement: 'apply_to_invoice' as const,
+      settlement: 'apply_to_invoice' as 'apply_to_invoice' | 'refund_cash' | 'apply_then_refund',
       settlementAmount: 1200,
+      refundAmount: 0,
       date: '2026-09-11',
       reason: '',
       lines: [],
@@ -234,6 +256,31 @@ describe('completion capability split', () => {
       refundRemainderToCash: true,
       reversesDeliveryRequestId: 'r1',
     });
+    // Part paid: clear what is still owed, give back what was paid.
+    expect(creditMemoReversalFields({ ...draft, settlement: 'apply_then_refund' })).toEqual({
+      originalInvoiceId: 'inv-1',
+      applyToInvoiceId: 'inv-1',
+      refundRemainderToCash: true,
+      reversesDeliveryRequestId: 'r1',
+    });
+  });
+
+  it('settles a completion from the advance, the cash and what is left', () => {
+    const c = { saleAmount: 1000, advanceApplied: 300, amountDue: 700, amountCollected: 700 };
+    expect(completionSettlement(c)).toEqual({ advance: 300, cash: 700, onAccount: 0, status: 'paid' });
+    // The owner counted less than the rider reported.
+    expect(completionSettlement(c, 500)).toEqual({ advance: 300, cash: 500, onAccount: 200, status: 'partial' });
+    expect(completionSettlement({ ...c, advanceApplied: 0, amountDue: 1000, amountCollected: 0 }).status).toBe('unpaid');
+    // Fully prepaid: nothing is due at the door.
+    expect(completionSettlement({ saleAmount: 1000, advanceApplied: 1000, amountDue: 0, amountCollected: 0 }).status).toBe('paid');
+  });
+
+  it('checks the owner’s cash count against what was due', () => {
+    expect(cashCountError('', 700)).toBeTruthy();
+    expect(cashCountError('abc', 700)).toBeTruthy();
+    expect(cashCountError('700.01', 700)).toBeTruthy();
+    expect(cashCountError('0', 700)).toBeUndefined();
+    expect(cashCountError('700', 700)).toBeUndefined();
   });
 
   it('names the authority that signed it', () => {
@@ -324,6 +371,12 @@ describe('delivery serializer', () => {
     expect(d.destLng).toBe(74.3);
     expect(d.lines[0]).toMatchObject({ orderedQty: 4, unitPrice: 1000, taxRate: 17 });
     expect(mapDelivery({}).personnelId).toBeNull();
+    expect(mapDelivery({ paidStatus: 'partial', advanceAmount: '300.0000', advancePaymentId: 'p1', amountCollected: null })).toMatchObject({
+      paidStatus: 'partial',
+      advanceAmount: 300,
+      advancePaymentId: 'p1',
+      amountCollected: null,
+    });
   });
 
   it('reads a completion with its sale amount and proof', () => {
@@ -337,6 +390,12 @@ describe('delivery serializer', () => {
     });
     expect(c.saleAmount).toBe(4680);
     expect(c.paidStatus).toBe('paid');
+    expect(mapCompletion({ paidStatus: 'partial', amountDue: '700.00', amountCollected: '250' })).toMatchObject({
+      paidStatus: 'partial',
+      amountDue: 700,
+      amountCollected: 250,
+    });
+    expect(mapCompletion({ paidStatus: 'weird' }).paidStatus).toBe('unpaid');
     expect(c.proof.signedBy).toBe('Ali');
     expect(mapCompletion({ status: 'weird' }).status).toBe('pending');
   });

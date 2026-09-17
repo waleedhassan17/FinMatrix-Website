@@ -50,10 +50,22 @@ export const getCompletion = async (id: string): Promise<Completion> => {
   }
 };
 
-/** Owner only. Posts the sale and COGS; the delivery becomes `delivered`. */
-export const approveCompletion = async (id: string, comment?: string): Promise<void> => {
+/**
+ * Owner only. Posts the sale and COGS; the delivery becomes `delivered`.
+ *
+ * `amountCollected` is the owner's count of the cash the rider handed in. Sent
+ * only when it differs from the rider's figure; the server records both on the
+ * audit trail.
+ */
+export const approveCompletion = async (
+  id: string,
+  opts: { comment?: string; amountCollected?: string } = {},
+): Promise<void> => {
   try {
-    await api.post(`${BASE}/${id}/approve`, comment ? { reviewerComment: comment } : {});
+    await api.post(`${BASE}/${id}/approve`, {
+      ...(opts.comment ? { reviewerComment: opts.comment } : {}),
+      ...(opts.amountCollected !== undefined ? { amountCollected: opts.amountCollected } : {}),
+    });
   } catch (e) {
     throw toApiError(e);
   }
@@ -111,8 +123,12 @@ export const getCreditMemoDraft = async (id: string): Promise<DeliveryCreditMemo
       originalInvoiceId: r.originalInvoiceId ? String(r.originalInvoiceId) : null,
       invoiceNumber: s(r.invoiceNumber),
       invoiceBalance: n(r.invoiceBalance),
-      settlement: r.settlement === 'refund_cash' ? 'refund_cash' : 'apply_to_invoice',
+      settlement:
+        r.settlement === 'refund_cash' || r.settlement === 'apply_then_refund'
+          ? r.settlement
+          : 'apply_to_invoice',
       settlementAmount: n(r.settlementAmount),
+      refundAmount: n(r.refundAmount),
       date: s(r.date).slice(0, 10),
       reason: s(r.reason),
       lines: (Array.isArray(r.lines) ? r.lines : []).map((raw) => {

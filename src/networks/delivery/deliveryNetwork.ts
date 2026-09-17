@@ -7,8 +7,16 @@
 // Staff and owner share the operational working set: create, assign,
 // auto-assign and status changes are all @Roles('admin', 'staff') and direct.
 // Only DELETE is owner-only, and only while nothing has been dispatched.
+// One exception to "direct": a delivery the customer paid for in advance,
+// created by staff, is filed for the owner instead (it records cash in).
 
-import { api, toApiError, unwrapEnvelope } from '@/networks/network/apiHelpers';
+import {
+  api,
+  isPendingApproval,
+  toApiError,
+  unwrapEnvelope,
+  type PendingApproval,
+} from '@/networks/network/apiHelpers';
 import type {
   Delivery,
   DeliveryHistoryEntry,
@@ -61,10 +69,19 @@ export const getDelivery = async (id: string): Promise<Delivery> => {
  * Order is raised and the stock moves to Goods in Transit, atomically with the
  * delivery. The server refuses before writing anything if stock is short.
  */
-export const createDelivery = async (body: object): Promise<Delivery> => {
+/**
+ * A 2xx is not always a delivery: a staff member's advance delivery comes back
+ * as a pending approval, and nothing — delivery, stock or receipt — exists yet.
+ */
+export const createDelivery = async (
+  body: object,
+): Promise<{ pending: false; delivery: Delivery } | { pending: true; approval: PendingApproval }> => {
   try {
     const response = await api.post('/deliveries', body);
-    return mapDelivery(unwrapEnvelope(response.data));
+    const payload = unwrapEnvelope(response.data);
+    return isPendingApproval(payload)
+      ? { pending: true, approval: payload }
+      : { pending: false, delivery: mapDelivery(payload) };
   } catch (e) {
     throw toApiError(e);
   }

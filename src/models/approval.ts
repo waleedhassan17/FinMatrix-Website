@@ -14,7 +14,7 @@ import { computeBillTotals } from '@/models/bill';
 import { computeTotals, type DiscountType } from '@/models/document';
 import { Decimal, toDecimal } from '@/utils/money';
 
-/** The ten things that can be sent for approval — the backend's own union. */
+/** The eleven things that can be sent for approval — the backend's own union. */
 export type ApprovalType =
   | 'adjustment'
   | 'journal'
@@ -25,7 +25,8 @@ export type ApprovalType =
   | 'po'
   | 'invoice'
   | 'invoice_payment'
-  | 'delivery_undo';
+  | 'delivery_undo'
+  | 'delivery_advance';
 
 export const APPROVAL_TYPES: readonly ApprovalType[] = [
   'invoice',
@@ -38,6 +39,7 @@ export const APPROVAL_TYPES: readonly ApprovalType[] = [
   'void',
   'adjustment',
   'delivery_undo',
+  'delivery_advance',
 ];
 
 /**
@@ -87,6 +89,7 @@ export const APPROVAL_TYPE_LABELS: Record<ApprovalType, string> = {
   po: 'Purchase order',
   void: 'Void',
   delivery_undo: 'Undo delivery',
+  delivery_advance: 'Delivery with advance',
 };
 
 /** One line explaining what approving a request actually does to the books. */
@@ -101,6 +104,8 @@ export const APPROVAL_TYPE_EFFECTS: Record<ApprovalType, string> = {
   po: 'Creates the purchase order. It posts nothing to the ledger.',
   void: 'Reverses the original transaction with a balancing entry.',
   delivery_undo: 'Reverses recognised delivery revenue.',
+  delivery_advance:
+    'Creates the delivery and records the advance as a cash receipt, held in Customer Advances until the delivery is approved.',
 };
 
 export const APPROVAL_FILTERS: readonly [ApprovalFilter, string][] = [
@@ -238,6 +243,21 @@ export const approvalAmount = (request: Pick<ApprovalRequest, 'type' | 'payload'
       const lines = rows(p.lines);
       return lines.length === 0 ? null : sum(lines.map((l) => l.debit));
     }
+    case 'delivery_advance': {
+      // The cash coming in now: the amount given, or the whole order when the
+      // request only says it is prepaid.
+      if (p.advanceAmount !== undefined && text(p.advanceAmount) !== '') {
+        return toDecimal(p.advanceAmount as never).toNumber();
+      }
+      if (p.prePaid !== true) return null;
+      const items = rows(p.items);
+      if (items.length === 0) return null;
+      return computeTotals(
+        items.map((l) => ({ quantity: l.orderedQty as never, unitPrice: (l.unitPrice ?? 0) as never, taxRate: (l.taxRate ?? 0) as never })),
+        'none',
+        0,
+      ).total;
+    }
     case 'void':
     case 'adjustment':
     case 'delivery_undo':
@@ -256,6 +276,7 @@ export const approvalCounterparty = (
     case 'invoice':
     case 'invoice_payment':
     case 'credit_memo':
+    case 'delivery_advance':
       return customerId ? { kind: 'customer', id: customerId } : null;
     case 'bill_payment':
     case 'po':
@@ -289,6 +310,7 @@ const RESULT_ROUTES: Partial<Record<ApprovalType, string>> = {
   credit_memo: '/credit-memos',
   vendor_credit: '/vendor-credits',
   journal: '/journal-entries',
+  delivery_advance: '/deliveries',
 };
 
 /**
@@ -338,6 +360,7 @@ const TYPE_KEYS: Record<ApprovalType, string[][]> = {
   void: [['invoices'], ['credit-memos'], ['vendor-credits'], ['inventory'], ['customers'], ['vendors']],
   adjustment: [['inventory']],
   delivery_undo: [['inventory'], ['invoices']],
+  delivery_advance: [['deliveries'], ['delivery-personnel'], ['inventory'], ['sales-orders'], ['payments'], ['customers']],
 };
 
 /**

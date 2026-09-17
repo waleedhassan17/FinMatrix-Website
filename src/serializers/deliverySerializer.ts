@@ -14,6 +14,7 @@ import type {
   DeliveryLine,
   DeliveryPriority,
   DeliveryStatus,
+  PaidStatus,
   Rider,
   RiderStatus,
 } from '@/models/delivery';
@@ -29,6 +30,8 @@ const nullableNum = (v: unknown): number | null =>
 const nullableStr = (v: unknown): string | null =>
   v === null || v === undefined || v === '' ? null : String(v);
 const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+const paidStatusOf = (v: unknown): PaidStatus | null =>
+  v === 'paid' || v === 'partial' || v === 'unpaid' ? v : null;
 
 export const mapDeliveryLine = (raw: unknown): DeliveryLine => {
   const r = asRaw(raw);
@@ -64,8 +67,11 @@ export const mapDelivery = (raw: unknown): Delivery => {
     completedAt: str(r.completedAt),
     notes: str(r.notes),
     cancelReason: str(r.cancelReason),
-    paidStatus: r.paidStatus === 'paid' || r.paidStatus === 'unpaid' ? r.paidStatus : null,
+    paidStatus: paidStatusOf(r.paidStatus),
     prepaid: r.prepaid === true,
+    advanceAmount: num(r.advanceAmount),
+    advancePaymentId: nullableStr(r.advancePaymentId),
+    amountCollected: nullableNum(r.amountCollected),
     salesOrderId: nullableStr(r.salesOrderId),
     invoiceId: nullableStr(r.invoiceId),
     ledgerStatus: str(r.ledgerStatus) || 'none',
@@ -159,12 +165,17 @@ export const mapCompletion = (raw: unknown): Completion => {
       billPhotoCapturedAt: nullableStr(proof.billPhotoCapturedAt),
       verificationMethod: str(proof.verificationMethod),
     },
-    paidStatus: r.paidStatus === 'paid' ? 'paid' : 'unpaid',
+    paidStatus: paidStatusOf(r.paidStatus) ?? 'unpaid',
     prepaid: r.prepaid === true,
     ledgerStatus: str(r.ledgerStatus),
     customerId: nullableStr(r.customerId),
     customerName: str(r.customerName),
     saleAmount: num(r.saleAmount),
+    advanceAmount: num(r.advanceAmount),
+    advanceApplied: num(r.advanceApplied),
+    amountDue: num(r.amountDue ?? r.saleAmount),
+    amountCollected: num(r.amountCollected),
+    balanceDue: num(r.balanceDue),
   };
 };
 

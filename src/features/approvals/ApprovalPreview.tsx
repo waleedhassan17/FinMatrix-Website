@@ -11,6 +11,7 @@ import {
   useInventoryOptions,
   useVendorOptions,
 } from '@/features/documents/useDocumentPickers';
+import { useRiders } from '@/features/delivery/useRiders';
 import { voidTargetLink, type ApprovalRequest } from '@/models/approval';
 import { computeBillTotals } from '@/models/bill';
 import { computeTotals, type DiscountType } from '@/models/document';
@@ -73,6 +74,8 @@ export function ApprovalPreview({ request }: { request: ApprovalRequest }) {
       return <AdjustmentPreview request={request} />;
     case 'delivery_undo':
       return <DeliveryUndoPreview request={request} />;
+    case 'delivery_advance':
+      return <DeliveryAdvancePreview request={request} />;
   }
 }
 
@@ -630,6 +633,77 @@ function DeliveryUndoPreview({ request }: { request: ApprovalRequest }) {
         </p>
       )}
     </PreviewCard>
+  );
+}
+
+/**
+ * A staff member's delivery that the customer has paid for in advance. The
+ * owner sees the whole delivery, because approving creates all of it: the
+ * receipt now, and — when a rider is named — the dispatch too.
+ */
+function DeliveryAdvancePreview({ request }: { request: ApprovalRequest }) {
+  const p = request.payload;
+  const { byId: customers } = useCustomerOptions();
+  const { items } = useInventoryOptions();
+  const { riders } = useRiders();
+  const raw = rows(p.items);
+
+  const lines: DocumentLine[] = raw.map((l, i) => ({
+    id: `line-${i}`,
+    itemId: text(l.itemId),
+    itemName: items.find((it) => it.id === text(l.itemId))?.name ?? text(l.itemName),
+    description: text(l.itemName) || items.find((it) => it.id === text(l.itemId))?.name || '',
+    quantity: num(l.orderedQty),
+    unitPrice: num(l.unitPrice),
+    taxRate: num(l.taxRate),
+    amount: toDecimal(l.orderedQty as never).times(toDecimal((l.unitPrice ?? 0) as never)).toDecimalPlaces(2).toNumber(),
+  }));
+  const totals = computeTotals(
+    raw.map((l) => ({ quantity: l.orderedQty as never, unitPrice: (l.unitPrice ?? 0) as never, taxRate: (l.taxRate ?? 0) as never })),
+    'none',
+    0,
+  );
+  const advance =
+    text(p.advanceAmount) !== '' ? num(p.advanceAmount) : p.prePaid === true ? totals.total : 0;
+  const rest = Math.max(toDecimal(totals.total).minus(advance).toNumber(), 0);
+  const riderId = text(p.personnelId);
+  const rider = riders.find((r) => r.userId === riderId);
+
+  return (
+    <div className="flex flex-col gap-md">
+      <PreviewCard title="Paid in advance">
+        <Facts
+          items={[
+            ['Customer', customers.get(text(p.customerId))?.name ?? (text(p.customerName) || '—')],
+            ['Order total', formatMoney(totals.total)],
+            ['Paid in advance', formatMoney(advance)],
+            ['The rider collects', rest > 0 ? formatMoney(rest) : 'Nothing — paid in full'],
+            ['Rider', riderId ? rider?.name || rider?.username || 'Assigned rider' : 'Not assigned yet'],
+            ['Wanted on', date(p.preferredDate ?? p.scheduledDate)],
+          ]}
+        />
+        <p className="mt-md text-body-sm text-text-secondary">
+          Approving creates the delivery and records {formatMoney(advance)} as a cash receipt (Dr Cash /
+          Cr Customer Advances). No sale is recorded yet — that happens when the completed delivery is
+          approved.{riderId ? ' The stock is dispatched to the rider at the same time.' : ''} Stock and
+          the credit limit are checked again when you approve.
+        </p>
+      </PreviewCard>
+      <DocumentView
+        title="Delivery"
+        counterpartyLabel="Customer"
+        counterpartyName={customers.get(text(p.customerId))?.name ?? (text(p.customerName) || '—')}
+        meta={text(p.notes) ? [['Notes for the rider', text(p.notes)]] : []}
+        lines={lines}
+        subtotal={totals.subtotal}
+        discountType="none"
+        discountValue={0}
+        discountAmount={totals.discountAmount}
+        taxAmount={totals.taxAmount}
+        total={totals.total}
+        notes=""
+      />
+    </div>
   );
 }
 

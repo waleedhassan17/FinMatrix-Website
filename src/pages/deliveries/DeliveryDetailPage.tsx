@@ -22,6 +22,7 @@ import { FeatureUnavailable } from '@/features/shell/FeatureUnavailable';
 import { useAdminOnly, useCapability, useFeature } from '@/hooks/useCapability';
 import {
   OPERATOR_ACTION_COPY,
+  PAID_STATUS_LABELS,
   deliveryValue,
   formatWhen,
   isDispatched,
@@ -241,7 +242,9 @@ export default function DeliveryDetailPage() {
                   label: 'Delete delivery',
                   icon: Trash2,
                   destructive: true,
-                  hidden: !(canDelete && d.status === 'unassigned' && !dispatched),
+                  // A delivery with an advance is cancelled, never deleted: the
+                  // server refuses, because its receipt would lose what it paid for.
+                  hidden: !(canDelete && d.status === 'unassigned' && !dispatched && !d.advancePaymentId),
                   onSelect: () => setConfirmDelete(true),
                 },
               ]}
@@ -473,7 +476,44 @@ export default function DeliveryDetailPage() {
                   Invoice
                 </Link>
               )}
+              {d.advancePaymentId && (
+                <Link to={`/payments/${d.advancePaymentId}`} className="text-label-md text-primary hover:underline">
+                  Advance receipt
+                </Link>
+              )}
             </div>
+          </Card>
+
+          {/* ── Payment ──────────────────────────────────────────── */}
+          <Card className="p-lg">
+            <SectionHeader title="Payment" />
+            <dl className="mt-md grid grid-cols-[1fr_auto] gap-x-md gap-y-xs text-body-sm">
+              <dt className="text-text-secondary">Order total</dt>
+              <dd className="text-right tabular text-text-primary">{formatMoney(total)}</dd>
+              <dt className="text-text-secondary">Paid in advance</dt>
+              <dd className="text-right tabular text-text-primary">
+                {d.advanceAmount > 0 ? formatMoney(d.advanceAmount) : '—'}
+              </dd>
+              <dt className="text-text-secondary">
+                {d.ledgerStatus === 'committed' ? 'Collected by the rider' : 'Rider reported collecting'}
+              </dt>
+              <dd className="text-right tabular text-text-primary">
+                {d.amountCollected !== null ? formatMoney(d.amountCollected) : '—'}
+              </dd>
+              <dt className="text-label-md text-text-primary">Status</dt>
+              <dd className="text-right text-label-md text-text-primary">
+                {d.paidStatus ? PAID_STATUS_LABELS[d.paidStatus] : d.advanceAmount > 0 ? 'Part paid in advance' : 'Not yet known'}
+              </dd>
+            </dl>
+            <p className="mt-sm text-caption text-text-tertiary">
+              {d.ledgerStatus === 'committed'
+                ? 'Follows the invoice: a later receipt against it updates this.'
+                : d.prepaid
+                  ? 'Paid in full before dispatch — the rider collects nothing.'
+                  : d.advanceAmount > 0
+                    ? `The rider collects the ${formatMoney(Math.max(toDecimal(total).minus(d.advanceAmount).toNumber(), 0))} left, less anything the customer sends back.`
+                    : 'The rider records at the door whether the customer paid all, part or none of it.'}
+            </p>
           </Card>
         </div>
       </div>

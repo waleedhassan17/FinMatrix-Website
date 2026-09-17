@@ -208,7 +208,11 @@ export default function CreditMemoFormPage() {
                 ? `The credit settles invoice ${reversal.invoiceNumber || ''} in the same action (${formatMoney(
                     reversal.settlementAmount,
                   )} outstanding).`
-                : 'That invoice is already paid, so this refunds the customer in cash.'}{' '}
+                : reversal.settlement === 'apply_then_refund'
+                  ? `The credit clears the ${formatMoney(reversal.invoiceBalance)} still owing on invoice ${
+                      reversal.invoiceNumber || ''
+                    } and refunds the ${formatMoney(reversal.refundAmount)} the customer already paid in cash.`
+                  : 'That invoice is already paid, so this refunds the customer in cash.'}{' '}
               Lines linked to an item put the goods back on the shelf and reverse their cost.
               Remove or reduce a line if the customer kept part of the delivery.
             </p>

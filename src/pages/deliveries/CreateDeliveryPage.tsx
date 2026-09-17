@@ -15,17 +15,20 @@ import { invalidateDeliveries } from '@/features/delivery/invalidateDeliveries';
 import { useRiders } from '@/features/delivery/useRiders';
 import { useCustomerOptions, useInventoryOptions } from '@/features/documents/useDocumentPickers';
 import { FeatureUnavailable } from '@/features/shell/FeatureUnavailable';
-import { useCapability, useFeature } from '@/hooks/useCapability';
+import { useCapability, useFeature, useRole } from '@/hooks/useCapability';
 import type { CustomerAddress } from '@/models/customer';
 import {
+  ADVANCE_OPTIONS,
   PRIORITY_OPTIONS,
   deliveryPayload,
+  draftAdvance,
   draftTotals,
   emptyDeliveryForm,
   hasDeliveryErrors,
   newLineDraft,
   riderLabel,
   validateDelivery,
+  type AdvanceChoice,
   type DeliveryErrors,
   type DeliveryForm,
   type DeliveryLineDraft,
@@ -54,13 +57,16 @@ const formatAddress = (a: CustomerAddress | undefined): string =>
  *   - Choosing a rider here DISPATCHES at once (sales order + stock to Goods in
  *     Transit), so it asks first and says so. Leaving it unassigned posts
  *     nothing.
- *   - There is no "prepaid" switch. On the server it raises an invoice and a
- *     payment directly — revenue and cash with no owner sign-off — which the
- *     rest of this console never lets staff do.
+ *   - Money the customer paid before dispatch — all of it or part — is cash
+ *     in. The owner records it with the delivery (a receipt held in Customer
+ *     Advances until the delivery is approved). A staff member's delivery with
+ *     an advance goes to the owner instead, exactly like a staff receipt, and
+ *     nothing is created until they approve it.
  */
 export default function CreateDeliveryPage() {
   const enabled = useFeature('delivery');
   const canCreate = useCapability('delivery.create').allowed;
+  const isOwner = useRole() === 'admin';
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -111,7 +117,10 @@ export default function CreateDeliveryPage() {
       customer.address
     : '';
   const totals = draftTotals(form.lines);
-  const dispatching = form.personnelId !== '';
+  const advance = draftAdvance(form);
+  // Staff with an advance: a request, not a delivery. Nothing dispatches yet.
+  const asRequest = !isOwner && form.advance !== 'none';
+  const dispatching = form.personnelId !== '' && !asRequest;
   const riderName = riderLabel(riders.find((r) => r.userId === form.personnelId));
 
   const patch = (p: Partial<DeliveryForm>) => {
@@ -153,9 +162,19 @@ export default function CreateDeliveryPage() {
       const body = deliveryPayload(form, customer?.name ?? '', stock);
       return createDelivery(overrideReason ? { ...body, creditOverride: { reason: overrideReason } } : body);
     },
-    onSuccess: (d) => {
-      invalidateDeliveries(queryClient);
+    onSuccess: (result) => {
       setConfirming(false);
+      if (result.pending) {
+        // Nothing was created — only the request. Do not refresh deliveries.
+        queryClient.invalidateQueries({ queryKey: ['approvals'] });
+        toast.success('Sent to the owner for approval', {
+          description: 'The delivery and its advance receipt are created when the owner approves.',
+        });
+        navigate('/my-requests', { replace: true });
+        return;
+      }
+      const d = result.delivery;
+      invalidateDeliveries(queryClient);
       toast.success(dispatching ? 'Delivery created and dispatched' : 'Delivery created', {
         description: dispatching
           ? `${d.referenceNo} is with ${riderName}. The stock is in Goods in Transit.`
@@ -335,6 +354,51 @@ export default function CreateDeliveryPage() {
         </div>
       </Card>
 
+      {/* ── Payment ───────────────────────────────────────────────────── */}
+      <Card className="p-lg">
+        <SectionHeader title="Payment" />
+        <div className="mt-md grid gap-md sm:grid-cols-2">
+          <Select
+            label="The customer has paid"
+            value={form.advance}
+            onChange={(v) => {
+              setForm((f) => ({ ...f, advance: v as AdvanceChoice }));
+              setErrors((e) => ({ ...e, advanceAmount: undefined }));
+            }}
+            options={ADVANCE_OPTIONS}
+          />
+          {form.advance === 'part' && (
+            <Input
+              label="Amount paid"
+              value={form.advanceAmount}
+              onChange={(e) => {
+                setForm((f) => ({ ...f, advanceAmount: e.target.value }));
+                setErrors((er) => ({ ...er, advanceAmount: undefined }));
+              }}
+              inputMode="decimal"
+              className="tabular"
+              error={errors.advanceAmount}
+              hint={
+                totals.total > 0
+                  ? `Of ${formatMoney(totals.total)}. The rider collects the ${formatMoney(
+                      Math.max(totals.total - advance, 0),
+                    )} left.`
+                  : undefined
+              }
+            />
+          )}
+          <p className="text-body-sm text-text-secondary sm:col-span-2">
+            {form.advance === 'none'
+              ? 'The rider records at the door whether the customer paid all, part or none of it. Whatever is not paid stays on the customer’s account.'
+              : isOwner
+                ? `${formatMoney(advance)} is recorded now as a cash receipt, held in Customer Advances until the delivery is approved. The rider is told not to collect it.`
+                : `Recording money received needs the owner. This delivery is sent to them for approval, with ${formatMoney(
+                    advance,
+                  )} paid in advance — nothing is created, and no stock moves, until they approve it.`}
+          </p>
+        </div>
+      </Card>
+
       {/* ── Schedule ──────────────────────────────────────────────────── */}
       <Card className="p-lg">
         <SectionHeader title="Schedule" />
@@ -380,7 +444,11 @@ export default function CreateDeliveryPage() {
             onChange={(v) => patch({ personnelId: v === NO_RIDER ? '' : v })}
             options={riderOptions}
           />
-          {dispatching ? (
+          {asRequest && form.personnelId ? (
+            <p className="self-center text-body-sm text-text-secondary">
+              The rider is assigned, and the stock dispatched, when the owner approves.
+            </p>
+          ) : dispatching ? (
             <p className="flex items-start gap-xs rounded-md bg-warning-lighter p-md text-body-sm text-text-primary">
               <AlertTriangle className="mt-[2px] size-4 shrink-0 text-warning" />
               Assigning now dispatches: a sales order is raised and the stock moves from
@@ -399,7 +467,15 @@ export default function CreateDeliveryPage() {
           <Link to="/deliveries">Cancel</Link>
         </Button>
         <Button type="submit" disabled={!canCreate || save.isPending}>
-          {save.isPending ? 'Creating…' : dispatching ? 'Create and dispatch' : 'Create delivery'}
+          {save.isPending
+            ? asRequest
+              ? 'Sending…'
+              : 'Creating…'
+            : asRequest
+              ? 'Send for owner approval'
+              : dispatching
+                ? 'Create and dispatch'
+                : 'Create delivery'}
         </Button>
       </div>
 
