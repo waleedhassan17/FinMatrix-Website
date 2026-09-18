@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { Combobox } from '@/components/ui/Combobox';
-import { DateField, Textarea } from '@/components/ui/Field';
+import { DateField } from '@/components/ui/Field';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { SummaryPanel, SummaryRow } from '@/components/ui/SummaryPanel';
@@ -19,28 +19,17 @@ import {
   fillToBalance,
   overAppliedRows,
   totalAllocated,
-  type AllocationRow,
 } from '@/models/allocation';
+import type { PayBillsFormData } from '@/models/bill';
 import { isoToday } from '@/models/document';
 import { PAYMENT_METHOD_OPTIONS, type ApiPaymentMethod } from '@/models/payment';
 import { getDepositAccounts } from '@/networks/accounting/accountNetwork';
 import { getPayableBills, payBills } from '@/networks/purchases/billNetwork';
+import { payBillsFormToPayload } from '@/serializers/billSerializer';
 import { formatMoney } from '@/utils/money';
 import { invalidateAfterPosting } from '@/features/documents/invalidateAfterPosting';
 
-interface PayBillsForm {
-  vendorId: string;
-  vendorName: string;
-  paymentDate: string;
-  paymentMethod: ApiPaymentMethod;
-  bankAccountId: string;
-  proofId: string;
-  reference: string;
-  memo: string;
-  rows: AllocationRow[];
-}
-
-const emptyForm = (): PayBillsForm => ({
+const emptyForm = (): PayBillsFormData => ({
   vendorId: '',
   vendorName: '',
   paymentDate: isoToday(),
@@ -48,7 +37,6 @@ const emptyForm = (): PayBillsForm => ({
   bankAccountId: '',
   proofId: '',
   reference: '',
-  memo: '',
   rows: [],
 });
 
@@ -60,10 +48,11 @@ export default function PayBillsPage() {
   const cap = useCapability('bill.pay');
   const { byId: vendorsById, options: vendorOptions } = useVendorOptions();
 
-  const [form, setForm] = useState<PayBillsForm>(emptyForm);
+  const [form, setForm] = useState<PayBillsFormData>(emptyForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const patch = (p: Partial<PayBillsForm>) => setForm((f) => ({ ...f, ...p }));
+  const patch = (p: Partial<PayBillsFormData>) =>
+    setForm((f) => ({ ...f, ...p }));
 
   const { data: accounts = [] } = useQuery({
     queryKey: ['accounts', 'deposit'],
@@ -144,23 +133,7 @@ export default function PayBillsPage() {
   };
 
   const save = useMutation({
-    mutationFn: () =>
-      payBills({
-        vendorId: form.vendorId,
-        paymentDate: form.paymentDate,
-        paymentMethod: form.paymentMethod,
-        bankAccountId: form.bankAccountId,
-        proofId: form.proofId,
-        applications: form.rows
-          .filter((r) => r.checked && parseFloat(r.applied) > 0)
-          .map((r) => ({
-            billId: r.documentId,
-            // @IsNumberString — a JS number is rejected outright.
-            amountApplied: (parseFloat(r.applied) || 0).toFixed(2),
-          })),
-        ...(form.reference.trim() ? { reference: form.reference.trim() } : {}),
-        ...(form.memo.trim() ? { memo: form.memo.trim() } : {}),
-      }),
+    mutationFn: () => payBills(payBillsFormToPayload(form)),
     onSuccess: (result) => {
       if (result.pending) {
         // Nothing left the bank — do NOT invalidate bills or the dashboard.
@@ -340,16 +313,11 @@ export default function PayBillsPage() {
         )}
       </Card>
 
-      <Card className="p-lg">
-        <SectionHeader title="Memo" />
-        <div className="mt-md">
-          <Textarea
-            value={form.memo}
-            onChange={(e) => patch({ memo: e.target.value })}
-            placeholder="Anything worth recording against this payment…"
-          />
-        </div>
-      </Card>
+      {/* No Memo box here, unlike a bill or a customer receipt: `bill_payments`
+          has no memo column and PayBillsDto declares no memo field, so anything
+          typed into one was dropped by the server's whitelist without a word.
+          Reference (the cheque or transfer number) is the free-text field that
+          does persist. */}
 
       {/* Vendor credits are module 14 — said plainly rather than left as a
           silently missing option. */}

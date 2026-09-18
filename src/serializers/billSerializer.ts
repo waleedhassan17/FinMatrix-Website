@@ -10,7 +10,9 @@ import {
   type BillFormLine,
   type BillLine,
   type BillStatus,
+  type PayBillsFormData,
 } from '@/models/bill';
+import type { PayBillsPayload } from '@/networks/purchases/billNetwork';
 import { asRaw, str } from '@/serializers/documentLines';
 import { toNumber } from '@/utils/money';
 
@@ -251,4 +253,37 @@ export const billFormToPayload = (
   // vendor's own number is genuinely absent on many bills.
   ...(form.billNumber.trim() ? { billNumber: form.billNumber.trim() } : {}),
   ...(form.notes.trim() ? { memo: form.notes.trim() } : {}),
+});
+
+/**
+ * Pay Bills form → `POST /bills/pay`.
+ *
+ * The field is **`amount`**. The server *returns* `amountApplied` on the way
+ * out, and sending that name back in is silently fatal: `whitelist: true` drops
+ * the unknown key, `amount` arrives undefined, and every application fails
+ * `@IsNumberString` with "applications.N.amount must be a number string" — which
+ * is why a full payment failed just as surely as a partial one.
+ *
+ * Amounts go out as `.toFixed(2)` strings; a JS number is not the contract even
+ * where the server would coerce one.
+ *
+ * Only ticked rows carrying a positive amount are sent. A row the user ticked
+ * and then blanked is not an instruction to pay nothing against that bill — the
+ * server rejects a non-positive application outright — so it is dropped here.
+ */
+export const payBillsFormToPayload = (
+  form: PayBillsFormData,
+): PayBillsPayload => ({
+  vendorId: form.vendorId,
+  paymentDate: form.paymentDate,
+  paymentMethod: form.paymentMethod,
+  bankAccountId: form.bankAccountId,
+  proofId: form.proofId,
+  applications: form.rows
+    .filter((r) => r.checked && (parseFloat(r.applied) || 0) > 0)
+    .map((r) => ({
+      billId: r.documentId,
+      amount: (parseFloat(r.applied) || 0).toFixed(2),
+    })),
+  ...(form.reference.trim() ? { reference: form.reference.trim() } : {}),
 });

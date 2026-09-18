@@ -15,6 +15,8 @@
 import Decimal from 'decimal.js';
 
 import { lineTaxError } from '@/models/taxRate';
+import type { AllocationRow } from '@/models/allocation';
+import type { ApiPaymentMethod } from '@/models/payment';
 import { toDecimal, type MoneyInput } from '@/utils/money';
 
 export { addDays, isoDate, isoToday } from '@/models/document';
@@ -126,6 +128,25 @@ export interface BillFormData {
   dueDate: string;
   lines: BillFormLine[];
   notes: string;
+}
+
+/**
+ * The Pay Bills form.
+ *
+ * There is no `memo`: `bill_payments` has no memo column and `PayBillsDto` does
+ * not declare one, so anything typed into such a box would be dropped by the
+ * server's whitelist without a word. `reference` — the cheque or transfer
+ * number — is the one free-text field that actually persists.
+ */
+export interface PayBillsFormData {
+  vendorId: string;
+  vendorName: string;
+  paymentDate: string;
+  paymentMethod: ApiPaymentMethod;
+  bankAccountId: string;
+  proofId: string;
+  reference: string;
+  rows: AllocationRow[];
 }
 
 // ─── Totals ─────────────────────────────────────────────────────────────

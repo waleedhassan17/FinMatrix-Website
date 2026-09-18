@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { BillFormData } from '@/models/bill';
+import type { AllocationRow } from '@/models/allocation';
+import type { BillFormData, PayBillsFormData } from '@/models/bill';
 import type { PurchaseOrderFormData } from '@/models/purchaseOrder';
 import type { VendorFormData } from '@/models/vendor';
 import {
@@ -8,6 +9,7 @@ import {
   billListSerializer,
   billPaymentsSerializer,
   mapBill,
+  payBillsFormToPayload,
 } from '@/serializers/billSerializer';
 import {
   mapPurchaseOrder,
@@ -454,5 +456,115 @@ describe('purchaseOrderListSerializer', () => {
   it('loses its pagination — the response is flat, like bills', () => {
     const rows = purchaseOrderListSerializer([{ id: 'po1', lines: [] }]);
     expect(rows).toHaveLength(1);
+  });
+});
+
+// ═══════════════════════════════════════════════════════
+// Pay Bills
+// ═══════════════════════════════════════════════════════
+
+const payRow = (
+  documentId: string,
+  balance: number,
+  checked: boolean,
+  applied: string,
+): AllocationRow => ({
+  documentId,
+  documentNumber: `BILL-${documentId}`,
+  dueDate: '2026-01-01',
+  total: balance,
+  amountPaid: 0,
+  balance,
+  checked,
+  applied,
+});
+
+const payForm = (over: Partial<PayBillsFormData> = {}): PayBillsFormData => ({
+  vendorId: 'v1',
+  vendorName: 'Acme',
+  paymentDate: '2026-09-10',
+  paymentMethod: 'bank_transfer',
+  bankAccountId: 'acct-cash',
+  proofId: 'proof-1',
+  reference: ' CHQ-1 ',
+  rows: [payRow('b1', 2437.44, true, '2437.44')],
+  ...over,
+});
+
+describe('payBillsFormToPayload — the application contract', () => {
+  it('names the amount field `amount`, NEVER `amountApplied`', () => {
+    // The regression guard. `amountApplied` is the RESPONSE field; sending it
+    // as the request key made the server's whitelist strip it, leaving `amount`
+    // undefined — so every bill payment failed with
+    // "applications.0.amount must be a number string", full or partial alike.
+    const p = payBillsFormToPayload(payForm());
+    expect(p.applications).toEqual([{ billId: 'b1', amount: '2437.44' }]);
+    expect(p.applications[0]).not.toHaveProperty('amountApplied');
+  });
+
+  it('sends the amount as a .toFixed(2) string, not a number', () => {
+    const p = payBillsFormToPayload(
+      payForm({ rows: [payRow('b1', 2437.4, true, '2437.4')] }),
+    );
+    expect(p.applications[0].amount).toBe('2437.40');
+    expect(typeof p.applications[0].amount).toBe('string');
+  });
+
+  it('sends a PARTIAL amount as typed, not the whole balance', () => {
+    const p = payBillsFormToPayload(
+      payForm({ rows: [payRow('b1', 2437.44, true, '500')] }),
+    );
+    expect(p.applications[0].amount).toBe('500.00');
+  });
+
+  it('splits one payment across several bills, one application each', () => {
+    const p = payBillsFormToPayload(
+      payForm({
+        rows: [
+          payRow('b1', 2437.44, true, '2437.44'),
+          payRow('b2', 4087.49, true, '1000'),
+        ],
+      }),
+    );
+    expect(p.applications).toEqual([
+      { billId: 'b1', amount: '2437.44' },
+      { billId: 'b2', amount: '1000.00' },
+    ]);
+  });
+
+  it('drops unticked rows and rows left at zero or blank', () => {
+    // The server refuses a non-positive application outright, so a ticked row
+    // the user then blanked must not be sent at all.
+    const p = payBillsFormToPayload(
+      payForm({
+        rows: [
+          payRow('b1', 2437.44, false, '2437.44'),
+          payRow('b2', 4087.49, true, '0'),
+          payRow('b3', 100, true, ''),
+          payRow('b4', 900, true, '900'),
+        ],
+      }),
+    );
+    expect(p.applications).toEqual([{ billId: 'b4', amount: '900.00' }]);
+  });
+
+  it('trims the reference and omits it when blank', () => {
+    expect(payBillsFormToPayload(payForm()).reference).toBe('CHQ-1');
+    expect(payBillsFormToPayload(payForm({ reference: '   ' }))).not.toHaveProperty(
+      'reference',
+    );
+  });
+
+  it('sends no memo — bill_payments has no column for one', () => {
+    // PayBillsDto declares no `memo`, so anything sent would be dropped by the
+    // whitelist. The form no longer collects one.
+    expect(payBillsFormToPayload(payForm())).not.toHaveProperty('memo');
+  });
+
+  it('carries proofId and bankAccountId, both required server-side', () => {
+    const p = payBillsFormToPayload(payForm());
+    expect(p.proofId).toBe('proof-1');
+    expect(p.bankAccountId).toBe('acct-cash');
+    expect(p).not.toHaveProperty('amount');
   });
 });

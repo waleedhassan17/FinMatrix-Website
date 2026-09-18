@@ -362,6 +362,16 @@ once it was run against the current nav:
       upload succeeds** — not merely until a file is chosen. The footer states which piece
       is missing.
 - [ ] Pay a bill. Confirm the bill's balance and the cash account **both** move.
+- [ ] Pay **part** of a bill by editing its Applied figure. The bill becomes `partial` and
+      owes the rest; pay the remainder later and it flips to `paid`. A full payment and a
+      part payment must both go through — every bill payment once failed with
+      `applications.0.amount must be a number string` because the request sent the
+      response's field name, `amountApplied`, instead of `amount`.
+- [ ] Tick **two bills** and pay one in full and one in part, in one payment. Both bills
+      update, and the payment posts **one** journal entry (Dr A/P, Cr the bank account) for
+      the total.
+- [ ] Confirm there is **no Memo box**. `bill_payments` has no memo column, so a memo typed
+      here was silently dropped; **Reference** is the free-text field that persists.
 - [ ] Confirm the **receipt screen** appears rather than a toast, and that pressing Back
       cannot re-post the payment.
 - [ ] Try to pay **more than a bill owes** — refused before anything is sent.

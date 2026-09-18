@@ -218,9 +218,19 @@ export const uploadPaymentProof = async (file: File): Promise<PaymentProof> => {
 export const getPaymentProofUrl = (proofId: string): Promise<string> =>
   authedBlobUrl(`/bill-payments/proofs/${proofId}/file`);
 
-export interface BillPaymentApplication {
+/**
+ * The **write** shape. The wire is asymmetric: the server accepts `amount` and
+ * returns `amountApplied` (see `billPaymentsSerializer`, which reads both). One
+ * type cannot serve both directions, so this mirrors `PaymentApplicationPayload`
+ * on the AR side and is named for the request, not the response.
+ *
+ * Sending `amountApplied` here does not fail loudly — the server's ValidationPipe
+ * runs with `whitelist: true`, so an undeclared key is stripped and `amount`
+ * arrives undefined, surfacing as "applications.0.amount must be a number string".
+ */
+export interface BillPaymentApplicationPayload {
   billId: string;
-  amountApplied: string;
+  amount: string;
 }
 
 export interface PayBillsPayload {
@@ -229,9 +239,8 @@ export interface PayBillsPayload {
   paymentMethod: string;
   bankAccountId: string;
   proofId: string;
-  applications: BillPaymentApplication[];
+  applications: BillPaymentApplicationPayload[];
   reference?: string;
-  memo?: string;
 }
 
 export type PayBillsResult =
