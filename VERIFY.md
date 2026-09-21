@@ -709,3 +709,79 @@ contract changed, and no existing test was edited.
 - **`pattern-dots-dark` is defined but unused**, so Tailwind does not emit it.
 - **The contact address is still the placeholder** carried over from the reference
   project (see the previous section).
+
+# Module 17 — Reports: configurable aging, P&L drill-down, item history and margin
+
+Four reports could show a number but never explain it. This module makes them
+investigable: aging chooses its own columns, P&L lines open onto the
+transactions behind them, and an inventory item has a history and a margin.
+
+## Already verified
+
+| Check | Result |
+|---|---|
+| `npm run verify` (build + `check:tokens` + `vitest run`) | **1046 tests**, 53 files, clean |
+| `tsc -b` across the app | clean |
+| `check:tokens` | clean — the new charts read `fontSize` off `typography.caption`, as `AgingChart` already did |
+| Mobile app `tsc` / `check:tokens` / `jest` | clean, **345 tests** |
+| Backend `tsc` / `jest` / `nest build` | clean, **315 tests** |
+| Backend `test:reports-reflect` against a live API | **41 passed, 0 failed** |
+| `qa/invariants.sql`, including new I22 and I23 | **0 violations** |
+| Every new route exists on prod — 401, not 404 | `reports/ar-aging?preset=days3`, `reports/inventory-valuation/trend`, `reports/profit-loss/lines/:code/entries`, `reports/item-performance/:itemId` |
+| Heroku release | **v123**, 4 migrations applied |
+
+`scripts/verify-reports.mjs` gained the checks that matter for this module:
+both bucket shapes agree, the total is unchanged under every preset (which is
+what keeps AR aging tied to balance-sheet 1100 and AP to 2000), and the
+inventory value trend closes where the valuation snapshot stands.
+
+The backfill behind the margin figures was run against a production-shaped
+database inside a transaction before it shipped. That caught two real bugs:
+`purchase_order_lines` links by `order_id`, and opening stock drifted
+**7,444.45** because valuing it at today's average is wrong once a receipt has
+re-averaged the item.
+
+## What needs your login
+
+- [ ] **AR Aging** → the chips beside "How much, by how late". Switch between
+      3-day, Weekly, Fortnightly and 30/60/90. ⭐ **Total outstanding must not
+      move** — only how it divides. Cross-check the mobile app to the cent.
+- [ ] **Custom** → enter `3,6,9,12`. The preview should read
+      `Current · 1–3 · 4–6 · 7–9 · 10–12 · 13+` before you apply it. Try
+      `60,30` and confirm it refuses with a reason, not a server error.
+- [ ] Reload. The preset should persist — it saves as the company default. As
+      **staff** it will not save (PATCH /settings is admin-only) but the report
+      must still re-bucket.
+- [ ] **AP Aging** → same, and the column must read "Vendor".
+- [ ] Export CSV and PDF from a re-bucketed report; columns must match screen.
+- [ ] **Profit & Loss** → click the `+` on an account line. ⭐ **The
+      transactions listed must add up to the figure on that line.** A mismatch
+      logs a console warning in dev.
+- [ ] Change the period with lines open — they should collapse, not reload
+      stale rows under a new figure.
+- [ ] **Inventory Valuation** → "Stock value over time". Its last point must
+      equal Total value, and both must equal the Balance Sheet Inventory (1200)
+      line.
+- [ ] Click an item row → stock on hand and stock value by month, then Revenue,
+      Gross profit and Margin as headline figures.
+- [ ] On an item sold on multi-item invoices, confirm the estimate notice
+      appears once more than a third of its cost was apportioned.
+
+## Known gaps, by design
+
+- **No as-of date on aging.** It was accepted and silently discarded before; it
+  is removed rather than implemented, because a true as-of report needs each
+  document's balance rebuilt from payment history and `invoices.balance` only
+  holds the current one.
+- **Month-end item VALUE is blank before the cost horizon.** Stock movements
+  carried no cost before this change, and pricing a past quantity at today's
+  average would be wrong in a way that looks entirely plausible. The API says
+  so in words; the page shows them.
+- **Multi-item invoice cost is apportioned.** Each invoice's total is exact —
+  I22 enforces it — but the split between two different items on one invoice is
+  an estimate. `estimatedCogsShare` reports how much of a margin rests on it.
+- **Charts do not appear in PDF exports.** No `ReportSection` renders an image;
+  the tables carry the same figures on paper.
+- **A per-item version of I23 is a diagnostic, not a gate.** An item whose
+  average was repriced without a matching movement cannot reconcile
+  individually even though its company ties exactly. See `qa/DIAGNOSIS.md`.
