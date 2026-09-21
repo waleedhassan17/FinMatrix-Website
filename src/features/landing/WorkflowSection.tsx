@@ -3,12 +3,15 @@
 // ═══════════════════════════════════════════════════════
 // On a tinted navy ground so it reads as its own band between two white ones.
 //
-// Step 3 names the manual review, because that is genuinely what happens: you
-// transfer to a bank account, upload the receipt, and a person activates the
-// account. Leaving it out here and springing it on the buyer at checkout reads as
-// a bait-and-switch even when it was an oversight.
+// Step 3 names the manual review, because that is genuinely what happens: a
+// person activates the account. Leaving it out here and springing it on the
+// buyer later reads as a bait-and-switch even when it was an oversight.
+//
+// BILLING-DISABLED BUILD: the review is still real, but the bank transfer and
+// the plan are not. Steps 02 and 03 say what happens now.
 
-import { Building2, Landmark, PackageCheck, UserPlus } from 'lucide-react';
+// BILLING-DISABLED BUILD: Landmark (a bank) illustrated the transfer step.
+import { Building2, PackageCheck, ShieldCheck, UserPlus } from 'lucide-react';
 
 import { Reveal } from '@/components/motion/Reveal';
 import { SectionIntro } from '@/features/landing/SectionIntro';
@@ -23,14 +26,19 @@ const STEPS = [
   {
     n: '02',
     icon: Building2,
-    title: 'Set up your company and plan',
-    body: 'Add your business details, then pick a plan sized to your delivery team. You will see the bank details and the exact amount due.',
+    // BILLING-DISABLED BUILD: was 'Set up your company and plan' /
+    // '…pick a plan sized to your delivery team. You will see the bank
+    // details and the exact amount due.'
+    title: 'Set up your company',
+    body: 'Add your business details — name, address, tax and contact information. This is what appears on your invoices and reports.',
   },
   {
     n: '03',
-    icon: Landmark,
-    title: 'Transfer and upload the receipt',
-    body: 'Pay by bank transfer and upload a screenshot. We verify it and switch the account on — usually within one business day.',
+    icon: ShieldCheck,
+    // BILLING-DISABLED BUILD: was 'Transfer and upload the receipt' /
+    // 'Pay by bank transfer and upload a screenshot. We verify it and…'
+    title: 'We review and approve',
+    body: 'Your company goes to our team for review. We switch the account on — usually within one business day — and email you when it is live.',
   },
   {
     n: '04',

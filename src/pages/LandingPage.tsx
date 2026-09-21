@@ -22,7 +22,8 @@ import { HeroSection } from '@/features/landing/HeroSection';
 import { LandingFooter } from '@/features/landing/LandingFooter';
 import { LandingNav } from '@/features/landing/LandingNav';
 import { ModulesSection } from '@/features/landing/ModulesSection';
-import { PricingSection } from '@/features/landing/PricingSection';
+// BILLING-DISABLED BUILD: un-comment with the section in the page below.
+// import { PricingSection } from '@/features/landing/PricingSection';
 import { ProofStrip } from '@/features/landing/ProofStrip';
 import { RolesSection } from '@/features/landing/RolesSection';
 import { WorkflowSection } from '@/features/landing/WorkflowSection';
@@ -80,7 +81,9 @@ export default function LandingPage() {
         <ModulesSection />
         <WorkflowSection />
         <RolesSection />
-        <PricingSection />
+        {/* BILLING-DISABLED BUILD: the public plan grid. Nothing is for
+            sale during the warehouse testing phase. */}
+        {/* <PricingSection /> */}
         <FaqSection />
         <CtaSection />
       </main>

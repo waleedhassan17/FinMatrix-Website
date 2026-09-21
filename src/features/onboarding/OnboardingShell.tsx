@@ -17,7 +17,14 @@ import { Link } from 'react-router-dom';
 
 import { cn } from '@/lib/cn';
 
-export const ONBOARDING_STEPS = ['Company', 'Plan', 'Payment'] as const;
+// BILLING-DISABLED BUILD: onboarding is one step. A three-dot rail reading
+// "Company → Plan → Payment" would promise two steps that no longer exist.
+//
+// The `step` prop below deliberately keeps its `1 | 2 | 3` type: PlanSelectPage
+// and PaySubscriptionPage still pass 2 and 3, and both are still type-checked
+// (tsconfig.app.json includes all of src/) even though nothing routes to them.
+export const ONBOARDING_STEPS = ['Company'] as const;
+// export const ONBOARDING_STEPS = ['Company', 'Plan', 'Payment'] as const;
 
 export function OnboardingShell({
   step,

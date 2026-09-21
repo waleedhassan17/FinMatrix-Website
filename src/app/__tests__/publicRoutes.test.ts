@@ -104,10 +104,26 @@ describe('the dashboard moved off the index', () => {
 });
 
 describe('owner-only billing routes', () => {
-  it.each(['/onboarding/company', '/onboarding/plan', '/onboarding/pay', '/account/renew'])(
-    'registers %s',
+  // BILLING-DISABLED BUILD: onboarding is /onboarding/company alone, which
+  // submits for approval itself.
+  it.each(['/onboarding/company'])('registers %s', (path) => {
+    expect(ALL_PATHS).toContain(path);
+  });
+
+  // The other half of the same claim: while the flag is on these must NOT be
+  // reachable, or a stale bookmark would land an owner on a plan grid that the
+  // server will not sell from.
+  it.each(['/onboarding/plan', '/onboarding/pay', '/account/renew'])(
+    'does not register %s',
     (path) => {
-      expect(ALL_PATHS).toContain(path);
+      expect(ALL_PATHS).not.toContain(path);
     },
   );
+
+  // it.each(['/onboarding/company', '/onboarding/plan', '/onboarding/pay', '/account/renew'])(
+  //   'registers %s',
+  //   (path) => {
+  //     expect(ALL_PATHS).toContain(path);
+  //   },
+  // );
 });

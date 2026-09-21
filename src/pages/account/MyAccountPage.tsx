@@ -7,7 +7,8 @@ import {
   CircleCheck,
   Clock3,
   Copy,
-  CreditCard,
+  // BILLING-DISABLED BUILD: only the Subscription shortcut + Renew button.
+  // CreditCard,
   Inbox,
   KeyRound,
   LayoutDashboard,
@@ -19,7 +20,8 @@ import {
   Users,
   type LucideIcon,
 } from 'lucide-react';
-import { useId, useState, type ReactNode } from 'react';
+// BILLING-DISABLED BUILD: ReactNode was only PlanRow's `value` type.
+import { useId, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
@@ -36,13 +38,16 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useSignOut } from '@/features/auth/useSignOut';
 import { useFeature, useIsOwner } from '@/hooks/useCapability';
 import { cn } from '@/lib/cn';
+// BILLING-DISABLED BUILD: subscriptionSummary and SubscriptionTone were
+// only used by the commented-out PlanDetails block.
 import {
   staffAccessSummary,
-  subscriptionSummary,
-  type SubscriptionTone,
+  // subscriptionSummary,
+  // type SubscriptionTone,
 } from '@/models/accountAccess';
 import { fetchPendingApprovalCount } from '@/networks/approvals/approvalsNetwork';
-import { getBillingStatus, type BillingStatus } from '@/networks/billing/billingNetwork';
+// BILLING-DISABLED BUILD: un-comment with the billing query below.
+// import { getBillingStatus, type BillingStatus } from '@/networks/billing/billingNetwork';
 import {
   selectCompany,
   selectCompanyStatus,
@@ -69,15 +74,18 @@ export default function MyAccountPage() {
   const features = useAppSelector(selectFeatures);
   const isOwner = useIsOwner();
   const multiUser = useFeature('multiUser');
-  const delivery = useFeature('delivery');
+  // BILLING-DISABLED BUILD: only fed PlanDetails' rider allowance row.
+  // const delivery = useFeature('delivery');
   const { signOut } = useSignOut();
 
-  const billing = useQuery({
-    queryKey: ['billing', 'status'],
-    queryFn: getBillingStatus,
-    enabled: isOwner,
-    staleTime: 60_000,
-  });
+  // BILLING-DISABLED BUILD: nothing on this page reads the billing status
+  // any more, so the request goes too.
+  // const billing = useQuery({
+  //   queryKey: ['billing', 'status'],
+  //   queryFn: getBillingStatus,
+  //   enabled: isOwner,
+  //   staleTime: 60_000,
+  // });
 
   const pending = useQuery({
     queryKey: ['approvals', 'pending-count'],
@@ -261,7 +269,15 @@ export default function MyAccountPage() {
                 </div>
               </div>
 
-              {isOwner ? (
+              {/* BILLING-DISABLED BUILD: the owner's plan block is gone, so
+                  only the team-member line is left — and it no longer claims
+                  the owner manages a plan. */}
+              {!isOwner && (
+                <p className="text-body-sm text-text-secondary">
+                  You work here as a team member. The owner manages the company’s settings.
+                </p>
+              )}
+              {/* {isOwner ? (
                 <PlanDetails
                   data={billing.data}
                   isLoading={billing.isLoading}
@@ -272,7 +288,7 @@ export default function MyAccountPage() {
                 <p className="text-body-sm text-text-secondary">
                   You work here as a team member. The owner manages the company’s plan and settings.
                 </p>
-              )}
+              )} */}
             </CardContent>
           </Card>
 
@@ -305,12 +321,13 @@ export default function MyAccountPage() {
                     description={pendingLine(pendingCount, 'waiting for you')}
                     count={pendingCount}
                   />
-                  <ShortcutLink
+                  {/* BILLING-DISABLED BUILD: /account/renew is deregistered. */}
+                  {/* <ShortcutLink
                     to="/account/renew"
                     icon={CreditCard}
                     title="Subscription"
                     description="Plan, payment and renewal"
-                  />
+                  /> */}
                 </>
               ) : (
                 <>
@@ -513,6 +530,12 @@ function AccessGroup({
   );
 }
 
+// ── BILLING-DISABLED BUILD ──────────────────────────────────────────────
+// The owner's plan block: plan name, renewal line, rider allowance and the
+// Renew/Subscribe button. All three helpers go together — TONE_TEXT and
+// PlanRow have no other caller, and `tsc -b` runs with noUnusedLocals, so
+// leaving any of them behind fails the build.
+/*
 const TONE_TEXT: Record<SubscriptionTone, string> = {
   normal: 'text-text-primary',
   warning: 'text-warning',
@@ -580,6 +603,7 @@ function PlanRow({ label, value, sub }: { label: string; value: ReactNode; sub?:
     </div>
   );
 }
+*/
 
 function ShortcutLink({
   to,

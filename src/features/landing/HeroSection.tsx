@@ -89,23 +89,29 @@ export function HeroSection() {
                 asChild
                 className="bg-surface px-xl text-primary-900 shadow-lg hover:bg-primary-50"
               >
+                {/* BILLING-DISABLED BUILD: was "Start your free trial". */}
                 <Link to="/register">
-                  Start your free trial
+                  Create an account
                   <ArrowRight className="size-4" aria-hidden="true" />
                 </Link>
               </Button>
+              {/* BILLING-DISABLED BUILD: "See pricing" pointed at #pricing,
+                  which is no longer rendered. Sends people to what the
+                  product actually does instead. */}
               <Button
                 size="lg"
                 variant="text"
                 asChild
                 className="border border-white/20 bg-white/5 px-xl text-text-inverse hover:bg-white/10"
               >
-                <a href="#pricing">See pricing</a>
+                <a href="#modules">See what it does</a>
               </Button>
             </div>
+            {/* BILLING-DISABLED BUILD: promised a 30-day trial. What is
+                actually true now is the review step, so that is all it says. */}
             <p className="mt-sm text-body-sm text-white/65">
-              30 days, every feature, no credit card. Activated after a quick review — usually
-              within 24 hours.
+              Every feature, no credit card. Your account is activated after a quick review —
+              usually within one business day.
             </p>
           </Reveal>
 

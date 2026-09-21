@@ -225,13 +225,16 @@ export const ApprovalDetailPage = lazyWithReload(
 export const CompanySetupPage = lazyWithReload(
   () => import('@/pages/onboarding/CompanySetupPage'),
 );
-export const PlanSelectPage = lazyWithReload(() => import('@/pages/onboarding/PlanSelectPage'));
-export const PaySubscriptionPage = lazyWithReload(
-  () => import('@/pages/onboarding/PaySubscriptionPage'),
-);
-export const RenewSubscriptionPage = lazyWithReload(
-  () => import('@/pages/account/RenewSubscriptionPage'),
-);
+// BILLING-DISABLED BUILD: un-comment with the routes in app/router.tsx. The
+// page files stay in the tree and stay type-checked — only the lazy entry
+// points and their routes are withdrawn, so nothing can reach them.
+// export const PlanSelectPage = lazyWithReload(() => import('@/pages/onboarding/PlanSelectPage'));
+// export const PaySubscriptionPage = lazyWithReload(
+//   () => import('@/pages/onboarding/PaySubscriptionPage'),
+// );
+// export const RenewSubscriptionPage = lazyWithReload(
+//   () => import('@/pages/account/RenewSubscriptionPage'),
+// );
 
 // The token proof sheet — not linked from the product, so never worth shipping
 // in the first chunk.

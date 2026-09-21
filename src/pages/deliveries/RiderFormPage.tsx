@@ -10,7 +10,8 @@ import { Input } from '@/components/ui/Input';
 import { CredentialsDialog } from '@/components/shared/CredentialsDialog';
 import { invalidateDeliveries } from '@/features/delivery/invalidateDeliveries';
 import { FeatureUnavailable } from '@/features/shell/FeatureUnavailable';
-import { useFeature, useIsOwner } from '@/hooks/useCapability';
+// BILLING-DISABLED BUILD: useIsOwner un-comments with the link below.
+import { useFeature /*, useIsOwner */ } from '@/hooks/useCapability';
 import {
   emptyRiderForm,
   generateRiderPassword,
@@ -53,7 +54,8 @@ export default function RiderFormPage() {
     null,
   );
   const [limit, setLimit] = useState<string | null>(null);
-  const isOwner = useIsOwner();
+  // BILLING-DISABLED BUILD: only gated the plan-limit link above.
+  // const isOwner = useIsOwner();
 
   const patch = (p: Partial<RiderForm>) => {
     setForm((f) => {
@@ -140,7 +142,12 @@ export default function RiderFormPage() {
           <AlertTriangle className="mt-[2px] size-4 shrink-0 text-warning" />
           <div className="text-body-sm text-text-primary">
             <p>{limit}</p>
-            <p className="mt-xxs text-text-secondary">
+            {/* BILLING-DISABLED BUILD: there is no plan to change, and
+                "ask the owner to upgrade" would send a team member after
+                something the owner cannot do either. Only a company already
+                on a paid plan can still see this warning at all. */}
+            <p className="mt-xxs text-text-secondary">Existing riders keep working.</p>
+            {/* <p className="mt-xxs text-text-secondary">
               Existing riders keep working.{' '}
               {isOwner ? (
                 <Link to="/account/renew" className="text-primary hover:underline">
@@ -149,7 +156,7 @@ export default function RiderFormPage() {
               ) : (
                 'Ask the owner to upgrade the plan.'
               )}
-            </p>
+            </p> */}
           </div>
         </div>
       )}

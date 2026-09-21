@@ -15,8 +15,11 @@ import { z } from 'zod';
 
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { BILLING_DISABLED_BUILD } from '@/config/featureFlags';
 import { OnboardingShell } from '@/features/onboarding/OnboardingShell';
-import { createCompany } from '@/networks/companies/companiesNetwork';
+// BILLING-DISABLED BUILD: submitCompanyForApproval is called from here now
+// that there is no plan/payment step to carry it.
+import { createCompany, submitCompanyForApproval } from '@/networks/companies/companiesNetwork';
 import { setStoredCompanyId } from '@/networks/network/apiHelpers';
 import { authMe } from '@/networks/auth/authNetwork';
 import { setIdentity } from '@/store/authSlice';
@@ -98,15 +101,37 @@ export default function CompanySetupPage() {
       // Before anything else: every later request is scoped by this.
       setStoredCompanyId(company.id);
 
+      // ── BILLING-DISABLED BUILD ────────────────────────────────────────
+      // This used to hand off to /onboarding/plan, which is where the
+      // submit-for-approval call lived. With no plan or payment step, this
+      // IS the end of onboarding, so it submits here.
+      //
+      // Submit BEFORE re-reading identity, so the authMe() below already
+      // reports `pending` and the guards route to /account-status rather
+      // than bouncing the owner back through onboarding.
+      //
+      // Non-fatal on purpose: if it fails the company stays a draft, and
+      // AccountStatusPage's draft branch offers "Submit for approval" to
+      // retry. Better than an error on a screen whose work is done.
+      if (BILLING_DISABLED_BUILD) {
+        try {
+          await submitCompanyForApproval(company.id);
+        } catch {
+          /* AccountStatusPage's draft branch retries this */
+        }
+      }
+
       // Re-read identity so the guards stop treating this owner as company-less.
       // Non-fatal — the company exists either way and the next step can proceed.
       try {
         dispatch(setIdentity(await authMe()));
       } catch {
-        /* the plan step re-reads it anyway */
+        /* /account-status re-reads it anyway */
       }
 
-      navigate('/onboarding/plan', { replace: true });
+      navigate(BILLING_DISABLED_BUILD ? '/account-status' : '/onboarding/plan', {
+        replace: true,
+      });
     } catch (e) {
       setFormError(
         e instanceof Error ? e.message : 'Something went wrong. Please try again.',

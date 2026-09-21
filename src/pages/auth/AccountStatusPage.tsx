@@ -4,10 +4,13 @@ import { useState, type ComponentType } from 'react';
 import { Link, Navigate, useLocation } from 'react-router-dom';
 
 import { Button } from '@/components/ui/Button';
+import { BILLING_DISABLED_BUILD } from '@/config/featureFlags';
 import { AuthShell } from '@/features/auth/AuthShell';
 import { useSignOut } from '@/features/auth/useSignOut';
 import { authMe } from '@/networks/auth/authNetwork';
 import { getBillingStatus } from '@/networks/billing/billingNetwork';
+// BILLING-DISABLED BUILD: drives the draft branch's "Submit for approval".
+import { submitCompanyForApproval } from '@/networks/companies/companiesNetwork';
 import {
   selectAuthStatus,
   selectCompany,
@@ -54,7 +57,9 @@ const COPY: Record<AccountStatus | 'unknown', Copy> = {
     icon: Clock,
     tone: 'text-warning',
     title: 'Setup not finished',
-    body: 'Your company registration has not been submitted yet. Start a free trial or choose a plan to finish.',
+    // BILLING-DISABLED BUILD: was "Start a free trial or choose a plan to
+    // finish." The only step left is the submit, which the button does.
+    body: 'Your company registration has not been submitted yet. Send it for approval to finish.',
   },
   inactive: {
     icon: XCircle,
@@ -119,6 +124,8 @@ export default function AccountStatusPage() {
   const isOwner = useAppSelector(selectIsOwner);
   const { signOut } = useSignOut();
   const [checking, setChecking] = useState(false);
+  // BILLING-DISABLED BUILD: drives the draft branch's "Submit for approval".
+  const [submitting, setSubmitting] = useState(false);
 
   const gate = (location.state as GateState | null) ?? null;
   const gateStatus = gate?.code ? CODE_STATUS[gate.code] : undefined;
@@ -166,6 +173,24 @@ export default function AccountStatusPage() {
     }
   };
 
+  // BILLING-DISABLED BUILD: hand a stuck draft to an administrator. Reached
+  // when CompanySetupPage's submit failed, or when an owner abandoned
+  // onboarding and signed back in (the server does not block `draft` at
+  // sign-in). Until this runs, nobody is looking at their company.
+  const submitForApproval = async () => {
+    if (!company?.id) return;
+    setSubmitting(true);
+    try {
+      await submitCompanyForApproval(company.id);
+      dispatch(setIdentity(await authMe()));
+      queryClient.clear();
+    } catch {
+      /* the button stays; the copy already explains the state */
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <AuthShell title={copy.title} subtitle={company?.name}>
       <div className="flex flex-col items-center gap-md text-center">
@@ -185,18 +210,35 @@ export default function AccountStatusPage() {
                   subscription lapsed, which the owner can fix right now; `draft`
                   means onboarding was abandoned part-way. Both were previously
                   dead ends with nothing but "Check again". */}
-              {status === 'inactive' && isOwner && (
+              {/* BILLING-DISABLED BUILD: `inactive` can no longer be fixed by
+                  the owner — there is nothing to renew — so the renew button
+                  is hidden. A deactivated account is an administrator's
+                  decision now, which the copy already says. */}
+              {!BILLING_DISABLED_BUILD && status === 'inactive' && isOwner && (
                 <Button full asChild>
                   <Link to="/account/renew">
                     {trialEnded ? 'Subscribe to a plan' : 'Renew subscription'}
                   </Link>
                 </Button>
               )}
-              {status === 'draft' && isOwner && (
-                <Button full asChild>
-                  <Link to="/onboarding/plan">Finish setting up</Link>
-                </Button>
-              )}
+
+              {/* BILLING-DISABLED BUILD: a draft's remaining work used to be
+                  "choose a plan", so this linked to /onboarding/plan — a route
+                  that no longer exists. The only step left is the submit
+                  itself, so the button does it. This is the web twin of the
+                  app's PendingApprovalScreen auto-submit, and the retry path
+                  for a failed submit in CompanySetupPage. */}
+              {status === 'draft' &&
+                isOwner &&
+                (BILLING_DISABLED_BUILD ? (
+                  <Button full onClick={submitForApproval} disabled={submitting}>
+                    {submitting ? 'Submitting…' : 'Submit for approval'}
+                  </Button>
+                ) : (
+                  <Button full asChild>
+                    <Link to="/onboarding/plan">Finish setting up</Link>
+                  </Button>
+                ))}
 
               <Button
                 variant={

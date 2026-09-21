@@ -89,17 +89,38 @@ describe('landing page claims', () => {
     expect(container.textContent ?? '').not.toMatch(pattern);
   });
 
-  it('answers the trial question rather than dodging it — including the review', () => {
+  // ── BILLING-DISABLED BUILD ──────────────────────────────────────────
+  // The honest claim inverted. There is no trial to offer during the
+  // warehouse testing phase, so the page must not offer one — and it still
+  // has to disclose the review, which is the part a visitor would otherwise
+  // discover only after signing up.
+  //
+  // This replaces the test below rather than deleting it: without something
+  // here, the BANNED patterns above are satisfied by a page that says nothing
+  // about how anyone actually gets in, which is the failure this file exists
+  // to catch.
+  it('promises no free trial, and still discloses the review', () => {
     const { container } = renderLanding();
-    const faq = container.querySelector('#faq')?.textContent ?? '';
+    const text = container.textContent ?? '';
 
-    // The question has to be asked AND answered, and the answer has to carry
-    // the part a buyer would otherwise discover later: it is reviewed, not
-    // instant. Without this the bans above are satisfied by saying nothing.
-    expect(faq).toMatch(/is there a free trial\?\s*yes\./i);
-    expect(faq).toMatch(/not instant/i);
-    expect(faq).toMatch(/24 hours/i);
+    expect(text).not.toMatch(/free trial/i);
+    expect(text).not.toMatch(/30 days/i);
+    // The wait is still stated up front, before signup.
+    expect(text).toMatch(/review/i);
+    expect(text).toMatch(/one business day/i);
   });
+
+  // it('answers the trial question rather than dodging it — including the review', () => {
+  //   const { container } = renderLanding();
+  //   const faq = container.querySelector('#faq')?.textContent ?? '';
+  //
+  //   // The question has to be asked AND answered, and the answer has to carry
+  //   // the part a buyer would otherwise discover later: it is reviewed, not
+  //   // instant. Without this the bans above are satisfied by saying nothing.
+  //   expect(faq).toMatch(/is there a free trial\?\s*yes\./i);
+  //   expect(faq).toMatch(/not instant/i);
+  //   expect(faq).toMatch(/24 hours/i);
+  // });
 
   it('never offers the trial without saying it is reviewed', () => {
     const { container } = renderLanding();
@@ -135,14 +156,23 @@ describe('landing page structure', () => {
     }
   });
 
-  it('states the manual payment model before signup, not after', () => {
+  // BILLING-DISABLED BUILD: there is no payment model to state. What must
+  // still be said before signup is that a person approves the account —
+  // same principle, the step that actually exists.
+  it('states the approval step before signup, not after', () => {
     const { container } = renderLanding();
-    expect(container.textContent ?? '').toMatch(/bank transfer/i);
+    expect(container.textContent ?? '').toMatch(/we review and approve/i);
   });
+
+  // it('states the manual payment model before signup, not after', () => {
+  //   const { container } = renderLanding();
+  //   expect(container.textContent ?? '').toMatch(/bank transfer/i);
+  // });
 
   it('names the sections the nav links to', () => {
     const { container } = renderLanding();
-    for (const id of ['modules', 'pricing', 'how-it-works', 'faq']) {
+    // BILLING-DISABLED BUILD: 'pricing' removed with the section.
+    for (const id of ['modules', 'how-it-works', 'faq']) {
       expect(container.querySelector(`#${id}`)).not.toBeNull();
     }
   });

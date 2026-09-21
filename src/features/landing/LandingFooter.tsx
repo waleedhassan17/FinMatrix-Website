@@ -21,7 +21,8 @@ import { normalizeWhatsappPhone } from '@/features/share/shareDocument';
 const PRODUCT = [
   { label: 'Features', href: '#modules' },
   { label: 'How it works', href: '#how-it-works' },
-  { label: 'Pricing', href: '#pricing' },
+  // BILLING-DISABLED BUILD: dead anchor, see LandingPage.
+  // { label: 'Pricing', href: '#pricing' },
   { label: 'Questions', href: '#faq' },
 ];
 

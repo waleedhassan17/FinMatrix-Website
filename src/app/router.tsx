@@ -81,18 +81,21 @@ import {
   PODetailPage,
   POFormPage,
   POListPage,
-  PlanSelectPage,
+  // BILLING-DISABLED BUILD: un-comment with the routes below.
+  // PlanSelectPage,
   PayBillsPage,
   PaymentDetailPage,
   PaymentListPage,
-  PaySubscriptionPage,
+  // BILLING-DISABLED BUILD
+  // PaySubscriptionPage,
   PaymentReceiptPage,
   ReceivePaymentPage,
   ReconcilePage,
   ReconciliationDetailPage,
   ReconciliationListPage,
   RegisterPage,
-  RenewSubscriptionPage,
+  // BILLING-DISABLED BUILD
+  // RenewSubscriptionPage,
   RoleSelectPage,
   SalesOrderDetailPage,
   SalesOrderFormPage,
@@ -265,36 +268,44 @@ export const router = createBrowserRouter([
           </RequireAuth>
         ),
       },
-      {
-        path: '/onboarding/plan',
-        element: (
-          <RequireAuth>
-            <RequireOwner>
-              <PlanSelectPage />
-            </RequireOwner>
-          </RequireAuth>
-        ),
-      },
-      {
-        path: '/onboarding/pay',
-        element: (
-          <RequireAuth>
-            <RequireOwner>
-              <PaySubscriptionPage />
-            </RequireOwner>
-          </RequireAuth>
-        ),
-      },
-      {
-        path: '/account/renew',
-        element: (
-          <RequireAuth>
-            <RequireOwner>
-              <RenewSubscriptionPage />
-            </RequireOwner>
-          </RequireAuth>
-        ),
-      },
+      // ── BILLING-DISABLED BUILD ────────────────────────────────────
+      // The plan, payment and renewal routes are deregistered. Onboarding
+      // is now /onboarding/company alone, which submits for approval
+      // itself and sends the owner to /account-status.
+      //
+      // routeAccess.ts's STAFF_DENY_PREFIXES still lists these paths on
+      // purpose: it is a plain string deny-list, and leaving it intact
+      // means staff stay locked out the moment the routes come back.
+      // {
+      //   path: '/onboarding/plan',
+      //   element: (
+      //     <RequireAuth>
+      //       <RequireOwner>
+      //         <PlanSelectPage />
+      //       </RequireOwner>
+      //     </RequireAuth>
+      //   ),
+      // },
+      // {
+      //   path: '/onboarding/pay',
+      //   element: (
+      //     <RequireAuth>
+      //       <RequireOwner>
+      //         <PaySubscriptionPage />
+      //       </RequireOwner>
+      //     </RequireAuth>
+      //   ),
+      // },
+      // {
+      //   path: '/account/renew',
+      //   element: (
+      //     <RequireAuth>
+      //       <RequireOwner>
+      //         <RenewSubscriptionPage />
+      //       </RequireOwner>
+      //     </RequireAuth>
+      //   ),
+      // },
 
       // The token proof sheet. Not linked from the product; open it directly
       // beside the phone when checking the two clients still agree.

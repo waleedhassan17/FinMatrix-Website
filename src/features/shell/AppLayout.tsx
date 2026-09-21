@@ -3,7 +3,8 @@ import { Outlet } from 'react-router-dom';
 
 import { Sidebar } from '@/features/shell/Sidebar';
 import { Topbar } from '@/features/shell/Topbar';
-import { TrialStrip } from '@/features/shell/TrialStrip';
+// BILLING-DISABLED BUILD: un-comment with the strip in the layout below.
+// import { TrialStrip } from '@/features/shell/TrialStrip';
 
 /**
  * Shown while a page chunk arrives.
@@ -34,7 +35,8 @@ export function AppLayout() {
       {/* min-w-0 matters: without it a wide table inside a flex child refuses
           to shrink and the whole page scrolls sideways. */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <TrialStrip />
+        {/* BILLING-DISABLED BUILD: the free-trial countdown strip. */}
+        {/* <TrialStrip /> */}
         <Topbar onOpenMobileNav={() => setMobileNavOpen(true)} />
         <main className="flex-1 p-md lg:p-lg">
           <Suspense fallback={<PageFallback />}>

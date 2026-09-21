@@ -17,11 +17,20 @@ import { Reveal } from '@/components/motion/Reveal';
 import { CONTACT_EMAIL } from '@/features/landing/constants';
 import { SectionIntro } from '@/features/landing/SectionIntro';
 
+// BILLING-DISABLED BUILD: three of these answered questions about trials,
+// plans and expiry. Nothing is sold during the warehouse testing phase, so
+// each one described a thing that does not exist. The trial question is
+// replaced by the question a visitor now actually has — what it costs and
+// how they get in — rather than dropped silently.
 const FAQS = [
   {
-    q: 'Is there a free trial?',
-    a: 'Yes. You get 30 days with every feature and one delivery rider, with no credit card. It is not instant: after you register and set up your company, our team reviews the request and activates it — usually within 24 hours — and the 30 days start then. Subscribe whenever you are ready; plans are paid by bank transfer for a fixed term and nothing renews automatically.',
+    q: 'What does it cost right now?',
+    a: 'Nothing. FinMatrix is in a testing phase with a small number of warehouses, and every feature is included at no charge — no credit card, no plan to pick. Registration is not instant: after you create an account and set up your company, our team reviews it and switches it on, usually within one business day.',
   },
+  // {
+  //   q: 'Is there a free trial?',
+  //   a: 'Yes. You get 30 days with every feature and one delivery rider, with no credit card. It is not instant: after you register and set up your company, our team reviews the request and activates it — usually within 24 hours — and the 30 days start then. Subscribe whenever you are ready; plans are paid by bank transfer for a fixed term and nothing renews automatically.',
+  // },
   {
     q: 'How do my staff get accounts?',
     a: 'You create them. In Settings → Users you add a team member, and FinMatrix issues a username and password for you to hand over. Staff sign in with that username — they never need an email address, and if someone forgets their password you reset it yourself.',
@@ -34,14 +43,15 @@ const FAQS = [
     q: 'Does it work on a phone?',
     a: 'Yes — two ways. FinMatrix has an Android app, and this website works in the browser on any phone, tablet, laptop or desktop, with nothing to install. Both use the same account and the same live data, so an invoice raised on your phone is on your desktop straight away. Delivery riders work from the Android app, which is built for use on the road.',
   },
-  {
-    q: 'What happens when a plan expires?',
-    a: 'Your data stays exactly where it is. The account moves to a read-limited state and you are shown a renewal screen — pay for a new term and everything switches back on.',
-  },
-  {
-    q: 'What if I run more riders than my plan allows?',
-    a: 'The limit is enforced when you add or reactivate delivery staff, and the app tells you how many of your allowance you have used. If you move to a plan with fewer riders, the extra riders are paused — their accounts and history are kept. Riders with deliveries in progress and your longest-serving riders keep their seats first, and you can swap who is active at any time. Moving up a tier is the same bank-transfer flow as the first purchase.',
-  },
+  // BILLING-DISABLED BUILD: no plan, so no expiry and no rider allowance.
+  // {
+  //   q: 'What happens when a plan expires?',
+  //   a: 'Your data stays exactly where it is. The account moves to a read-limited state and you are shown a renewal screen — pay for a new term and everything switches back on.',
+  // },
+  // {
+  //   q: 'What if I run more riders than my plan allows?',
+  //   a: 'The limit is enforced when you add or reactivate delivery staff, and the app tells you how many of your allowance you have used. If you move to a plan with fewer riders, the extra riders are paused — their accounts and history are kept. Riders with deliveries in progress and your longest-serving riders keep their seats first, and you can swap who is active at any time. Moving up a tier is the same bank-transfer flow as the first purchase.',
+  // },
 ];
 
 export function FaqSection() {

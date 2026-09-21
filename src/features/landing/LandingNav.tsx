@@ -30,7 +30,9 @@ import { cn } from '@/lib/cn';
 const LINKS = [
   { id: 'modules', label: 'Features' },
   { id: 'how-it-works', label: 'How it works' },
-  { id: 'pricing', label: 'Pricing' },
+  // BILLING-DISABLED BUILD: #pricing is no longer rendered, so the link
+  // would scroll nowhere and the scroll-spy would never highlight it.
+  // { id: 'pricing', label: 'Pricing' },
   { id: 'faq', label: 'FAQ' },
 ] as const;
 
