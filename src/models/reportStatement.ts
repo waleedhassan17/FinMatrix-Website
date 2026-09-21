@@ -260,4 +260,14 @@ export interface StatementRowData {
   prior?: number;
   /** A stable key where the label alone is not unique. */
   key?: string;
+
+  /**
+   * The account this row reports, when it reports one.
+   *
+   * Set on account lines so the row can be expanded into the transactions
+   * behind it. Absent on headings and subtotals, which have no single account
+   * to drill into — that absence is what makes a row non-expandable, rather
+   * than a separate flag that could disagree with it.
+   */
+  accountCode?: string;
 }

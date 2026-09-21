@@ -187,6 +187,9 @@ export const ApAgingPage = lazyWithReload(() => import('@/pages/reports/ApAgingP
 export const InventoryValuationPage = lazyWithReload(
   () => import('@/pages/reports/InventoryValuationPage'),
 );
+export const InventoryItemReportPage = lazyWithReload(
+  () => import('@/pages/reports/InventoryItemReportPage'),
+);
 export const AnalyticsPage = lazyWithReload(() => import('@/pages/reports/AnalyticsPage'));
 
 // Bank reconciliation — owner only, so staff never download these chunks either.

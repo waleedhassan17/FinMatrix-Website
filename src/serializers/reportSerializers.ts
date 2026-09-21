@@ -370,6 +370,38 @@ export const ledgerAccountsSerializer = (payload: unknown): LedgerAccountsReport
 // Aging (AR and AP share one shape)
 // ═══════════════════════════════════════════════════════
 
+/**
+ * One aging column, as the server describes it.
+ *
+ * The bucket set is DATA now rather than five field names compiled into the
+ * page, so a company trading on 3-day or weekly terms gets columns that match
+ * how it actually sells. Render by walking `buckets` and reading
+ * `row.amounts[bucket.key]` — never by naming a key.
+ */
+export interface AgingBucketDef {
+  key: string;
+  label: string;
+  /** Inclusive days overdue; 0 on the not-yet-due bucket. */
+  minDays: number;
+  /** Inclusive; null on the open-ended final bucket. */
+  maxDays: number | null;
+}
+
+export type AgingPresetKey =
+  | 'days3'
+  | 'weekly'
+  | 'biweekly'
+  | 'monthly'
+  | 'custom';
+
+/**
+ * The five fixed fields the report has always returned.
+ *
+ * The server still sends these and still computes them on 30/60/90 whatever
+ * preset was requested, so the analytics A/R trend and anything else reading
+ * them keeps working. Nothing new should: they cannot describe a weekly or
+ * 3-day report.
+ */
 export interface AgingBuckets {
   current: number;
   bucket1to30: number;
@@ -387,13 +419,38 @@ export interface AgingRow extends AgingBuckets {
    */
   customerId: string;
   customerName: string;
+  /** Keyed by `AgingBucketDef.key`. */
+  amounts: Record<string, number>;
+}
+
+export interface AgingTotals extends AgingBuckets {
+  amounts: Record<string, number>;
 }
 
 export interface AgingReport {
   asOfDate: string;
+  preset: AgingPresetKey;
+  buckets: AgingBucketDef[];
   rows: AgingRow[];
-  totals: AgingBuckets;
+  totals: AgingTotals;
 }
+
+/** The classic columns, for a response from a server that predates buckets[]. */
+export const LEGACY_AGING_BUCKETS: AgingBucketDef[] = [
+  { key: 'current', label: 'Current', minDays: 0, maxDays: 0 },
+  { key: 'd1to30', label: '1\u201330', minDays: 1, maxDays: 30 },
+  { key: 'd31to60', label: '31\u201360', minDays: 31, maxDays: 60 },
+  { key: 'd61to90', label: '61\u201390', minDays: 61, maxDays: 90 },
+  { key: 'd91plus', label: '91 and over', minDays: 91, maxDays: null },
+];
+
+const LEGACY_FIELD_BY_KEY: Record<string, keyof AgingBuckets> = {
+  current: 'current',
+  d1to30: 'bucket1to30',
+  d31to60: 'bucket31to60',
+  d61to90: 'bucket61to90',
+  d91plus: 'bucket90Plus',
+};
 
 const mapBuckets = (raw: unknown): AgingBuckets => {
   const r = asRaw(raw);
@@ -407,31 +464,169 @@ const mapBuckets = (raw: unknown): AgingBuckets => {
   };
 };
 
+/**
+ * Normalise the aging payload so the page only ever sees one shape.
+ *
+ * A deployment that predates configurable buckets returns only the classic five
+ * fields. Rather than render a table of blanks, such a response is rebuilt into
+ * the 30/60/90 bucket set from the fields it does have — the same report the
+ * page showed before, with the preset control simply having nothing to change.
+ */
 export const agingSerializer = (payload: unknown): AgingReport => {
   const r = asRaw(payload);
+  const rawBuckets = lines(r.buckets);
+  const modern = rawBuckets.length > 0;
+
+  const buckets: AgingBucketDef[] = modern
+    ? rawBuckets.map((b) => {
+        const d = asRaw(b);
+        return {
+          key: str(d.key),
+          label: str(d.label),
+          minDays: toNumber(d.minDays as never),
+          maxDays: d.maxDays === null || d.maxDays === undefined
+            ? null
+            : toNumber(d.maxDays as never),
+        };
+      })
+    : LEGACY_AGING_BUCKETS;
+
+  // Coercion applies to BOTH paths: these columns are Postgres `numeric` and an
+  // unwrapped one arrives as a string, which formats fine and fails on
+  // arithmetic.
+  const amountsFor = (src: Record<string, unknown>): Record<string, number> => {
+    const amounts = modern ? asRaw(src.amounts) : {};
+    return Object.fromEntries(
+      buckets.map((b) => [
+        b.key,
+        toNumber(
+          (modern ? amounts[b.key] : src[LEGACY_FIELD_BY_KEY[b.key]]) as never,
+        ),
+      ]),
+    );
+  };
+
+  const totalsRaw = asRaw(r.totals);
+
   return {
     asOfDate: str(r.asOfDate),
+    preset: (str(r.preset, 'monthly') as AgingPresetKey),
+    buckets,
     rows: lines(r.rows).map((raw) => {
       const row = asRaw(raw);
       return {
         customerId: str(row.customerId),
         customerName: str(row.customerName, 'Unknown'),
+        amounts: amountsFor(row),
         ...mapBuckets(row),
       };
     }),
-    totals: mapBuckets(r.totals),
+    totals: { amounts: amountsFor(totalsRaw), ...mapBuckets(r.totals) },
   };
 };
 
 /**
- * What is genuinely late, excluding the 1–30 bucket.
+ * What is genuinely late: everything past its due date.
  *
- * A bill a week past its due date is chased, not provisioned for; treating it as
- * overdue alongside something 90 days out overstates the problem. The app draws
- * the same line.
+ * Derived from the bucket spec rather than hardcoded as "31 days and over".
+ * That line was drawn for 30/60/90 buckets, where a bill a week late is chased
+ * rather than provisioned for — but under a 3-day preset it would report nearly
+ * a month of debt as current, which is the opposite of what the preset was
+ * chosen to reveal. The caller decides the granularity; this follows it.
  */
-export const overdueTotal = (totals: AgingBuckets): number =>
-  totals.bucket31to60 + totals.bucket61to90 + totals.bucket90Plus;
+export const overdueTotal = (report: AgingReport): number =>
+  report.buckets
+    .filter((b) => b.minDays > 0)
+    .reduce((t, b) => t + (report.totals.amounts[b.key] ?? 0), 0);
+
+/** What is in the not-yet-due column. */
+export const notYetDueTotal = (report: AgingReport): number =>
+  report.totals.amounts[report.buckets[0]?.key] ?? 0;
+
+/**
+ * Wrap the legacy five-field shape as AgingTotals on the classic buckets.
+ *
+ * The analytics dashboard's `arAgingTrend` is still built from those five
+ * fields server-side and is not configurable — it is one fixed snapshot, not a
+ * report anyone re-buckets. This lets it reuse AgingChart without the chart
+ * needing to understand two shapes.
+ */
+export const legacyAgingTotals = (src: AgingBuckets): AgingTotals => ({
+  ...src,
+  amounts: Object.fromEntries(
+    LEGACY_AGING_BUCKETS.map((b) => [b.key, src[LEGACY_FIELD_BY_KEY[b.key]] ?? 0]),
+  ),
+});
+
+// ═══════════════════════════════════════════════════════
+// Statement line drill-down
+// ═══════════════════════════════════════════════════════
+
+/** One posted ledger row behind a statement line. */
+export interface StatementLineEntry {
+  id: string;
+  date: string;
+  reference: string;
+  memo: string;
+  debit: number;
+  credit: number;
+  /**
+   * Signed the way the statement reads this account, so the entries on a line
+   * add up to the line. Revenue is credit-normal, expenses debit-normal.
+   */
+  amount: number;
+  sourceType: string;
+  /** The document's id, for opening it. */
+  sourceId: string;
+  /** `sourceType` in words, e.g. 'Invoice'. */
+  sourceLabel: string;
+}
+
+export interface StatementLineEntries {
+  accountCode: string;
+  accountName: string;
+  accountType: string;
+  /** The figure on the statement line, over the whole range. */
+  lineAmount: number;
+  entries: StatementLineEntry[];
+  /** Rows in the range, which may exceed what one page returned. */
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export const statementLineEntriesSerializer = (
+  payload: unknown,
+): StatementLineEntries => {
+  const r = asRaw(payload);
+  // `data` is the server's key for the page of rows; `entries` is accepted too
+  // so this does not break if the envelope is ever flattened.
+  const rows = lines(r.data).length ? lines(r.data) : lines(r.entries);
+  return {
+    accountCode: str(r.accountCode),
+    accountName: str(r.accountName),
+    accountType: str(r.accountType),
+    lineAmount: toNumber(r.lineAmount as never),
+    entries: rows.map((raw) => {
+      const e = asRaw(raw);
+      return {
+        id: str(e.id),
+        date: str(e.date),
+        reference: str(e.reference),
+        memo: str(e.memo),
+        debit: toNumber(e.debit as never),
+        credit: toNumber(e.credit as never),
+        amount: toNumber(e.amount as never),
+        sourceType: str(e.sourceType),
+        sourceId: str(e.sourceId),
+        sourceLabel: str(e.sourceLabel, 'Journal entry'),
+      };
+    }),
+    total: toNumber(r.total as never),
+    page: toNumber(r.page as never) || 1,
+    limit: toNumber(r.limit as never) || 50,
+  };
+};
 
 // ═══════════════════════════════════════════════════════
 // Inventory Valuation
@@ -446,6 +641,182 @@ export interface InventoryValuationRow {
   cost: number;
   value: number;
 }
+
+/** One month on a value-over-time series. */
+export interface ValuationTrendPoint {
+  /** 'YYYY-MM' — a stable key, unlike the label. */
+  period: string;
+  /** 'Mar 26'. */
+  label: string;
+  /** Month end, which is the date the figure closes on. */
+  asOfDate: string;
+  value: number;
+}
+
+/**
+ * Company-wide stock value over time.
+ *
+ * Derived from general ledger account 1200, so every point is EXACT and ties to
+ * the balance sheet — the same identity verify-reports.mjs already asserts for
+ * the current snapshot, extended backwards. No new column and no estimate: the
+ * ledger has always recorded what inventory was worth, only nothing asked it.
+ */
+export interface InventoryValuationTrend {
+  months: number;
+  points: ValuationTrendPoint[];
+}
+
+export const inventoryValuationTrendSerializer = (
+  payload: unknown,
+): InventoryValuationTrend => {
+  const r = asRaw(payload);
+  return {
+    months: toNumber(r.months as never) || 12,
+    points: lines(r.points).map((raw) => {
+      const p = asRaw(raw);
+      return {
+        period: str(p.period),
+        label: str(p.label),
+        asOfDate: str(p.asOfDate),
+        value: toNumber(p.value as never),
+      };
+    }),
+  };
+};
+
+/** One month of a single item's stock history. */
+export interface ItemHistoryPoint {
+  period: string;
+  label: string;
+  asOfDate: string;
+  /**
+   * On hand at month end. `null` before the item's first movement — which is
+   * "it did not exist yet", a different claim from a zero, which would say it
+   * existed and was out of stock.
+   */
+  closingQty: number | null;
+  qtyIn: number;
+  qtyOut: number;
+  /** Null until per-movement cost is recorded — see `coverage`. */
+  closingValue: number | null;
+  valueKnown: boolean;
+}
+
+export interface InventoryItemHistory {
+  itemId: string;
+  itemName: string;
+  sku: string;
+  months: number;
+  points: ItemHistoryPoint[];
+  coverage: { quantity: string; value: string; message: string };
+}
+
+/**
+ * Preserves null, which on these series means "not known" and never "zero".
+ * Coercing it to 0 would invent a stockout for every month before the item
+ * existed.
+ */
+const numberOrNull = (v: unknown): number | null => {
+  if (v === null || v === undefined) return null;
+  const x = typeof v === 'string' ? parseFloat(v) : (v as number);
+  return Number.isFinite(x) ? x : null;
+};
+
+export const inventoryItemHistorySerializer = (
+  payload: unknown,
+): InventoryItemHistory => {
+  const r = asRaw(payload);
+  const coverage = asRaw(r.coverage);
+  return {
+    itemId: str(r.itemId),
+    itemName: str(r.itemName),
+    sku: str(r.sku),
+    months: toNumber(r.months as never) || 12,
+    points: lines(r.points).map((raw) => {
+      const p = asRaw(raw);
+      return {
+        period: str(p.period),
+        label: str(p.label),
+        asOfDate: str(p.asOfDate),
+        closingQty: numberOrNull(p.closingQty),
+        qtyIn: toNumber(p.qtyIn as never),
+        qtyOut: toNumber(p.qtyOut as never),
+        closingValue: numberOrNull(p.closingValue),
+        valueKnown: p.valueKnown === true,
+      };
+    }),
+    coverage: {
+      quantity: str(coverage.quantity, 'exact'),
+      value: str(coverage.value, 'unavailable'),
+      message: str(coverage.message),
+    },
+  };
+};
+
+/** One month of an item's sales and margin. */
+export interface ItemPerformancePoint {
+  period: string;
+  label: string;
+  unitsSold: number;
+  revenue: number;
+  cogs: number;
+  grossProfit: number;
+  /** Null in a month with no sales: a zero margin is a claim about a period
+   *  that traded, not about one that did not. */
+  marginPct: number | null;
+  costKnown: boolean;
+}
+
+export interface ItemPerformance {
+  itemId: string;
+  itemName: string;
+  sku: string;
+  points: ItemPerformancePoint[];
+  totals: {
+    unitsSold: number;
+    revenue: number;
+    cogs: number;
+    grossProfit: number;
+    marginPct: number | null;
+  };
+  /** First date from which cost is recorded. Null means never. */
+  costHistoryFrom: string | null;
+  /** 0..1 — how much of the cost is an apportioned estimate. Each invoice's
+   *  total is exact; the split between items on one invoice is not. */
+  estimatedCogsShare: number;
+}
+
+export const itemPerformanceSerializer = (payload: unknown): ItemPerformance => {
+  const r = asRaw(payload);
+  const t = asRaw(r.totals);
+  return {
+    itemId: str(r.itemId),
+    itemName: str(r.itemName),
+    sku: str(r.sku),
+    points: lines(r.points).map((raw) => {
+      const p = asRaw(raw);
+      return {
+        period: str(p.period),
+        label: str(p.label),
+        unitsSold: toNumber(p.unitsSold as never),
+        revenue: toNumber(p.revenue as never),
+        cogs: toNumber(p.cogs as never),
+        grossProfit: toNumber(p.grossProfit as never),
+        marginPct: numberOrNull(p.marginPct),
+        costKnown: p.costKnown !== false,
+      };
+    }),
+    totals: {
+      unitsSold: toNumber(t.unitsSold as never),
+      revenue: toNumber(t.revenue as never),
+      cogs: toNumber(t.cogs as never),
+      grossProfit: toNumber(t.grossProfit as never),
+      marginPct: numberOrNull(t.marginPct),
+    },
+    costHistoryFrom: r.costHistoryFrom ? str(r.costHistoryFrom) : null,
+    estimatedCogsShare: toNumber(r.estimatedCogsShare as never),
+  };
+};
 
 export interface InventoryValuationReport {
   rows: InventoryValuationRow[];

@@ -49,6 +49,11 @@ const palette = {
   navy100: '#E3ECF5',
   navy200: '#C7D9E9',
   navy300: '#9DB9D4',
+  // 400 and 500 close the gap between navy300 and navy600 so the ramp can be
+  // sampled at any length for ORDERED data — see AGING_RAMP below. Added to
+  // the app's theme.ts at the same values in the same change.
+  navy400: '#6E93BC',
+  navy500: '#3F6C9B',
   navyBright: '#24598A',
   navy800: '#12365A',
   navy900: '#0C2440',
@@ -121,6 +126,23 @@ export const colors = {
   info: palette.blue600,
   infoLight: palette.blueLight,
 
+  // Sequential navy ramp, light → dark. For ORDERED data — see AGING_RAMP —
+  // never for telling separate series apart.
+  //
+  // `primary50…primary950` further down aliases most of the same palette steps
+  // under CSS-variable names that mirror index.css. They are NOT a second ramp
+  // and they are not numbered the same way: that set's `primary600` is
+  // navyBright, a step lighter than `primary` itself. These names match the
+  // app's theme.ts one for one, which is what charts read.
+  navy50: palette.navy50,
+  navy100: palette.navy100,
+  navy200: palette.navy200,
+  navy300: palette.navy300,
+  navy400: palette.navy400,
+  navy500: palette.navy500,
+  navy600: palette.navy600,
+  navy700: palette.navy700,
+
   // Neutrals (exposed for direct use)
   neutral0: '#FFFFFF',
   neutral25: palette.neutral25,
@@ -183,9 +205,14 @@ export const colors = {
   accentTealTint: palette.tealTint,
   accentTeal950: palette.teal950,
 
-  // ── Navy ramp ───────────────────────────────────────────────────────
+  // ── Navy ramp, CSS-variable aliases ─────────────────────────────────
   // Mirrors --color-primary-50 … -950 in index.css. primaryLight/Lighter/Tint
   // above are all one value; these are the steps between it and primary.
+  //
+  // Same palette steps as navy50…navy700 above, under the names the stylesheet
+  // uses. Note the numbering does NOT line up: primary600 is navyBright, which
+  // is lighter than `primary` (navy600). Chart code should read the navy* names
+  // instead, which agree with the app's.
   primary50: palette.navy50,
   primary100: palette.navy100,
   primary200: palette.navy200,
@@ -412,6 +439,55 @@ export const CHART_SERIES = [
   palette.amber400,
   colors.success,
 ] as const;
+
+/**
+ * Sequential ramp for ORDERED data, light → dark.
+ *
+ * CHART_SERIES is categorical: five hues chosen to be told APART, for series
+ * that have an identity. Aging buckets do not — they have an ORDER, and
+ * swapping "1–30" with "61–90" would change the meaning — so age is encoded as
+ * lightness and reads off the chart without consulting a legend. It also has to
+ * scale: the aging report now runs from five buckets to fourteen, where five
+ * fixed hues would repeat and imply differences between buckets that are not
+ * there.
+ *
+ * Six steps starting at navy200. The two palest are left out on purpose:
+ * against a white card navy50 and navy100 read as an EMPTY column rather than a
+ * small one.
+ *
+ * Verified monotonic in OKLCH lightness (0.877 → 0.341) and hue-stable
+ * (245–252°), which is the correct check for a ramp. Running the CATEGORICAL
+ * contrast validator over these fails by design — adjacent steps of a ramp are
+ * meant to sit close.
+ *
+ * Identical to AGING_RAMP in the app's theme.ts.
+ */
+export const AGING_RAMP = [
+  palette.navy200,
+  palette.navy300,
+  palette.navy400,
+  palette.navy500,
+  palette.navy600,
+  palette.navy700,
+] as const;
+
+/**
+ * `count` colours spread evenly across a ramp, always including both ends.
+ *
+ * Fewer buckets than steps takes a subset; more repeats intermediate steps
+ * rather than inventing new ones — a generated hue would not be a step of this
+ * ramp and would break the monotonicity that makes the order readable.
+ */
+export const rampSteps = (
+  count: number,
+  ramp: readonly string[] = AGING_RAMP,
+): string[] => {
+  if (count <= 0) return [];
+  if (count === 1) return [ramp[ramp.length - 1]];
+  return Array.from({ length: count }, (_, i) =>
+    ramp[Math.round((i * (ramp.length - 1)) / (count - 1))],
+  );
+};
 
 // ───────────────────────────────────────────────
 // 10. Public theme object

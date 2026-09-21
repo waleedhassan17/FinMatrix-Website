@@ -19,7 +19,11 @@ import { ReportShell } from '@/features/reports/ReportShell';
 import { csvAmount, csvFilename, downloadCsv, toCsv, type CsvRow } from '@/models/reportCsv';
 import { variance } from '@/models/reportStatement';
 import { getAnalytics } from '@/networks/reports/analyticsNetwork';
-import type { TrendPoint } from '@/serializers/reportSerializers';
+import {
+  LEGACY_AGING_BUCKETS,
+  legacyAgingTotals,
+  type TrendPoint,
+} from '@/serializers/reportSerializers';
 import { CHART_SERIES, colors, typography } from '@/theme/tokens';
 import { compactMoney, formatMoney, sumMoney } from '@/utils/money';
 
@@ -274,8 +278,12 @@ export default function AnalyticsPage() {
         {data?.arAgingTrend[0] && (
           <Card className="p-lg">
             <SectionHeader title="Receivables by age" />
+            {/* The classic buckets, deliberately. This snapshot is built from
+                the five fixed fields server-side and is not re-bucketable —
+                unlike the aging report itself, where the columns are chosen. */}
             <AgingChart
-              totals={{
+              buckets={LEGACY_AGING_BUCKETS}
+              totals={legacyAgingTotals({
                 ...data.arAgingTrend[0],
                 total:
                   data.arAgingTrend[0].current +
@@ -283,7 +291,7 @@ export default function AnalyticsPage() {
                   data.arAgingTrend[0].bucket31to60 +
                   data.arAgingTrend[0].bucket61to90 +
                   data.arAgingTrend[0].bucket90Plus,
-              }}
+              })}
             />
           </Card>
         )}

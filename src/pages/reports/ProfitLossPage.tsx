@@ -8,6 +8,7 @@ import { PeriodPicker } from '@/features/reports/PeriodPicker';
 import { ReportShell } from '@/features/reports/ReportShell';
 import { statementSection } from '@/features/reports/reportPdfTable';
 import { ReportTitleBlock } from '@/features/reports/ReportTitleBlock';
+import { StatementLineDetail } from '@/features/reports/StatementLineDetail';
 import { StatementTable } from '@/features/reports/StatementTable';
 import { csvAmount, csvFilename, downloadCsv, toCsv, type CsvRow } from '@/models/reportCsv';
 import {
@@ -36,6 +37,10 @@ const lineRows = (
       amount: line.amount,
       depth: 1,
       prior: priorLines ? (prior?.amount ?? 0) : undefined,
+      // Carrying the code is what makes the row expandable — see
+      // StatementRowData. Headings and subtotals leave it unset because they
+      // span several accounts and have nothing single to drill into.
+      accountCode: line.accountCode || undefined,
     };
   });
 
@@ -44,6 +49,10 @@ export default function ProfitLossPage() {
   // its end date on the day the bundle loaded.
   const [range, setRange] = useState(defaultReportRange);
   const [comparing, setComparing] = useState(false);
+  // Which account lines are open. Reset when the period changes: the cached
+  // transactions describe the old one, and leaving them under a new figure
+  // would be right-looking and wrong.
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const prior = useMemo(() => comparisonRange(range), [range]);
 
@@ -185,7 +194,18 @@ export default function ProfitLossPage() {
     <ReportShell
       title="Profit & Loss"
       subtitle="What you earned and what it cost over the period."
-      controls={<PeriodPicker value={range} onChange={setRange} />}
+      controls={
+        <PeriodPicker
+          value={range}
+          onChange={(next) => {
+            setRange(next);
+            // Collapse rather than refetch: the open rows describe the old
+            // period, and StatementLineDetail keys its query on the range, so
+            // leaving them open would fire one request per open line at once.
+            setExpanded({});
+          }}
+        />
+      }
       actions={
         <Switch
           checked={comparing}
@@ -235,13 +255,25 @@ export default function ProfitLossPage() {
             comparing={comparing}
             currentLabel={rangeLabel(range.startDate, range.endDate)}
             priorLabel={rangeLabel(prior.startDate, prior.endDate)}
+            expanded={expanded}
+            onToggle={(code) =>
+              setExpanded((prev) => ({ ...prev, [code]: !prev[code] }))
+            }
+            renderDetail={(row) => (
+              <StatementLineDetail
+                accountCode={row.accountCode as string}
+                range={range}
+                lineAmount={row.amount}
+              />
+            )}
           />
         </Card>
 
         <p className="text-caption text-text-tertiary">
           Revenue and expenses are taken from posted journal entries, net of sales
           tax. Net income here is the figure the Balance Sheet carries into equity
-          for the same period.
+          for the same period. Expand any account line to see the transactions
+          that produced it.
         </p>
       </div>
     </ReportShell>

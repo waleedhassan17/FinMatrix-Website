@@ -9,9 +9,11 @@ import {
   YAxis,
 } from 'recharts';
 
-import { AGING_BUCKETS } from '@/features/reports/AgingTable';
-import type { AgingBuckets } from '@/serializers/reportSerializers';
-import { CHART_SERIES, colors, typography } from '@/theme/tokens';
+import type {
+  AgingBucketDef,
+  AgingTotals,
+} from '@/serializers/reportSerializers';
+import { AGING_RAMP, colors, rampSteps, typography } from '@/theme/tokens';
 import { compactMoney, formatMoney } from '@/utils/money';
 
 // Hoisted because SVG <text> needs a numeric size, not a class — and reading it
@@ -23,7 +25,9 @@ const AXIS_TICK = {
 } as const;
 
 export interface AgingChartProps {
-  totals: AgingBuckets;
+  /** Column order and headings, from the payload. */
+  buckets: AgingBucketDef[];
+  totals: AgingTotals;
 }
 
 /**
@@ -35,17 +39,26 @@ export interface AgingChartProps {
  * identical. For a single period that is worse than useless, because the question
  * being asked is "how much is badly overdue", not "what proportion".
  *
- * Colours run cool to warm across the buckets so age reads off the chart without
- * consulting the legend.
+ * Colour is a SEQUENTIAL ramp, light to dark, so age reads off the chart without
+ * consulting a legend. It used to be CHART_SERIES, which is categorical — five
+ * hues chosen to be told APART, for series that have an identity. Aging buckets
+ * do not have an identity, they have an ORDER: swapping "1–30" with "61–90"
+ * would change the meaning, and that is what lightness encodes and hue cannot.
+ *
+ * The ramp is also what lets the chart scale. Buckets are configurable now and
+ * run from five to fourteen; five fixed hues would have wrapped and painted two
+ * different ages the same colour.
  */
-export function AgingChart({ totals }: AgingChartProps) {
-  const data = AGING_BUCKETS.map(({ key, label }) => ({
+export function AgingChart({ buckets, totals }: AgingChartProps) {
+  const data = buckets.map(({ key, label }) => ({
     label,
-    value: totals[key],
+    value: totals.amounts[key] ?? 0,
   }));
 
   const everythingZero = data.every((d) => d.value === 0);
   if (everythingZero) return null;
+
+  const ramp = rampSteps(data.length, AGING_RAMP);
 
   return (
     <div className="h-56">
@@ -74,12 +87,9 @@ export function AgingChart({ totals }: AgingChartProps) {
           />
           <Bar dataKey="value" radius={[4, 4, 0, 0]}>
             {data.map((entry, index) => (
-              <Cell
-                key={entry.label}
-                // CHART_SERIES has exactly five colours and there are exactly
-                // five buckets, so no wrap-around is needed.
-                fill={CHART_SERIES[index % CHART_SERIES.length]}
-              />
+              // Sampled to the bucket count, so the palest and darkest steps
+              // are always the first and last columns whatever the preset.
+              <Cell key={entry.label} fill={ramp[index]} />
             ))}
           </Bar>
         </BarChart>

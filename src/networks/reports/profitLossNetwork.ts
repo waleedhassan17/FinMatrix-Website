@@ -6,7 +6,9 @@ import { api, toApiError, unwrapEnvelope } from '@/networks/network/apiHelpers';
 import type { ReportRange } from '@/models/reportPeriod';
 import {
   profitLossSerializer,
+  statementLineEntriesSerializer,
   type ProfitLossReport,
+  type StatementLineEntries,
 } from '@/serializers/reportSerializers';
 
 /**
@@ -31,6 +33,37 @@ export const getProfitLoss = async (
       params: { startDate: range.startDate, endDate: range.endDate },
     });
     return profitLossSerializer(unwrapEnvelope(response.data));
+  } catch (e) {
+    throw toApiError(e);
+  }
+};
+
+/**
+ * The posted transactions behind one statement line.
+ *
+ * `accountCode` is the account NUMBER off the line ('4000'), not its id — the
+ * P&L aggregates by account number and that is the only handle a line carries.
+ *
+ * Paginated, unlike `/ledger`: a year of Sales Revenue is every invoice the
+ * company has ever issued, and this is rendered inside a table row.
+ */
+export const getStatementLineEntries = async (
+  accountCode: string,
+  range: ReportRange,
+  limit = 50,
+): Promise<StatementLineEntries> => {
+  try {
+    const response = await api.get(
+      `/reports/profit-loss/lines/${encodeURIComponent(accountCode)}/entries`,
+      {
+        params: {
+          startDate: range.startDate,
+          endDate: range.endDate,
+          limit,
+        },
+      },
+    );
+    return statementLineEntriesSerializer(unwrapEnvelope(response.data));
   } catch (e) {
     throw toApiError(e);
   }

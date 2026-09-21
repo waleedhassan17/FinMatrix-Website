@@ -1,8 +1,8 @@
-import { AgingReportView, useAgingQuery } from '@/features/reports/AgingReportView';
+import { AgingReportView, useAgingReport } from '@/features/reports/AgingReportView';
 import { getApAging } from '@/networks/reports/agingNetwork';
 
 export default function ApAgingPage() {
-  const query = useAgingQuery('ap-aging', getApAging);
+  const aging = useAgingReport('ap-aging', getApAging);
 
   return (
     <AgingReportView
@@ -16,7 +16,7 @@ export default function ApAgingPage() {
       emptyTitle="No outstanding payables"
       emptyHint="Every supplier bill is settled."
       documentNoun="bill"
-      query={query}
+      {...aging}
     />
   );
 }

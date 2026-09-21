@@ -8,6 +8,8 @@ import {
   generalLedgerSerializer,
   inventoryValuationSerializer,
   ledgerAccountsSerializer,
+  legacyAgingTotals,
+  notYetDueTotal,
   overdueTotal,
   profitLossSerializer,
   trialBalanceSerializer,
@@ -363,23 +365,111 @@ describe('agingSerializer', () => {
     expect(report.totals.bucket31to60).toBe(0);
   });
 
-  it('excludes the 1-30 bucket from overdue', () => {
-    // A bill a week late is chased, not provisioned for; counting it alongside
-    // something 90 days out overstates the problem.
-    expect(overdueTotal(payload.totals)).toBe(400);
+  it('rebuilds the classic columns from a server that predates buckets[]', () => {
+    // The website deploys ahead of the API sometimes, and the API sometimes
+    // ahead of it. A table of blanks would look like a company with nothing
+    // outstanding, which is the worst possible way to be wrong.
+    const report = agingSerializer(payload);
+    expect(report.buckets.map((b) => b.key)).toEqual([
+      'current',
+      'd1to30',
+      'd31to60',
+      'd61to90',
+      'd91plus',
+    ]);
+    expect(report.rows[0].amounts).toEqual({
+      current: 1000,
+      d1to30: 500,
+      d31to60: 250,
+      d61to90: 100,
+      d91plus: 50,
+    });
+    expect(report.preset).toBe('monthly');
+    // The rebuilt columns foot to the total the server sent.
+    const summed = report.buckets.reduce(
+      (t, b) => t + report.totals.amounts[b.key],
+      0,
+    );
+    expect(summed).toBe(report.totals.total);
   });
 
-  it('reports nothing overdue when only current and 1-30 carry a balance', () => {
-    expect(
-      overdueTotal({
-        current: 1000,
-        bucket1to30: 500,
-        bucket31to60: 0,
-        bucket61to90: 0,
-        bucket90Plus: 0,
-        total: 1500,
-      }),
-    ).toBe(0);
+  it('reads a configurable bucket payload', () => {
+    const report = agingSerializer({
+      asOfDate: '2026-09-21',
+      preset: 'days3',
+      buckets: [
+        { key: 'current', label: 'Current', minDays: 0, maxDays: 0 },
+        { key: 'd1to3', label: '1-3', minDays: 1, maxDays: 3 },
+        { key: 'd4plus', label: '4 and over', minDays: 4, maxDays: null },
+      ],
+      rows: [
+        {
+          customerId: 'c1',
+          customerName: 'Acme',
+          amounts: { current: 10, d1to3: 20, d4plus: 30 },
+          total: 60,
+        },
+      ],
+      totals: { amounts: { current: 10, d1to3: 20, d4plus: 30 }, total: 60 },
+    });
+
+    expect(report.preset).toBe('days3');
+    expect(report.buckets).toHaveLength(3);
+    expect(report.rows[0].amounts.d1to3).toBe(20);
+    expect(report.buckets[2].maxDays).toBeNull();
+  });
+
+  it('coerces amounts on the bucket path too, not just the legacy fields', () => {
+    const report = agingSerializer({
+      buckets: [{ key: 'current', label: 'Current', minDays: 0, maxDays: 0 }],
+      totals: { amounts: { current: '1000.5000' }, total: '1000.5000' },
+    });
+    expect(report.totals.amounts.current).toBe(1000.5);
+  });
+
+  it('counts everything past due as overdue, whatever the buckets are', () => {
+    // This used to be hardcoded as "31 days and over" — a line drawn for
+    // 30/60/90 columns. Under a 3-day preset that would report nearly a month
+    // of debt as current, which is the opposite of what the preset reveals.
+    const report = agingSerializer(payload);
+    expect(overdueTotal(report)).toBe(900);
+    expect(notYetDueTotal(report)).toBe(1000);
+
+    const threeDay = agingSerializer({
+      buckets: [
+        { key: 'current', label: 'Current', minDays: 0, maxDays: 0 },
+        { key: 'd1to3', label: '1-3', minDays: 1, maxDays: 3 },
+        { key: 'd4plus', label: '4 and over', minDays: 4, maxDays: null },
+      ],
+      totals: { amounts: { current: 10, d1to3: 20, d4plus: 30 }, total: 60 },
+    });
+    expect(overdueTotal(threeDay)).toBe(50);
+    expect(notYetDueTotal(threeDay)).toBe(10);
+  });
+
+  it('reports nothing overdue when only the current column carries a balance', () => {
+    const report = agingSerializer({
+      totals: { current: 1000, total: 1000 },
+    });
+    expect(overdueTotal(report)).toBe(0);
+  });
+
+  it('wraps the analytics snapshot, which is not re-bucketable', () => {
+    const totals = legacyAgingTotals({
+      current: 1,
+      bucket1to30: 2,
+      bucket31to60: 3,
+      bucket61to90: 4,
+      bucket90Plus: 5,
+      total: 15,
+    });
+    expect(totals.amounts).toEqual({
+      current: 1,
+      d1to30: 2,
+      d31to60: 3,
+      d61to90: 4,
+      d91plus: 5,
+    });
   });
 });
 

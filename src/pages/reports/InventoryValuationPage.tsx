@@ -1,26 +1,49 @@
 import { useQuery } from '@tanstack/react-query';
 import { Info } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { CountTile, KpiTile } from '@/features/reports/KpiTile';
+import { MonthlySeriesChart } from '@/features/reports/MonthlySeriesChart';
 import { ReportShell } from '@/features/reports/ReportShell';
 import { ReportTitleBlock } from '@/features/reports/ReportTitleBlock';
 import { StatementTable } from '@/features/reports/StatementTable';
 import { isoToday } from '@/models/document';
 import { csvAmount, csvFilename, downloadCsv, toCsv, type CsvRow } from '@/models/reportCsv';
 import { asOfLabel } from '@/models/reportPeriod';
-import { getInventoryValuation } from '@/networks/reports/inventoryValuationNetwork';
+import {
+  getInventoryValuation,
+  getInventoryValuationTrend,
+} from '@/networks/reports/inventoryValuationNetwork';
 import { colors } from '@/theme/tokens';
-import { formatAmount } from '@/utils/money';
+import { compactMoney, formatAmount, formatMoney } from '@/utils/money';
+
+const TREND_MONTHS = 12;
 
 export default function InventoryValuationPage() {
+  const navigate = useNavigate();
+
   const query = useQuery({
     queryKey: ['reports', 'inventory-valuation'],
     queryFn: getInventoryValuation,
   });
 
+  // A separate query, so a failure hides the chart rather than blanking the
+  // figures the user came for — and so a server deployed before this endpoint
+  // existed does not take the report down.
+  const trend = useQuery({
+    queryKey: ['reports', 'inventory-valuation', 'trend', TREND_MONTHS],
+    queryFn: () => getInventoryValuationTrend(TREND_MONTHS),
+    retry: false,
+  });
+
   const report = query.data;
   const rows = report?.rows ?? [];
+  const trendPoints = (trend.data?.points ?? []).map((p) => ({
+    period: p.period,
+    label: p.label,
+    value: p.value,
+  }));
 
   const exportCsv = () => {
     if (!report) return;
@@ -108,6 +131,26 @@ export default function InventoryValuationPage() {
           />
         </div>
 
+        {trendPoints.length > 0 && (
+          <Card className="p-lg print:hidden">
+            <SectionHeader
+              title="Stock value over time"
+              right={
+                <span className="text-caption text-text-tertiary">
+                  From the inventory control account — ties to the balance sheet
+                </span>
+              }
+            />
+            <div className="mt-md">
+              <MonthlySeriesChart
+                points={trendPoints}
+                format={(v) => formatMoney(v)}
+                compact={(v) => compactMoney(v)}
+              />
+            </div>
+          </Card>
+        )}
+
         {(report?.byCategory.length ?? 0) > 0 && (
           <Card className="p-lg">
             <SectionHeader title="Value by category" />
@@ -159,7 +202,11 @@ export default function InventoryValuationPage() {
               </thead>
               <tbody>
                 {rows.map((row) => (
-                  <tr key={row.itemId} className="border-b border-border-light">
+                  <tr
+                    key={row.itemId}
+                    onClick={() => navigate(`/reports/inventory-valuation/${row.itemId}`)}
+                    className="cursor-pointer border-b border-border-light hover:bg-surface-hover"
+                  >
                     <td className="px-md py-sm">
                       <span className="block text-body-sm text-text-primary">
                         {row.itemName}

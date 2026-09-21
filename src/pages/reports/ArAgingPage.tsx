@@ -1,8 +1,8 @@
-import { AgingReportView, useAgingQuery } from '@/features/reports/AgingReportView';
+import { AgingReportView, useAgingReport } from '@/features/reports/AgingReportView';
 import { getArAging } from '@/networks/reports/agingNetwork';
 
 export default function ArAgingPage() {
-  const query = useAgingQuery('ar-aging', getArAging);
+  const aging = useAgingReport('ar-aging', getArAging);
 
   return (
     <AgingReportView
@@ -13,7 +13,7 @@ export default function ArAgingPage() {
       emptyTitle="No outstanding receivables"
       emptyHint="Every customer invoice is settled."
       documentNoun="invoice"
-      query={query}
+      {...aging}
     />
   );
 }

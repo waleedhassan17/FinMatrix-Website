@@ -1,3 +1,6 @@
+import { Fragment, type ReactNode } from 'react';
+import { MinusSquare, PlusSquare } from 'lucide-react';
+
 import { cn } from '@/lib/cn';
 import type { StatementRowData } from '@/models/reportStatement';
 import { variance } from '@/models/reportStatement';
@@ -11,6 +14,15 @@ export interface StatementTableProps {
   currentLabel?: string;
   priorLabel?: string;
   className?: string;
+  /**
+   * Which account rows are open. Supplying this (with `onToggle`) makes rows
+   * that carry an `accountCode` expandable; leaving it out keeps the table
+   * exactly as it was, which is what the balance sheet and trial balance want.
+   */
+  expanded?: Record<string, boolean>;
+  onToggle?: (accountCode: string) => void;
+  /** What to draw underneath an expanded row, spanning every column. */
+  renderDetail?: (row: StatementRowData) => ReactNode;
 }
 
 /**
@@ -37,7 +49,11 @@ export function StatementTable({
   currentLabel,
   priorLabel,
   className,
+  expanded,
+  onToggle,
+  renderDetail,
 }: StatementTableProps) {
+  const columnCount = comparing ? 4 : 2;
   return (
     // Scrolls inside itself rather than pushing the page sideways — the
     // comparison columns make this wide on a narrow screen.
@@ -63,13 +79,32 @@ export function StatementTable({
         )}
 
         <tbody>
-          {rows.map((row, index) => (
-            <StatementTableRow
-              key={row.key ?? `${row.label}-${index}`}
-              row={row}
-              comparing={comparing}
-            />
-          ))}
+          {rows.map((row, index) => {
+            const code = row.accountCode;
+            // Expandable only where there is one account to expand INTO.
+            // Headings and subtotals span several, so a + on them would promise
+            // a list that cannot be built.
+            const expandable = !!code && !!onToggle;
+            const isOpen = expandable && !!expanded?.[code];
+            return (
+              <Fragment key={row.key ?? `${row.label}-${index}`}>
+                <StatementTableRow
+                  row={row}
+                  comparing={comparing}
+                  expandable={expandable}
+                  expanded={isOpen}
+                  onToggle={expandable ? () => onToggle(code) : undefined}
+                />
+                {isOpen && renderDetail && (
+                  <tr>
+                    <td colSpan={columnCount} className="p-0">
+                      {renderDetail(row)}
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -79,9 +114,15 @@ export function StatementTable({
 function StatementTableRow({
   row,
   comparing,
+  expandable,
+  expanded,
+  onToggle,
 }: {
   row: StatementRowData;
   comparing: boolean;
+  expandable?: boolean;
+  expanded?: boolean;
+  onToggle?: () => void;
 }) {
   const emphasis = row.bold || row.isGrand;
 
@@ -127,7 +168,23 @@ function StatementTableRow({
         // utility for "depth times 16".
         style={{ paddingLeft: `calc(var(--spacing-md) + ${(row.depth ?? 0) * 16}px)` }}
       >
-        {row.label}
+        {expandable ? (
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={!!expanded}
+            className="flex items-center gap-xs text-left hover:text-primary"
+          >
+            {expanded ? (
+              <MinusSquare className="size-3.5 shrink-0 text-text-tertiary" />
+            ) : (
+              <PlusSquare className="size-3.5 shrink-0 text-text-tertiary" />
+            )}
+            <span>{row.label}</span>
+          </button>
+        ) : (
+          row.label
+        )}
       </td>
 
       <td className={amountClass}>{amount}</td>

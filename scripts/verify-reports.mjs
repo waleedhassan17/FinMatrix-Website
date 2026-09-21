@@ -186,21 +186,82 @@ const main = async () => {
     ['AP', ap],
   ]) {
     const t = report.totals ?? {};
-    const bucketSum =
+
+    // The five legacy fields, which the server still computes on 30/60/90
+    // whatever preset was asked for. A shipped Android build and the analytics
+    // A/R trend read these, so they keep being checked.
+    const legacySum =
       n(t.current) +
       n(t.bucket1to30) +
       n(t.bucket31to60) +
       n(t.bucket61to90) +
       n(t.bucket90Plus);
-    check(`${label} buckets sum to the total`, ties(bucketSum, t.total), {
-      buckets: Math.round(bucketSum * 100) / 100,
+    check(`${label} legacy buckets sum to the total`, ties(legacySum, t.total), {
+      buckets: Math.round(legacySum * 100) / 100,
       total: t.total,
     });
+
+    // The configurable columns, which is what the clients now render.
+    const buckets = report.buckets ?? [];
+    check(`${label} describes its own buckets`, buckets.length > 0, {
+      preset: report.preset,
+      buckets: buckets.map((b) => b.label),
+    });
+    const amountSum = buckets.reduce(
+      (s, b) => s + n((t.amounts ?? {})[b.key]),
+      0,
+    );
+    check(`${label} configurable buckets sum to the total`, ties(amountSum, t.total), {
+      preset: report.preset,
+      buckets: Math.round(amountSum * 100) / 100,
+      total: t.total,
+    });
+
+    // Both shapes describe the SAME money. This is the identity that lets the
+    // report be re-bucketed at all: slicing changes how the total is divided,
+    // never what it is — which is what keeps AR aging tied to balance-sheet
+    // 1100 and AP to 2000 under every preset.
+    check(`${label} both bucket shapes agree`, ties(legacySum, amountSum), {
+      legacy: Math.round(legacySum * 100) / 100,
+      configurable: Math.round(amountSum * 100) / 100,
+    });
+
     const rowSum = (report.rows ?? []).reduce((s, r) => s + n(r.total), 0);
     check(`${label} rows sum to the total`, ties(rowSum, t.total), {
       rows: Math.round(rowSum * 100) / 100,
       total: t.total,
     });
+  }
+
+  // Re-bucketing must not move the total. Asked for explicitly rather than
+  // inferred, because this is the one property the whole feature rests on: if a
+  // preset could change the total, the aging report would stop tying to its
+  // control account and the books would disagree with themselves.
+  console.log('\nAging — re-bucketing');
+  for (const [label, path] of [
+    ['AR', 'ar-aging'],
+    ['AP', 'ap-aging'],
+  ]) {
+    const base = label === 'AR' ? ar : ap;
+    for (const preset of ['days3', 'weekly', 'monthly']) {
+      const alt = await get(`/reports/${path}?preset=${preset}`);
+      const altTotal = n((alt.totals ?? {}).total);
+      check(`${label} total is unchanged under preset=${preset}`, ties(altTotal, base.totals?.total), {
+        preset,
+        total: altTotal,
+        baseline: base.totals?.total,
+      });
+      const altBuckets = alt.buckets ?? [];
+      const altSum = altBuckets.reduce(
+        (s, b) => s + n((alt.totals?.amounts ?? {})[b.key]),
+        0,
+      );
+      check(`${label} preset=${preset} columns foot`, ties(altSum, altTotal), {
+        columns: altBuckets.length,
+        sum: Math.round(altSum * 100) / 100,
+        total: altTotal,
+      });
+    }
   }
 
   // NOT a tie, and deliberately reported rather than asserted.
@@ -238,6 +299,41 @@ const main = async () => {
     bsInventory === undefined || ties(bsInventory.amount, inv.totalValue),
     { balanceSheet: bsInventory?.amount ?? null, valuation: inv.totalValue },
   );
+
+  // The value-over-time series is the SAME control account read month by month,
+  // so its last point — this month's close — has to be where the snapshot is
+  // standing. If these drift, the trend is telling a story the balance sheet
+  // does not support, which is worse than having no trend.
+  const trend = await get('/reports/inventory-valuation/trend?months=12');
+  const points = trend.points ?? [];
+  check('valuation trend returns a full window', points.length === 12, {
+    points: points.length,
+  });
+  const latest = points[points.length - 1];
+  check(
+    'the trend closes where the valuation snapshot stands',
+    latest === undefined || ties(latest.value, inv.totalValue),
+    { trendLatest: latest?.value ?? null, valuation: inv.totalValue },
+  );
+  // A zero mid-series is NOT checked, deliberately: a company that sold all its
+  // stock in March genuinely closes March at nothing, and asserting otherwise
+  // would be a check that cannot pass. What is checkable is the shape — the
+  // window must be contiguous, oldest first, and every point must close on a
+  // real month end, which is what makes "the last point is today's balance"
+  // mean anything.
+  const monthEnds = points.every((p) => {
+    const [y, m, d] = String(p.asOfDate).split('-').map(Number);
+    return Boolean(y && m && d) && d === new Date(Date.UTC(y, m, 0)).getUTCDate();
+  });
+  check('every trend point closes on a month end', monthEnds, {
+    dates: points.map((p) => p.asOfDate),
+  });
+  const ordered = points.every(
+    (p, i) => i === 0 || String(points[i - 1].period) < String(p.period),
+  );
+  check('trend months run oldest first, with no repeats', ordered, {
+    periods: points.map((p) => p.period),
+  });
 
   console.log(
     `\n${passed} passed, ${failures.length} failed` +

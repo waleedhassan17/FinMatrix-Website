@@ -42,6 +42,7 @@ import {
   EstimateListPage,
   InvoiceDetailPage,
   InvoiceFormPage,
+  InventoryItemReportPage,
   InventoryValuationPage,
   InventoryDetailPage,
   InventoryFormPage,
@@ -484,6 +485,11 @@ export const router = createBrowserRouter([
           { path: 'reports/ar-aging', element: <ArAgingPage /> },
           { path: 'reports/ap-aging', element: <ApAgingPage /> },
           { path: 'reports/inventory-valuation', element: <InventoryValuationPage /> },
+          // After the literal route above: the drill-down from a valuation row.
+          {
+            path: 'reports/inventory-valuation/:itemId',
+            element: <InventoryItemReportPage />,
+          },
           { path: 'reports/analytics', element: <AnalyticsPage /> },
 
           // ── Module 22: Bank Reconciliation (owner only) ─────────

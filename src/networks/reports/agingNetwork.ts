@@ -6,24 +6,47 @@
 // `customerId` / `customerName` hold a vendor — which the pages relabel.
 
 import { api, toApiError, unwrapEnvelope } from '@/networks/network/apiHelpers';
-import { agingSerializer, type AgingReport } from '@/serializers/reportSerializers';
+import {
+  agingSerializer,
+  type AgingPresetKey,
+  type AgingReport,
+} from '@/serializers/reportSerializers';
+
+/**
+ * How the columns are cut. Sending nothing asks for the company's saved
+ * default, which is why the first load passes `{}` — the server resolves the
+ * preference and echoes back the preset it used.
+ */
+export interface AgingParams {
+  preset?: AgingPresetKey;
+  /** Ascending days overdue, e.g. '3,6,9,12'. Required when preset is custom. */
+  buckets?: string;
+}
+
+const agingQuery = (params: AgingParams): Record<string, string> => {
+  const q: Record<string, string> = {};
+  if (params.preset) q.preset = params.preset;
+  if (params.buckets) q.buckets = params.buckets;
+  return q;
+};
 
 /**
  * Outstanding receivables, bucketed by how overdue each invoice is.
  *
- * **Takes no date, and none can be supplied.** The service ages against
- * `new Date()` server-side. The unified `/reports/aging` endpoint does accept an
- * `asOfDate` and then discards it — it delegates straight to this same method — so
- * offering a date picker here would be a control that changes nothing. The page
- * states "as of today" instead.
+ * **Takes no date, and none can be supplied.** Aging closes as of now, in the
+ * business time zone, and the server decides what "now" is. `asOfDate` used to
+ * be accepted on the unified `/reports/aging` route and silently discarded; it
+ * has been removed rather than implemented, because a true as-of report needs
+ * each document's balance rebuilt from payment history and `invoices.balance`
+ * only ever holds the current one.
  *
- * Counts invoices with a positive balance whose status is not paid, void or draft.
- * Buckets are `current` (not yet due), then 1–30, 31–60, 61–90 and 90+ days past
- * the due date.
+ * **The BUCKETS are configurable**, which is the part of the report's shape a
+ * user genuinely chooses. Counts invoices with a positive balance whose status
+ * is not paid, void or draft.
  */
-export const getArAging = async (): Promise<AgingReport> => {
+export const getArAging = async (params: AgingParams = {}): Promise<AgingReport> => {
   try {
-    const response = await api.get('/reports/ar-aging');
+    const response = await api.get('/reports/ar-aging', { params: agingQuery(params) });
     return agingSerializer(unwrapEnvelope(response.data));
   } catch (e) {
     throw toApiError(e);
@@ -31,11 +54,33 @@ export const getArAging = async (): Promise<AgingReport> => {
 };
 
 /** Outstanding payables, same buckets and same caveat about the date. */
-export const getApAging = async (): Promise<AgingReport> => {
+export const getApAging = async (params: AgingParams = {}): Promise<AgingReport> => {
   try {
-    const response = await api.get('/reports/ap-aging');
+    const response = await api.get('/reports/ap-aging', { params: agingQuery(params) });
     return agingSerializer(unwrapEnvelope(response.data));
   } catch (e) {
     throw toApiError(e);
+  }
+};
+
+/**
+ * Remember the bucket choice as this company's default.
+ *
+ * Fails soft on purpose: PATCH /settings is admin-only, so a staff user gets a
+ * 403. Their report is still bucketed the way they asked — only the
+ * remembering is refused — and raising an error for that would be noise about
+ * something they did not ask for.
+ */
+export const saveAgingPreference = async (params: AgingParams): Promise<void> => {
+  try {
+    await api.patch('/settings', {
+      reportPreferences: {
+        aging: params.preset === 'custom'
+          ? { preset: 'custom', buckets: params.buckets }
+          : { preset: params.preset },
+      },
+    });
+  } catch {
+    /* admin-only; a staff user keeps the view, just not the default. */
   }
 };
