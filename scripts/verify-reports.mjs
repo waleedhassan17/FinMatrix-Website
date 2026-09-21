@@ -335,6 +335,88 @@ const main = async () => {
     periods: points.map((p) => p.period),
   });
 
+  // ── Item margin reconciles to the P&L ───────────────────────────────
+  //
+  // Per-item figures can never simply equal revenue and cost of sales: sales
+  // tax, service lines, manual journal entries, bills coded straight to cost
+  // and supplier returns all sit in those accounts with no item to own them.
+  // The report names each of those, and this asserts the naming is exhaustive
+  // — goods sold plus every reconciling line must equal the ledger.
+  //
+  // Checked here rather than in qa/invariants.sql because the arithmetic lives
+  // in the endpoint: writing it again in SQL means re-deriving the same case
+  // analysis somewhere it can drift from the code it checks.
+  console.log('\nItem margin');
+  const perf = await get(
+    `/reports/inventory-performance?startDate=${from}&endDate=${today}`,
+  );
+  const rc = perf.reconciliation ?? {};
+  check('the report describes its own reconciliation', Array.isArray(rc.items), {
+    keys: Object.keys(rc),
+  });
+
+  const namedRevenue = (rc.items ?? []).reduce((s, i) => s + n(i.revenue), 0);
+  const namedCogs = (rc.items ?? []).reduce((s, i) => s + n(i.cogs), 0);
+
+  check(
+    'goods sold plus the named parts equal the P&L revenue',
+    ties(n(rc.itemRevenue) + namedRevenue, n(rc.glRevenue)),
+    { goodsSold: rc.itemRevenue, named: Math.round(namedRevenue * 100) / 100, pl: rc.glRevenue },
+  );
+  check(
+    'goods sold plus the named parts equal the P&L cost of sales',
+    ties(n(rc.itemCogs) + namedCogs, n(rc.glCogs)),
+    { goodsSold: rc.itemCogs, named: Math.round(namedCogs * 100) / 100, pl: rc.glCogs },
+  );
+
+  // Revenue is net of tax on both arms. `line_total` includes tax and the
+  // ledger does not — worth 45,117.80 on real books before it was corrected —
+  // so an item report exceeding the P&L's revenue is that bug returning.
+  check(
+    'item revenue does not exceed the P&L',
+    n(rc.itemRevenue) <= n(rc.glRevenue) + 0.01,
+    { item: rc.itemRevenue, pl: rc.glRevenue },
+  );
+
+  const rowsWithMargin = (perf.rows ?? []).filter((r) => n(r.revenue) !== 0);
+  check(
+    'every trading row reports a margin',
+    rowsWithMargin.every((r) => r.marginPct !== null && r.marginPct !== undefined),
+    { rows: rowsWithMargin.length },
+  );
+
+  // ── The P&L drill-down survives the response envelope ───────────────
+  //
+  // It shipped returning its rows under a key named `data`, which the envelope
+  // interceptor lifted into its own slot while discarding every sibling — so
+  // the clients received a bare array and showed "no transactions" for every
+  // account. An array here means that has come back.
+  console.log('\nP&L drill-down');
+  const plForDrill = await get(
+    `/reports/profit-loss?startDate=${from}&endDate=${today}`,
+  );
+  const drillLine =
+    (plForDrill.income ?? [])[0] ??
+    (plForDrill.cogsLines ?? [])[0] ??
+    (plForDrill.expenseLines ?? [])[0];
+
+  if (drillLine?.accountCode) {
+    const drill = await get(
+      `/reports/profit-loss/lines/${drillLine.accountCode}/entries?startDate=${from}&endDate=${today}&limit=5`,
+    );
+    check('the drill-down returns an object, not a bare array', !Array.isArray(drill), {
+      got: Array.isArray(drill) ? 'array' : typeof drill,
+    });
+    check('it carries entries and its own metadata', Array.isArray(drill.entries) && drill.lineAmount !== undefined && drill.total !== undefined, {
+      keys: Object.keys(drill ?? {}),
+    });
+    check(
+      'every row names the document behind it',
+      (drill.entries ?? []).every((e) => !!e.documentNumber),
+      { sample: (drill.entries ?? [])[0]?.documentNumber },
+    );
+  }
+
   console.log(
     `\n${passed} passed, ${failures.length} failed` +
       (failures.length ? `\n  ${failures.join('\n  ')}` : ''),

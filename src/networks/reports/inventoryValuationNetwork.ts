@@ -11,6 +11,9 @@ import {
   type InventoryValuationReport,
   itemPerformanceSerializer,
   type InventoryValuationTrend,
+  inventoryPerformanceSerializer,
+  type InventoryPerformance,
+  type InventoryPerformanceSort,
   type ItemPerformance,
 } from '@/serializers/reportSerializers';
 
@@ -97,6 +100,27 @@ export const getItemPerformance = async (
       { params: { startDate: range.startDate, endDate: range.endDate } },
     );
     return itemPerformanceSerializer(unwrapEnvelope(response.data));
+  } catch (e) {
+    throw toApiError(e);
+  }
+};
+
+/**
+ * Every item's sales, cost and margin for a period, beside its stock value.
+ *
+ * Sorted server-side: the questions worth asking — what earns, what is dead
+ * stock — are orderings rather than filters, and sorting a page the client was
+ * handed would only reorder that page.
+ */
+export const getInventoryPerformance = async (
+  range: { startDate: string; endDate: string },
+  sort: InventoryPerformanceSort = 'grossProfit',
+): Promise<InventoryPerformance> => {
+  try {
+    const response = await api.get('/reports/inventory-performance', {
+      params: { startDate: range.startDate, endDate: range.endDate, sort },
+    });
+    return inventoryPerformanceSerializer(unwrapEnvelope(response.data));
   } catch (e) {
     throw toApiError(e);
   }

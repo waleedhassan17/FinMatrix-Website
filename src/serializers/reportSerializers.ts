@@ -580,6 +580,16 @@ export interface StatementLineEntry {
   sourceId: string;
   /** `sourceType` in words, e.g. 'Invoice'. */
   sourceLabel: string;
+  /**
+   * The document's own number — INV-2026-0001.
+   *
+   * What someone actually wants when they open an account. `reference` is the
+   * journal-entry number, which identifies the posting rather than the record.
+   * Falls back to `reference` on a manual entry, which has no document.
+   */
+  documentNumber: string;
+  /** The customer or vendor. Empty on a manual journal entry. */
+  counterpartyName: string;
 }
 
 export interface StatementLineEntries {
@@ -601,7 +611,16 @@ export const statementLineEntriesSerializer = (
   const r = asRaw(payload);
   // `data` is the server's key for the page of rows; `entries` is accepted too
   // so this does not break if the envelope is ever flattened.
-  const rows = lines(r.data).length ? lines(r.data) : lines(r.entries);
+  // `entries` first. The server briefly returned these under `data`, which the
+  // response envelope then lifted into its own slot — discarding every sibling
+  // — so the client received a bare array and rendered "no transactions" for
+  // every account. An array is tolerated outright so that shape can never
+  // blank the screen again.
+  const rows = Array.isArray(payload)
+    ? (payload as unknown[])
+    : lines(r.entries).length
+      ? lines(r.entries)
+      : lines(r.data);
   return {
     accountCode: str(r.accountCode),
     accountName: str(r.accountName),
@@ -620,6 +639,8 @@ export const statementLineEntriesSerializer = (
         sourceType: str(e.sourceType),
         sourceId: str(e.sourceId),
         sourceLabel: str(e.sourceLabel, 'Journal entry'),
+        documentNumber: str(e.documentNumber) || str(e.reference),
+        counterpartyName: str(e.counterpartyName),
       };
     }),
     total: toNumber(r.total as never),
@@ -815,6 +836,130 @@ export const itemPerformanceSerializer = (payload: unknown): ItemPerformance => 
     },
     costHistoryFrom: r.costHistoryFrom ? str(r.costHistoryFrom) : null,
     estimatedCogsShare: toNumber(r.estimatedCogsShare as never),
+  };
+};
+
+export type InventoryPerformanceSort =
+  | 'grossProfit'
+  | 'revenue'
+  | 'marginPct'
+  | 'stockValue';
+
+/** One item: what it is carrying, and what it earned. */
+export interface InventoryPerformanceRow {
+  itemId: string;
+  itemName: string;
+  sku: string;
+  category: string;
+  unitsSold: number;
+  revenue: number;
+  cogs: number;
+  grossProfit: number;
+  /** Null in a period the item did not trade — not zero. */
+  marginPct: number | null;
+  /** AS OF NOW, not the period end — these tie to the balance sheet. */
+  qtyOnHand: number;
+  unitCost: number;
+  stockValue: number;
+  costBasis: string;
+}
+
+export interface ReconcilingItem {
+  label: string;
+  revenue: number;
+  cogs: number;
+  reason: string;
+}
+
+export interface InventoryPerformance {
+  range: { startDate: string; endDate: string };
+  sort: InventoryPerformanceSort;
+  rows: InventoryPerformanceRow[];
+  totals: {
+    unitsSold: number;
+    revenue: number;
+    cogs: number;
+    grossProfit: number;
+    marginPct: number | null;
+    stockValue: number;
+  };
+  /**
+   * Why this report does not equal the Profit & Loss, itemised — and it foots:
+   * goods sold plus every line equals the ledger figure. Showing the difference
+   * and naming it is what lets an accountant trust the rows above.
+   */
+  reconciliation: {
+    glRevenue: number;
+    glCogs: number;
+    itemRevenue: number;
+    itemCogs: number;
+    unallocatedRevenue: number;
+    unallocatedCogs: number;
+    items: ReconcilingItem[];
+    note: string;
+  };
+  estimatedCogsShare: number;
+  costHistoryFrom: string | null;
+}
+
+export const inventoryPerformanceSerializer = (
+  payload: unknown,
+): InventoryPerformance => {
+  const r = asRaw(payload);
+  const t = asRaw(r.totals);
+  const rc = asRaw(r.reconciliation);
+  return {
+    range: (r.range as { startDate: string; endDate: string }) ?? {
+      startDate: '',
+      endDate: '',
+    },
+    sort: (str(r.sort, 'grossProfit') as InventoryPerformanceSort),
+    rows: lines(r.rows).map((raw) => {
+      const x = asRaw(raw);
+      return {
+        itemId: str(x.itemId),
+        itemName: str(x.itemName),
+        sku: str(x.sku),
+        category: str(x.category, 'Uncategorized'),
+        unitsSold: toNumber(x.unitsSold as never),
+        revenue: toNumber(x.revenue as never),
+        cogs: toNumber(x.cogs as never),
+        grossProfit: toNumber(x.grossProfit as never),
+        marginPct: numberOrNull(x.marginPct),
+        qtyOnHand: toNumber(x.qtyOnHand as never),
+        unitCost: toNumber(x.unitCost as never),
+        stockValue: toNumber(x.stockValue as never),
+        costBasis: str(x.costBasis, 'posted'),
+      };
+    }),
+    totals: {
+      unitsSold: toNumber(t.unitsSold as never),
+      revenue: toNumber(t.revenue as never),
+      cogs: toNumber(t.cogs as never),
+      grossProfit: toNumber(t.grossProfit as never),
+      marginPct: numberOrNull(t.marginPct),
+      stockValue: toNumber(t.stockValue as never),
+    },
+    reconciliation: {
+      glRevenue: toNumber(rc.glRevenue as never),
+      glCogs: toNumber(rc.glCogs as never),
+      itemRevenue: toNumber(rc.itemRevenue as never),
+      itemCogs: toNumber(rc.itemCogs as never),
+      unallocatedRevenue: toNumber(rc.unallocatedRevenue as never),
+      unallocatedCogs: toNumber(rc.unallocatedCogs as never),
+      items: lines(rc.items).map((raw) => {
+        const i = asRaw(raw);
+        return {
+          label: str(i.label),
+          revenue: toNumber(i.revenue as never),
+          cogs: toNumber(i.cogs as never),
+          reason: str(i.reason),
+        };
+      }),
+      note: str(rc.note),
+    },
+    estimatedCogsShare: toNumber(r.estimatedCogsShare as never),
+    costHistoryFrom: r.costHistoryFrom ? str(r.costHistoryFrom) : null,
   };
 };
 

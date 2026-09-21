@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Info } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -5,6 +6,8 @@ import { useNavigate } from 'react-router-dom';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { CountTile, KpiTile } from '@/features/reports/KpiTile';
 import { MonthlySeriesChart } from '@/features/reports/MonthlySeriesChart';
+import { RankedBars } from '@/features/reports/RankedBars';
+import { PeriodPicker } from '@/features/reports/PeriodPicker';
 import { ReportShell } from '@/features/reports/ReportShell';
 import { ReportTitleBlock } from '@/features/reports/ReportTitleBlock';
 import { StatementTable } from '@/features/reports/StatementTable';
@@ -12,16 +15,38 @@ import { isoToday } from '@/models/document';
 import { csvAmount, csvFilename, downloadCsv, toCsv, type CsvRow } from '@/models/reportCsv';
 import { asOfLabel } from '@/models/reportPeriod';
 import {
+  getInventoryPerformance,
   getInventoryValuation,
   getInventoryValuationTrend,
 } from '@/networks/reports/inventoryValuationNetwork';
+import type { InventoryPerformanceSort } from '@/serializers/reportSerializers';
+import { defaultReportRange, rangeLabel } from '@/models/reportPeriod';
 import { colors } from '@/theme/tokens';
 import { compactMoney, formatAmount, formatMoney } from '@/utils/money';
 
 const TREND_MONTHS = 12;
 
+/**
+ * What the table can be ordered by.
+ *
+ * The backend used to sort by carrying value alone. With earnings beside stock
+ * that ordering actively misleads — the stock with the most capital tied up is
+ * not the stock that earns — so ordering is the control that makes the new
+ * columns usable.
+ */
+const SORTS: { key: InventoryPerformanceSort; label: string }[] = [
+  { key: 'grossProfit', label: 'Gross profit' },
+  { key: 'revenue', label: 'Revenue' },
+  { key: 'marginPct', label: 'Margin' },
+  { key: 'stockValue', label: 'Stock value' },
+];
+
 export default function InventoryValuationPage() {
   const navigate = useNavigate();
+  // Governs the MARGIN columns only. Stock stays as of now, because those
+  // figures tie to the balance sheet and a period-end valuation would not.
+  const [range, setRange] = useState(defaultReportRange);
+  const [sort, setSort] = useState<InventoryPerformanceSort>('grossProfit');
 
   const query = useQuery({
     queryKey: ['reports', 'inventory-valuation'],
@@ -37,8 +62,60 @@ export default function InventoryValuationPage() {
     retry: false,
   });
 
+  // A separate query, so a failure hides the margin columns rather than
+  // blanking the stock figures — and a server without the endpoint still
+  // renders the report it always did.
+  const perfQuery = useQuery({
+    queryKey: ['reports', 'inventory-performance', range, sort],
+    queryFn: () => getInventoryPerformance(range, sort),
+    retry: false,
+  });
+
   const report = query.data;
-  const rows = report?.rows ?? [];
+  const perf = perfQuery.data;
+  const perfRows = perf?.rows ?? [];
+  const usingPerf = perfRows.length > 0;
+  const traded = perfRows.some((r) => r.revenue !== 0 || r.cogs !== 0);
+
+  // The performance rows carry the same stock figures plus what each item
+  // earned, already ordered as asked, so they replace the snapshot when
+  // present. The snapshot remains the fallback.
+  const rows = usingPerf
+    ? perfRows.map((r) => ({
+        itemId: r.itemId,
+        itemName: r.itemName,
+        sku: r.sku,
+        category: r.category,
+        qty: r.qtyOnHand,
+        cost: r.unitCost,
+        value: r.stockValue,
+        revenue: r.revenue,
+        grossProfit: r.grossProfit,
+        marginPct: r.marginPct,
+      }))
+    : (report?.rows ?? []).map((r) => ({
+        ...r,
+        revenue: 0,
+        grossProfit: 0,
+        marginPct: null as number | null,
+      }));
+
+  const rankPoints = perfRows
+    .filter((r) => r.revenue !== 0 || r.cogs !== 0)
+    .map((r) => ({
+      key: r.itemId,
+      label: r.itemName,
+      value:
+        sort === 'revenue'
+          ? r.revenue
+          : sort === 'stockValue'
+            ? r.stockValue
+            : r.grossProfit,
+      hint:
+        r.marginPct === null
+          ? `${r.unitsSold} sold`
+          : `${r.unitsSold} sold · ${r.marginPct.toFixed(1)}% margin`,
+    }));
   const trendPoints = (trend.data?.points ?? []).map((p) => ({
     period: p.period,
     label: p.label,
@@ -94,6 +171,32 @@ export default function InventoryValuationPage() {
           },
         ],
       }}
+      controls={
+        <div className="flex flex-wrap items-end gap-md">
+          <PeriodPicker value={range} onChange={setRange} />
+          <div>
+            <p className="mb-xs text-overline text-text-tertiary">Rank by</p>
+            <div className="flex flex-wrap gap-xs">
+              {SORTS.map((o) => (
+                <button
+                  key={o.key}
+                  type="button"
+                  aria-pressed={sort === o.key}
+                  onClick={() => setSort(o.key)}
+                  className={
+                    'rounded-full border px-md py-xxs text-label-sm transition-colors ' +
+                    (sort === o.key
+                      ? 'border-primary bg-primary text-text-inverse'
+                      : 'border-border bg-surface text-text-secondary hover:bg-surface-hover')
+                  }
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      }
       isLoading={query.isLoading}
       isRefetching={query.isFetching}
       error={query.error as Error | null}
@@ -130,6 +233,26 @@ export default function InventoryValuationPage() {
             value={report?.byCategory.length ?? 0}
           />
         </div>
+
+        {traded && (
+          <Card className="p-lg print:hidden">
+            <SectionHeader
+              title={`Top items by ${SORTS.find((o) => o.key === sort)?.label.toLowerCase()}`}
+              right={
+                <span className="text-caption text-text-tertiary">
+                  {rangeLabel(range.startDate, range.endDate)}
+                </span>
+              }
+            />
+            <div className="mt-md">
+              <RankedBars
+                points={rankPoints}
+                format={(v) => formatMoney(v)}
+                emptyLabel="Nothing sold in this period."
+              />
+            </div>
+          </Card>
+        )}
 
         {trendPoints.length > 0 && (
           <Card className="p-lg print:hidden">
@@ -198,6 +321,21 @@ export default function InventoryValuationPage() {
                   <th className="px-md py-sm text-right text-overline text-text-secondary">
                     Value
                   </th>
+                  {usingPerf && (
+                    <>
+                      {/* These cover a PERIOD while the columns left of them
+                          are as of now. Two different claims, said out loud. */}
+                      <th className="px-md py-sm text-right text-overline whitespace-nowrap text-text-secondary">
+                        Revenue
+                      </th>
+                      <th className="px-md py-sm text-right text-overline whitespace-nowrap text-text-secondary">
+                        Gross profit
+                      </th>
+                      <th className="px-md py-sm text-right text-overline text-text-secondary">
+                        Margin
+                      </th>
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -229,6 +367,37 @@ export default function InventoryValuationPage() {
                     <td className="px-md py-sm text-right tabular text-label-lg whitespace-nowrap text-text-primary">
                       {formatAmount(row.value)}
                     </td>
+                    {usingPerf && (
+                      <>
+                        <td className="px-md py-sm text-right tabular text-body-sm whitespace-nowrap text-text-primary">
+                          {row.revenue ? formatAmount(row.revenue) : '—'}
+                        </td>
+                        {/* Selling below cost is the one thing on this report
+                            worth interrupting someone for. */}
+                        <td
+                          className={
+                            'px-md py-sm text-right tabular text-body-sm whitespace-nowrap ' +
+                            (row.grossProfit < 0 ? 'text-danger' : 'text-text-primary')
+                          }
+                        >
+                          {row.revenue || row.grossProfit
+                            ? formatAmount(row.grossProfit)
+                            : '—'}
+                        </td>
+                        <td
+                          className={
+                            'px-md py-sm text-right tabular text-body-sm whitespace-nowrap ' +
+                            (row.marginPct === null
+                              ? 'text-text-tertiary'
+                              : row.marginPct < 0
+                                ? 'text-danger'
+                                : 'text-text-primary')
+                          }
+                        >
+                          {row.marginPct === null ? '—' : `${row.marginPct.toFixed(1)}%`}
+                        </td>
+                      </>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -238,13 +407,113 @@ export default function InventoryValuationPage() {
                     Total
                   </td>
                   <td className="px-md py-sm text-right tabular text-h5 whitespace-nowrap text-text-primary">
-                    {formatAmount(report?.totalValue ?? 0)}
+                    {formatAmount(
+                      usingPerf ? (perf?.totals.stockValue ?? 0) : (report?.totalValue ?? 0),
+                    )}
                   </td>
+                  {usingPerf && (
+                    <>
+                      <td className="px-md py-sm text-right tabular text-h5 whitespace-nowrap text-text-primary">
+                        {formatAmount(perf?.totals.revenue ?? 0)}
+                      </td>
+                      <td className="px-md py-sm text-right tabular text-h5 whitespace-nowrap text-text-primary">
+                        {formatAmount(perf?.totals.grossProfit ?? 0)}
+                      </td>
+                      <td className="px-md py-sm text-right tabular text-h5 whitespace-nowrap text-text-primary">
+                        {perf?.totals.marginPct === null || perf === undefined
+                          ? '—'
+                          : `${perf.totals.marginPct.toFixed(1)}%`}
+                      </td>
+                    </>
+                  )}
                 </tr>
               </tfoot>
             </table>
           </div>
         </Card>
+
+        {perf && traded && perf.reconciliation.items.length > 0 && (
+          // Why this report does not equal the Profit & Loss, named rather than
+          // left to be discovered as a discrepancy. It foots exactly: goods
+          // sold plus every line below equals the P&L figure. An accountant who
+          // cannot see this stops trusting the rows above it.
+          <Card className="p-lg">
+            <SectionHeader
+              title="How this ties to Profit & Loss"
+              right={
+                <span className="text-caption text-text-tertiary">
+                  {rangeLabel(range.startDate, range.endDate)}
+                </span>
+              }
+            />
+            <div className="mt-md overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="border-b border-border bg-surface-2">
+                    <th className="px-md py-sm text-left text-overline text-text-secondary">
+                      Source
+                    </th>
+                    <th className="px-md py-sm text-right text-overline text-text-secondary">
+                      Revenue
+                    </th>
+                    <th className="px-md py-sm text-right text-overline whitespace-nowrap text-text-secondary">
+                      Cost of sales
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-b border-border-light">
+                    <td className="px-md py-sm text-body-sm text-text-primary">
+                      Goods sold (this report)
+                    </td>
+                    <td className="px-md py-sm text-right tabular text-body-sm text-text-primary">
+                      {formatAmount(perf.reconciliation.itemRevenue)}
+                    </td>
+                    <td className="px-md py-sm text-right tabular text-body-sm text-text-primary">
+                      {formatAmount(perf.reconciliation.itemCogs)}
+                    </td>
+                  </tr>
+                  {perf.reconciliation.items.map((it) => (
+                    <tr key={it.label} className="border-b border-border-light">
+                      <td className="px-md py-sm text-body-sm text-text-primary">
+                        {it.label}
+                        <span className="block text-overline text-text-tertiary">
+                          {it.reason}
+                        </span>
+                      </td>
+                      <td className="px-md py-sm text-right tabular text-body-sm text-text-primary">
+                        {it.revenue === 0 ? '—' : formatAmount(it.revenue)}
+                      </td>
+                      <td className="px-md py-sm text-right tabular text-body-sm text-text-primary">
+                        {it.cogs === 0 ? '—' : formatAmount(it.cogs)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-text-primary">
+                    <td className="px-md py-sm text-label-lg text-text-primary">
+                      Profit &amp; Loss
+                    </td>
+                    <td className="px-md py-sm text-right tabular text-label-lg text-text-primary">
+                      {formatAmount(perf.reconciliation.glRevenue)}
+                    </td>
+                    <td className="px-md py-sm text-right tabular text-label-lg text-text-primary">
+                      {formatAmount(perf.reconciliation.glCogs)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            {perf.estimatedCogsShare > 0.33 && (
+              <p className="mt-sm text-caption text-text-secondary">
+                {Math.round(perf.estimatedCogsShare * 100)}% of the cost above was split
+                across items that shared an invoice. Each invoice&rsquo;s total is exact;
+                how it divides between the items on it is an estimate.
+              </p>
+            )}
+          </Card>
+        )}
       </div>
     </ReportShell>
   );

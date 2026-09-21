@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 
 import { Skeleton } from '@/components/ui/Skeleton';
 import type { ReportRange } from '@/models/reportPeriod';
@@ -7,6 +8,27 @@ import { formatShortDate } from '@/models/reportPeriod';
 import { parenNegative } from '@/utils/money';
 
 const PAGE_LIMIT = 50;
+
+/**
+ * Where the record behind a ledger row lives.
+ *
+ * Only sources that HAVE a page appear. A payment or a delivery leg leaves the
+ * row as plain text rather than linking somewhere that cannot show it.
+ */
+const SOURCE_PATHS: Record<string, (id: string) => string> = {
+  invoice: (id) => `/invoices/${id}`,
+  invoice_void: (id) => `/invoices/${id}`,
+  bill: (id) => `/bills/${id}`,
+  bill_void: (id) => `/bills/${id}`,
+  credit_memo: (id) => `/credit-memos/${id}`,
+  credit_memo_void: (id) => `/credit-memos/${id}`,
+  credit_memo_refund: (id) => `/credit-memos/${id}`,
+  vendor_credit: (id) => `/vendor-credits/${id}`,
+  vendor_credit_void: (id) => `/vendor-credits/${id}`,
+  purchase_order: (id) => `/purchase-orders/${id}`,
+  po_receipt: (id) => `/purchase-orders/${id}`,
+  journal_entry: (id) => `/journal-entries/${id}`,
+};
 
 export interface StatementLineDetailProps {
   accountCode: string;
@@ -92,23 +114,42 @@ export function StatementLineDetail({
     <div className="ml-xl border-l-2 border-border-light py-xs pl-md">
       <table className="w-full border-collapse">
         <tbody>
-          {entries.map((e) => (
-            <tr key={e.id}>
-              <td className="py-xxs pr-sm text-caption whitespace-nowrap text-text-tertiary">
-                {formatShortDate(e.date)}
-              </td>
-              <td className="py-xxs pr-sm text-caption text-text-secondary">
-                {e.sourceLabel}
-                {e.reference ? ` · ${e.reference}` : ''}
-                {e.memo ? (
-                  <span className="text-text-tertiary"> · {e.memo}</span>
-                ) : null}
-              </td>
-              <td className="py-xxs text-right tabular text-caption whitespace-nowrap text-text-primary">
-                {parenNegative(e.amount)}
-              </td>
-            </tr>
-          ))}
+          {entries.map((e) => {
+            const href = SOURCE_PATHS[e.sourceType]?.(e.sourceId);
+            // The DOCUMENT leads, not the journal entry. Asked what is in Sales
+            // Revenue, the answer is INV-2026-0001 for Acme Ltd — JE-005 names
+            // the posting, which is not what anyone came for.
+            const title = e.documentNumber || e.reference || e.sourceLabel;
+            return (
+              <tr key={e.id} className="align-top">
+                <td className="py-xxs pr-sm text-caption whitespace-nowrap text-text-tertiary">
+                  {formatShortDate(e.date)}
+                </td>
+                <td className="py-xxs pr-sm text-caption">
+                  {href && e.sourceId ? (
+                    <Link
+                      to={href}
+                      className="text-text-primary underline-offset-2 hover:text-primary hover:underline"
+                    >
+                      {title}
+                    </Link>
+                  ) : (
+                    <span className="text-text-primary">{title}</span>
+                  )}
+                  {e.counterpartyName ? (
+                    <span className="text-text-secondary"> · {e.counterpartyName}</span>
+                  ) : null}
+                  <span className="block text-overline text-text-tertiary">
+                    {e.sourceLabel}
+                    {e.memo ? ` · ${e.memo}` : ''}
+                  </span>
+                </td>
+                <td className="py-xxs text-right tabular text-caption whitespace-nowrap text-text-primary">
+                  {parenNegative(e.amount)}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
 
