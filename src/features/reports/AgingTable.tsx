@@ -1,5 +1,8 @@
+import { MinusSquare, PlusSquare } from 'lucide-react';
+import { Fragment, type ReactNode } from 'react';
+
 import { cn } from '@/lib/cn';
-import { agingPartyLabel } from '@/models/reportAging';
+import { agingPartyLabel, canDrillParty } from '@/models/reportAging';
 import type {
   AgingBucketDef,
   AgingRow,
@@ -31,6 +34,15 @@ export interface AgingTableProps {
    * chart is not one — and it makes the interaction discoverable without hover.
    */
   onSelectBucket?: (key: string | null) => void;
+  /**
+   * Row expansion, ported from `StatementTable` rather than shared with it —
+   * the two tables have genuinely different row models and the docblock above
+   * explains why they stay separate. Supply all three or none; omitting them
+   * leaves the matrix exactly as it was.
+   */
+  expanded?: Record<string, boolean>;
+  onToggleParty?: (partyId: string) => void;
+  renderDetail?: (row: AgingRow) => ReactNode;
   className?: string;
 }
 
@@ -58,10 +70,16 @@ export function AgingTable({
   counterpartyHeader,
   selectedBucket = null,
   onSelectBucket,
+  expanded,
+  onToggleParty,
+  renderDetail,
   className,
 }: AgingTableProps) {
   const oldestKey = buckets[buckets.length - 1]?.key;
   const filtered = Boolean(selectedBucket);
+  // Counterparty + every bucket + Total. Computed, never a literal: the bucket
+  // set is configurable and runs from five columns to fourteen.
+  const columnCount = buckets.length + 2;
 
   return (
     <div className={cn('overflow-x-auto', className)}>
@@ -103,38 +121,75 @@ export function AgingTable({
         </thead>
 
         <tbody>
-          {rows.map((row) => (
-            <tr
-              key={row.customerId || row.customerName}
-              className="border-b border-border-light"
-            >
-              <td className="px-md py-sm text-body-sm text-text-primary">
-                {agingPartyLabel(row)}
-              </td>
-              {buckets.map(({ key }) => (
-                <td
-                  key={key}
-                  className={cn(
-                    'px-md py-sm text-right tabular text-body-sm whitespace-nowrap',
-                    // The oldest bucket is the one worth noticing, and only when
-                    // it actually carries something. Which bucket that is now
-                    // depends on the preset, so it is read off the spec rather
-                    // than hardcoded to bucket90Plus. Severity, not selection —
-                    // the two are orthogonal and both can apply at once.
-                    key === oldestKey && (row.amounts[key] ?? 0) > 0
-                      ? 'text-danger'
-                      : 'text-text-primary',
-                    key === selectedBucket && 'bg-surface-hover',
-                  )}
-                >
-                  {row.amounts[key] ? formatAmount(row.amounts[key]) : '—'}
-                </td>
-              ))}
-              <td className="px-md py-sm text-right tabular text-label-lg whitespace-nowrap text-text-primary">
-                {formatAmount(row.total)}
-              </td>
-            </tr>
-          ))}
+          {rows.map((row) => {
+            // A row with no party id cannot be drilled: there is nothing to
+            // address the request with, so it must not offer an affordance that
+            // could only fail.
+            const expandable = Boolean(onToggleParty && canDrillParty(row));
+            const isOpen = Boolean(expanded?.[row.customerId]);
+            const label = agingPartyLabel(row);
+
+            return (
+              <Fragment key={row.customerId || row.customerName}>
+                <tr className="border-b border-border-light">
+                  <td className="px-md py-sm text-body-sm text-text-primary">
+                    {expandable ? (
+                      // The whole name is the target, not just the icon — a
+                      // 14px glyph is a mean thing to ask anyone to hit.
+                      <button
+                        type="button"
+                        aria-expanded={isOpen}
+                        onClick={() => onToggleParty?.(row.customerId)}
+                        className="flex items-center gap-xs text-left text-body-sm text-text-primary hover:text-primary"
+                      >
+                        {isOpen ? (
+                          <MinusSquare className="size-4 shrink-0 text-text-tertiary" aria-hidden="true" />
+                        ) : (
+                          <PlusSquare className="size-4 shrink-0 text-text-tertiary" aria-hidden="true" />
+                        )}
+                        {label}
+                      </button>
+                    ) : (
+                      label
+                    )}
+                  </td>
+                  {buckets.map(({ key }) => (
+                    <td
+                      key={key}
+                      className={cn(
+                        'px-md py-sm text-right tabular text-body-sm whitespace-nowrap',
+                        // The oldest bucket is the one worth noticing, and only
+                        // when it actually carries something. Which bucket that
+                        // is now depends on the preset, so it is read off the
+                        // spec rather than hardcoded to bucket90Plus. Severity,
+                        // not selection — orthogonal, and both can apply at once.
+                        key === oldestKey && (row.amounts[key] ?? 0) > 0
+                          ? 'text-danger'
+                          : 'text-text-primary',
+                        key === selectedBucket && 'bg-surface-hover',
+                      )}
+                    >
+                      {row.amounts[key] ? formatAmount(row.amounts[key]) : '—'}
+                    </td>
+                  ))}
+                  <td className="px-md py-sm text-right tabular text-label-lg whitespace-nowrap text-text-primary">
+                    {formatAmount(row.total)}
+                  </td>
+                </tr>
+
+                {isOpen && renderDetail && (
+                  // print:hidden — the printed report is the summary, and
+                  // expanded documents would add figures the footer's totals
+                  // do not include.
+                  <tr className="border-b border-border-light print:hidden">
+                    <td colSpan={columnCount} className="p-0">
+                      {renderDetail(row)}
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
         </tbody>
 
         <tfoot>

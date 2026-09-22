@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  agingPartyDocumentsSerializer,
   agingSerializer,
   analyticsSerializer,
   balanceSheetSerializer,
@@ -470,6 +471,122 @@ describe('agingSerializer', () => {
       d61to90: 4,
       d91plus: 5,
     });
+  });
+});
+
+describe('agingPartyDocumentsSerializer', () => {
+  const payload = {
+    partyType: 'customer',
+    partyId: 'c1',
+    partyName: 'Allama Traders',
+    asOfDate: '2026-09-22',
+    preset: 'monthly',
+    buckets: [
+      { key: 'current', label: 'Current', minDays: 0, maxDays: 0 },
+      { key: 'd1to30', label: '1\u201330', minDays: 1, maxDays: 30 },
+      { key: 'd31plus', label: '31 and over', minDays: 31, maxDays: null },
+    ],
+    bucket: 'd1to30',
+    // Postgres numeric arrives as a string: formats fine, fails on arithmetic.
+    outstandingTotal: '300.00',
+    documents: [
+      {
+        documentId: 'i1',
+        documentType: 'invoice',
+        documentNumber: 'INV-1',
+        issueDate: '2026-08-01',
+        dueDate: '2026-09-01',
+        daysOverdue: 21,
+        bucketKey: 'd1to30',
+        bucketLabel: '1\u201330',
+        total: '500.00',
+        amountPaid: '200.00',
+        balance: '300.00',
+        status: 'partial',
+      },
+    ],
+    total: 1,
+    page: 1,
+    limit: 50,
+  };
+
+  it('reads the party, the spec and the documents', () => {
+    const d = agingPartyDocumentsSerializer(payload);
+    expect(d.partyType).toBe('customer');
+    expect(d.partyName).toBe('Allama Traders');
+    expect(d.bucket).toBe('d1to30');
+    expect(d.buckets).toHaveLength(3);
+    expect(d.buckets[2].maxDays).toBeNull();
+    expect(d.documents).toHaveLength(1);
+    expect(d.documents[0].documentNumber).toBe('INV-1');
+  });
+
+  it('coerces every money field off the numeric strings', () => {
+    const d = agingPartyDocumentsSerializer(payload);
+    expect(d.outstandingTotal).toBe(300);
+    expect(d.documents[0].total).toBe(500);
+    expect(d.documents[0].amountPaid).toBe(200);
+    expect(d.documents[0].balance).toBe(300);
+    // The contract that makes the panel reconcilable against its row.
+    expect(d.documents.reduce((t, x) => t + x.balance, 0)).toBe(d.outstandingTotal);
+  });
+
+  it('keeps a negative daysOverdue for a document that is not yet due', () => {
+    // 0 and negative are both real answers here, so neither may be coerced
+    // away through a falsy fallback.
+    const d = agingPartyDocumentsSerializer({
+      ...payload,
+      documents: [
+        { ...payload.documents[0], daysOverdue: -4, bucketKey: 'current' },
+        { ...payload.documents[0], documentId: 'i2', daysOverdue: 0 },
+      ],
+    });
+    expect(d.documents[0].daysOverdue).toBe(-4);
+    expect(d.documents[1].daysOverdue).toBe(0);
+  });
+
+  it('reads the payables side without inheriting the A/R field names', () => {
+    const d = agingPartyDocumentsSerializer({
+      ...payload,
+      partyType: 'vendor',
+      partyName: 'Supplier Co',
+      documents: [{ ...payload.documents[0], documentType: 'bill' }],
+    });
+    expect(d.partyType).toBe('vendor');
+    expect(d.partyName).toBe('Supplier Co');
+    expect(d.documents[0].documentType).toBe('bill');
+  });
+
+  it('tolerates a bare array, so an envelope regression cannot blank the panel', () => {
+    // The failure mode that took the P&L drill-down down: rows named `data`,
+    // lifted into the envelope slot, siblings discarded, client shown nothing.
+    const d = agingPartyDocumentsSerializer(payload.documents);
+    expect(d.documents).toHaveLength(1);
+    expect(d.documents[0].documentNumber).toBe('INV-1');
+  });
+
+  it('reads rows still arriving under `data`', () => {
+    const { documents, ...rest } = payload;
+    const d = agingPartyDocumentsSerializer({ ...rest, data: documents });
+    expect(d.documents).toHaveLength(1);
+    expect(d.outstandingTotal).toBe(300);
+  });
+
+  it('zeroes a malformed payload rather than throwing', () => {
+    const d = agingPartyDocumentsSerializer(null);
+    expect(d.documents).toEqual([]);
+    expect(d.outstandingTotal).toBe(0);
+    expect(d.partyName).toBe('Unknown');
+    expect(d.bucket).toBeNull();
+    expect(d.page).toBe(1);
+  });
+
+  it('defaults an unknown document type to an invoice rather than dropping it', () => {
+    const d = agingPartyDocumentsSerializer({
+      ...payload,
+      documents: [{ ...payload.documents[0], documentType: 'something-else' }],
+    });
+    expect(d.documents[0].documentType).toBe('invoice');
   });
 });
 

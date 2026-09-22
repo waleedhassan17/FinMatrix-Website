@@ -143,3 +143,63 @@ describe('AgingTable', () => {
     expect(footerLabel(container)).toBe('Total (all parties)');
   });
 });
+
+describe('AgingTable — row expansion', () => {
+  const expandProps = {
+    expanded: {},
+    onToggleParty: vi.fn(),
+    renderDetail: () => <div data-testid="detail">documents</div>,
+  };
+
+  it('leaves rows inert when expansion is not offered', () => {
+    setup();
+    expect(screen.queryByRole('button', { name: /Allama/ })).toBeNull();
+  });
+
+  it('makes the counterparty name the toggle', async () => {
+    const onToggleParty = vi.fn();
+    setup({ ...expandProps, onToggleParty });
+
+    const toggle = screen.getByRole('button', { name: /Allama Traders/ });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    await userEvent.click(toggle);
+    expect(onToggleParty).toHaveBeenCalledWith('c1');
+  });
+
+  it('renders the detail beneath the row when open, spanning every column', () => {
+    const { container } = setup({ ...expandProps, expanded: { c1: true } });
+
+    expect(screen.getByTestId('detail')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Allama Traders/ }),
+    ).toHaveAttribute('aria-expanded', 'true');
+
+    // Counterparty + 3 buckets + Total. Computed, because the bucket set runs
+    // from five columns to fourteen and a literal would silently misalign.
+    const detailCell = container.querySelector('tbody tr:nth-child(2) td');
+    expect(detailCell).toHaveAttribute('colspan', String(BUCKETS.length + 2));
+  });
+
+  it('does not offer a drill-down for a row with no party id to address', () => {
+    // There would be nothing to send to the endpoint, so the affordance would
+    // only ever fail.
+    setup({
+      ...expandProps,
+      rows: [{ ...ROWS[0], customerId: '' }],
+    });
+    expect(screen.queryByRole('button', { name: /Allama Traders/ })).toBeNull();
+    expect(screen.getByText('Allama Traders')).toBeInTheDocument();
+  });
+
+  it('opens one party without opening its neighbours', () => {
+    const second: AgingRow = { ...ROWS[0], customerId: 'c2', customerName: 'Metro Foods' };
+    setup({ ...expandProps, rows: [ROWS[0], second], expanded: { c1: true } });
+
+    expect(screen.getAllByTestId('detail')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: /Metro Foods/ })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+  });
+});

@@ -13,6 +13,7 @@ export default function ArAgingPage() {
       emptyTitle="No outstanding receivables"
       emptyHint="Every customer invoice is settled."
       documentNoun="invoice"
+      partyType="customer"
       {...aging}
     />
   );

@@ -16,6 +16,7 @@ export default function ApAgingPage() {
       emptyTitle="No outstanding payables"
       emptyHint="Every supplier bill is settled."
       documentNoun="bill"
+      partyType="vendor"
       {...aging}
     />
   );

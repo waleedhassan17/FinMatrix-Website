@@ -559,6 +559,118 @@ export const legacyAgingTotals = (src: AgingBuckets): AgingTotals => ({
 });
 
 // ═══════════════════════════════════════════════════════
+// Aging drill-down — one party's open documents
+// ═══════════════════════════════════════════════════════
+
+/** One open invoice or bill behind an aging row. */
+export interface AgingPartyDocument {
+  documentId: string;
+  /** Drives which detail page the number links to. */
+  documentType: 'invoice' | 'bill';
+  documentNumber: string;
+  issueDate: string;
+  dueDate: string;
+  /**
+   * Signed: negative means not yet due. Sent that way so the panel can say
+   * "due in 4 days" without recomputing a date the server already knows.
+   */
+  daysOverdue: number;
+  bucketKey: string;
+  bucketLabel: string;
+  total: number;
+  amountPaid: number;
+  balance: number;
+  status: string;
+}
+
+export interface AgingPartyDocuments {
+  partyType: 'customer' | 'vendor';
+  partyId: string;
+  /**
+   * The party's own name. The summary calls a vendor `customerName` for
+   * back-compat with shipped clients; this endpoint is new and does not inherit
+   * that, which is what lets one component serve both sides.
+   */
+  partyName: string;
+  asOfDate: string;
+  preset: AgingPresetKey;
+  buckets: AgingBucketDef[];
+  /** The bucket that was filtered on, or null for every open document. */
+  bucket: string | null;
+  /**
+   * Money over every matching document, not just this page — the figure that
+   * has to reconcile against the aging row.
+   */
+  outstandingTotal: number;
+  documents: AgingPartyDocument[];
+  /** Matching documents, which may exceed what one page returned. */
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export const agingPartyDocumentsSerializer = (
+  payload: unknown,
+): AgingPartyDocuments => {
+  const r = asRaw(payload);
+  // A bare array is tolerated for the same reason `statementLineEntries`
+  // tolerates one: if a response ever arrives with its rows under `data`, the
+  // envelope lifts them into its own slot and discards the siblings, and the
+  // panel should still show documents rather than nothing at all.
+  const rows = Array.isArray(payload)
+    ? (payload as unknown[])
+    : lines(r.documents).length
+      ? lines(r.documents)
+      : lines(r.data);
+
+  return {
+    partyType: str(r.partyType) === 'vendor' ? 'vendor' : 'customer',
+    partyId: str(r.partyId),
+    partyName: str(r.partyName, 'Unknown'),
+    asOfDate: str(r.asOfDate),
+    preset: str(r.preset, 'monthly') as AgingPresetKey,
+    buckets: lines(r.buckets).map((b) => {
+      const d = asRaw(b);
+      return {
+        key: str(d.key),
+        label: str(d.label),
+        minDays: toNumber(d.minDays as never),
+        maxDays:
+          d.maxDays === null || d.maxDays === undefined
+            ? null
+            : toNumber(d.maxDays as never),
+      };
+    }),
+    bucket: r.bucket === null || r.bucket === undefined ? null : str(r.bucket),
+    outstandingTotal: toNumber(r.outstandingTotal as never),
+    documents: rows.map((raw) => {
+      const d = asRaw(raw);
+      return {
+        documentId: str(d.documentId),
+        documentType: str(d.documentType) === 'bill' ? 'bill' : 'invoice',
+        documentNumber: str(d.documentNumber),
+        issueDate: str(d.issueDate),
+        dueDate: str(d.dueDate),
+        // 0 is a real answer here (due today) and so is a negative one (not yet
+        // due), so this must not be coerced through a falsy fallback.
+        daysOverdue: toNumber(d.daysOverdue as never),
+        bucketKey: str(d.bucketKey),
+        bucketLabel: str(d.bucketLabel),
+        // Postgres `numeric` arrives as a string, which formats fine and fails
+        // on arithmetic.
+        total: toNumber(d.total as never),
+        amountPaid: toNumber(d.amountPaid as never),
+        balance: toNumber(d.balance as never),
+        status: str(d.status),
+      };
+    }),
+    total: toNumber(r.total as never),
+    page: toNumber(r.page as never) || 1,
+    limit: toNumber(r.limit as never) || 50,
+  };
+};
+
+// ═══════════════════════════════════════════════════════
 // Statement line drill-down
 // ═══════════════════════════════════════════════════════
 

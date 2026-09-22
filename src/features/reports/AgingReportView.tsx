@@ -4,11 +4,13 @@ import { Info, X } from 'lucide-react';
 
 import {
   saveAgingPreference,
+  type AgingDetailParams,
   type AgingParams,
 } from '@/networks/reports/agingNetwork';
 
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { AgingChart } from '@/features/reports/AgingChart';
+import { AgingPartyDocuments } from '@/features/reports/AgingPartyDocuments';
 import { AgingTable } from '@/features/reports/AgingTable';
 import { BucketPresetPicker } from '@/features/reports/BucketPresetPicker';
 import { KpiTile } from '@/features/reports/KpiTile';
@@ -67,6 +69,13 @@ export interface AgingReportViewProps {
   onSelectBucket: (key: string | null) => void;
   sort: AgingSort;
   onChangeSort: (sort: AgingSort) => void;
+  /** Which party rows are open, keyed by party id. */
+  expanded: Record<string, boolean>;
+  onToggleParty: (partyId: string) => void;
+  /** 'customer' on receivables, 'vendor' on payables. */
+  partyType: 'customer' | 'vendor';
+  /** The bucket spec to pass through to the drill-down. */
+  detailParams: AgingDetailParams;
 }
 
 /**
@@ -105,6 +114,10 @@ export function AgingReportView({
   onSelectBucket,
   sort,
   onChangeSort,
+  expanded,
+  onToggleParty,
+  partyType,
+  detailParams,
 }: AgingReportViewProps) {
   const report = query.data;
   const totals = report?.totals;
@@ -290,6 +303,21 @@ export function AgingReportView({
             counterpartyHeader={counterpartyHeader}
             selectedBucket={selectedBucket}
             onSelectBucket={onSelectBucket}
+            expanded={expanded}
+            onToggleParty={onToggleParty}
+            renderDetail={(row) => (
+              <AgingPartyDocuments
+                partyId={row.customerId}
+                partyType={partyType}
+                params={detailParams}
+                // The figure this panel has to reconcile against: the bucket
+                // amount when one is selected, the row total otherwise.
+                rowAmount={
+                  selectedBucket ? (row.amounts[selectedBucket] ?? 0) : row.total
+                }
+                bucketLabel={selectedLabel}
+              />
+            )}
           />
         </Card>
 
@@ -324,6 +352,7 @@ export const useAgingReport = (
   // which is what lets the order switch to oldest-first when a bucket is picked
   // without a setState inside an effect.
   const [sortRaw, setSort] = useState<AgingSort | null>(null);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   // A custom preset with no boundaries is not sent: the server rejects it, and
   // the user is mid-edit rather than mistaken.
@@ -355,6 +384,10 @@ export const useAgingReport = (
   const resetInvestigation = () => {
     setSelectedBucket(null);
     setSort(null);
+    // Open panels go too. Their documents were bucketed by the spec that is
+    // being replaced, so leaving them open would show rows labelled with
+    // columns that are no longer on screen — right figures, wrong headings.
+    setExpanded({});
   };
 
   return {
@@ -375,9 +408,20 @@ export const useAgingReport = (
       void saveAgingPreference({ preset: 'custom', buckets });
     },
     selectedBucket,
-    onSelectBucket: setSelectedBucket,
+    onSelectBucket: (next: string | null) => {
+      setSelectedBucket(next);
+      // The open panels were fetched for a different bucket filter, so their
+      // contents no longer match the row they sit under.
+      setExpanded({});
+    },
     sort: sortRaw ?? defaultAgingSort(selectedBucket),
     onChangeSort: setSort,
+    expanded,
+    onToggleParty: (partyId: string) =>
+      setExpanded((prev) => ({ ...prev, [partyId]: !prev[partyId] })),
+    // What the drill-down must be told, so its buckets are the report's
+    // buckets. `selectedBucket` is validated against the live payload above.
+    detailParams: { ...params, ...(selectedBucket ? { bucket: selectedBucket } : {}) },
   };
 };
 
