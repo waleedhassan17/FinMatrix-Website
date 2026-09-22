@@ -1,6 +1,6 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
-import { useState } from 'react';
-import { Info } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Info, X } from 'lucide-react';
 
 import {
   saveAgingPreference,
@@ -14,6 +14,14 @@ import { BucketPresetPicker } from '@/features/reports/BucketPresetPicker';
 import { KpiTile } from '@/features/reports/KpiTile';
 import { ReportShell } from '@/features/reports/ReportShell';
 import { ReportTitleBlock } from '@/features/reports/ReportTitleBlock';
+import { Select } from '@/components/ui/Select';
+import {
+  AGING_SORT_OPTIONS,
+  defaultAgingSort,
+  resolveSelectedBucket,
+  visibleAgingRows,
+  type AgingSort,
+} from '@/models/reportAging';
 import { csvAmount, csvFilename, downloadCsv, toCsv, type CsvRow } from '@/models/reportCsv';
 import { asOfLabel } from '@/models/reportPeriod';
 import {
@@ -54,6 +62,11 @@ export interface AgingReportViewProps {
   customBuckets: string;
   onPickPreset: (key: AgingPresetKey) => void;
   onApplyCustom: (buckets: string) => void;
+  /** The bucket being investigated, already validated against the payload. */
+  selectedBucket: string | null;
+  onSelectBucket: (key: string | null) => void;
+  sort: AgingSort;
+  onChangeSort: (sort: AgingSort) => void;
 }
 
 /**
@@ -88,6 +101,10 @@ export function AgingReportView({
   customBuckets,
   onPickPreset,
   onApplyCustom,
+  selectedBucket,
+  onSelectBucket,
+  sort,
+  onChangeSort,
 }: AgingReportViewProps) {
   const report = query.data;
   const totals = report?.totals;
@@ -96,6 +113,13 @@ export function AgingReportView({
   const buckets = report?.buckets ?? LEGACY_AGING_BUCKETS;
   const overdue = report ? overdueTotal(report) : 0;
   const notDue = report ? notYetDueTotal(report) : 0;
+
+  const allRows = report?.rows ?? [];
+  const visibleRows = useMemo(
+    () => visibleAgingRows({ rows: allRows, buckets, selectedBucket, sort }),
+    [allRows, buckets, selectedBucket, sort],
+  );
+  const selectedLabel = buckets.find((b) => b.key === selectedBucket)?.label;
 
   const exportCsv = () => {
     if (!report) return;
@@ -204,7 +228,13 @@ export function AgingReportView({
               />
             }
           />
-          <AgingChart buckets={buckets} totals={totals ?? ZERO_TOTALS} />
+          <AgingChart
+            buckets={buckets}
+            totals={totals ?? ZERO_TOTALS}
+            rows={allRows}
+            selectedBucket={selectedBucket}
+            onSelectBucket={onSelectBucket}
+          />
         </Card>
 
         <Card className="p-lg">
@@ -212,12 +242,54 @@ export function AgingReportView({
             report={`${title} Summary`}
             periodLabel={asOfLabel(report?.asOfDate ?? '')}
           />
+
+          {/* Screen-only: a printed report carries no filter, so a chip naming
+              one over an apparently-unfiltered table would misread. */}
+          <div className="mt-md flex flex-wrap items-center justify-between gap-sm print:hidden">
+            <div className="flex flex-wrap items-center gap-sm">
+              {selectedBucket && selectedLabel ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => onSelectBucket(null)}
+                    aria-label={`Clear the ${selectedLabel} filter`}
+                    className="flex items-center gap-xxs rounded-full border border-border bg-surface-2 px-md py-xxs text-label-sm text-text-primary hover:bg-surface-hover"
+                  >
+                    {selectedLabel} only
+                    <X className="size-3" aria-hidden="true" />
+                  </button>
+                  <span className="text-caption text-text-tertiary">
+                    {visibleRows.length} of {allRows.length}{' '}
+                    {counterpartyHeader.toLowerCase()}
+                    {allRows.length === 1 ? '' : 's'}
+                  </span>
+                </>
+              ) : (
+                <span className="text-caption text-text-tertiary">
+                  {allRows.length} {counterpartyHeader.toLowerCase()}
+                  {allRows.length === 1 ? '' : 's'} · select a column or a bar to
+                  narrow it
+                </span>
+              )}
+            </div>
+
+            <Select
+              compact
+              value={sort}
+              onChange={onChangeSort}
+              options={AGING_SORT_OPTIONS}
+              containerClassName="w-[11rem]"
+            />
+          </div>
+
           <AgingTable
             className="mt-md"
             buckets={buckets}
-            rows={report?.rows ?? []}
+            rows={visibleRows}
             totals={totals ?? ZERO_TOTALS}
             counterpartyHeader={counterpartyHeader}
+            selectedBucket={selectedBucket}
+            onSelectBucket={onSelectBucket}
           />
         </Card>
 
@@ -247,6 +319,11 @@ export const useAgingReport = (
 ) => {
   const [preset, setPreset] = useState<AgingPresetKey | null>(null);
   const [customBuckets, setCustomBuckets] = useState('3,6,9,12');
+  const [selectedBucketRaw, setSelectedBucket] = useState<string | null>(null);
+  // `null` means "follow whatever the default is for the current selection",
+  // which is what lets the order switch to oldest-first when a bucket is picked
+  // without a setState inside an effect.
+  const [sortRaw, setSort] = useState<AgingSort | null>(null);
 
   // A custom preset with no boundaries is not sent: the server rejects it, and
   // the user is mid-edit rather than mistaken.
@@ -264,6 +341,22 @@ export const useAgingReport = (
     queryFn: () => fetcher(params),
   });
 
+  // A bucket key only means something within the bucket set that produced it:
+  // `d31to60` exists under `monthly` and does not exist under `days3`. Validating
+  // against the live payload is what stops a stale selection from filtering the
+  // table to nothing beneath a chip naming a column that is not on screen.
+  const selectedBucket = resolveSelectedBucket(
+    selectedBucketRaw,
+    query.data?.buckets ?? LEGACY_AGING_BUCKETS,
+  );
+
+  // Changing the bucket set invalidates any selection made under the old one,
+  // and the order that selection implied.
+  const resetInvestigation = () => {
+    setSelectedBucket(null);
+    setSort(null);
+  };
+
   return {
     query,
     // Falls through to the server's answer on the first load, when we asked for
@@ -272,13 +365,19 @@ export const useAgingReport = (
     customBuckets,
     onPickPreset: (next: AgingPresetKey) => {
       setPreset(next);
+      resetInvestigation();
       void saveAgingPreference({ preset: next, buckets: customBuckets });
     },
     onApplyCustom: (buckets: string) => {
       setCustomBuckets(buckets);
       setPreset('custom');
+      resetInvestigation();
       void saveAgingPreference({ preset: 'custom', buckets });
     },
+    selectedBucket,
+    onSelectBucket: setSelectedBucket,
+    sort: sortRaw ?? defaultAgingSort(selectedBucket),
+    onChangeSort: setSort,
   };
 };
 
