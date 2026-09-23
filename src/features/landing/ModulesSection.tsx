@@ -26,7 +26,7 @@ import { Reveal } from '@/components/motion/Reveal';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { SectionIntro } from '@/features/landing/SectionIntro';
 import { cn } from '@/lib/cn';
-import { formatMoney } from '@/utils/money';
+import { formatAmount } from '@/utils/money';
 
 interface Module {
   icon: LucideIcon;
@@ -145,7 +145,7 @@ function StockLedgerVisual() {
             {row.qty.toLocaleString('en-US')}
           </span>
           <span className="text-right text-label-md tabular text-text-primary">
-            {formatMoney(row.value)}
+            {formatAmount(row.value)}
           </span>
         </div>
       ))}
@@ -160,7 +160,7 @@ function StockLedgerVisual() {
 /** Submit → review → post, with the product's own status badges. */
 function ApprovalFlowVisual() {
   const steps = [
-    { label: 'Staff submits', detail: `Bill · ${formatMoney(86400)}`, status: 'submitted', statusLabel: 'Submitted' },
+    { label: 'Staff submits', detail: `Bill · ${formatAmount(86400)}`, status: 'submitted', statusLabel: 'Submitted' },
     { label: 'Owner reviews', detail: 'Checks every line', status: 'pending', statusLabel: 'In review' },
     { label: 'Posts to the ledger', detail: 'Stock and payables move', status: 'posted', statusLabel: 'Posted' },
   ];
@@ -202,12 +202,17 @@ export function ModulesSection() {
         className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[480px] pattern-dots fade-mask-b"
       />
 
-      <div className="mx-auto max-w-[1200px] px-lg">
+      <div className="mx-auto max-w-[1280px] px-xl">
+        {/* The lede used to open "Most small distributors…", which told a reader
+            who was neither small nor a distributor that the page was not
+            addressed to them — the same narrowing the hero eyebrow used to do.
+            The problem it describes is the same at any size; only the number of
+            spreadsheets changes. */}
         <SectionIntro
           id="modules-heading"
           overline="The system"
           title="One place for stock, suppliers, customers and cash"
-          body="Most small distributors run a stock sheet, a separate invoice book and an accountant who reconciles them monthly. FinMatrix replaces all three with one set of records."
+          body="Stock lives in one sheet, invoices in another, and an accountant reconciles the two once a month. FinMatrix replaces all three with one set of records."
         />
 
         <ul className="mt-xxxxl grid gap-lg md:grid-cols-2 lg:grid-cols-3">

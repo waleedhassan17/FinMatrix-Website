@@ -7,20 +7,22 @@
 // Every link goes somewhere real. A footer full of href="#" placeholders looks
 // complete in a screenshot and is broken the moment anyone clicks.
 
-import { BarChart3, Mail, MapPin, MessageCircle, ShieldCheck, UserRound } from 'lucide-react';
+import { Globe2, Mail, MessageCircle, ShieldCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
+import { Logo } from '@/components/brand/Logo';
 import {
-  CONTACT_EMAIL,
+  COMPANY_ORIGIN,
+  CONTACT_EMAILS,
   CONTACT_WHATSAPP,
   CONTACT_WHATSAPP_DISPLAY,
-  OWNER_NAME,
 } from '@/features/landing/constants';
 import { normalizeWhatsappPhone } from '@/features/share/shareDocument';
 
 const PRODUCT = [
   { label: 'Features', href: '#modules' },
   { label: 'How it works', href: '#how-it-works' },
+  { label: 'How it holds up', href: '#how-it-holds-up' },
   // BILLING-DISABLED BUILD: dead anchor, see LandingPage.
   // { label: 'Pricing', href: '#pricing' },
   { label: 'Questions', href: '#faq' },
@@ -39,22 +41,20 @@ export function LandingFooter() {
         className="pointer-events-none absolute inset-0 -z-10 pattern-grid-dark fade-mask-b"
       />
 
-      <div className="mx-auto max-w-[1200px] px-lg pt-xxxxl pb-xl lg:pt-section">
+      <div className="mx-auto max-w-[1280px] px-xl pt-xxxxl pb-xl lg:pt-section">
         <div className="grid gap-xxxl md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)]">
           <div>
-            <div className="flex items-center gap-sm">
-              <span className="flex size-9 items-center justify-center rounded-lg bg-white/10 ring-1 ring-inset ring-white/20">
-                <BarChart3 className="size-5 text-text-inverse" aria-hidden="true" />
-              </span>
-              <span className="text-h3 text-text-inverse">FinMatrix</span>
-            </div>
+            <Logo tone="light" />
             <p className="mt-lg max-w-[380px] text-body-sm text-white/65">
-              Accounting, inventory, purchasing and deliveries on one ledger —
-              built for warehouse and distribution businesses in Pakistan.
+              Accounting, inventory, purchasing and deliveries on one ledger, for
+              businesses that move physical stock.
             </p>
+            {/* Origin, kept and kept quiet. It used to read "Built in Pakistan ·
+                Prices in PKR" — a single currency stated as a fact is a hard
+                ceiling on who the page is addressed to. */}
             <p className="mt-lg inline-flex items-center gap-xs rounded-full border border-white/10 bg-white/5 px-sm py-xxs text-label-sm text-white/70">
-              <MapPin className="size-3.5 text-success-bright" aria-hidden="true" />
-              Built in Pakistan · Prices in PKR
+              <Globe2 className="size-3.5 text-success-bright" aria-hidden="true" />
+              {COMPANY_ORIGIN}
             </p>
           </div>
 
@@ -77,11 +77,28 @@ export function LandingFooter() {
             <p id="footer-contact" className="text-overline text-white/45">
               Contact
             </p>
+            {/* Email first, WhatsApp under it. The order is the point: a chat
+                app as a company's primary channel reads as a sole trader, and
+                the named individual that used to head this list read the same
+                way. WhatsApp stays because it is a real support channel in
+                several of these markets.
+
+                Two addresses, neither labelled "sales" or "support", because
+                that split would be a fiction the first reply contradicts — and
+                nothing here says who is behind them. Who answers is not the
+                visitor's business; that they get an answer is. */}
             <ul className="mt-md flex flex-col gap-sm">
-              <li className="flex items-center gap-xs text-body-sm text-text-inverse">
-                <UserRound className="size-4 shrink-0 text-white/65" aria-hidden="true" />
-                <span>{OWNER_NAME}</span>
-              </li>
+              {CONTACT_EMAILS.map((email) => (
+                <li key={email}>
+                  <a
+                    href={`mailto:${email}`}
+                    className={`flex items-center gap-xs ${linkClass}`}
+                  >
+                    <Mail className="size-4 shrink-0" aria-hidden="true" />
+                    <span className="truncate">{email}</span>
+                  </a>
+                </li>
+              ))}
               <li>
                 <a
                   href={WHATSAPP_HREF}
@@ -91,16 +108,7 @@ export function LandingFooter() {
                   className={`flex items-center gap-xs ${linkClass}`}
                 >
                   <MessageCircle className="size-4 shrink-0" aria-hidden="true" />
-                  <span className="tabular">WhatsApp {CONTACT_WHATSAPP_DISPLAY}</span>
-                </a>
-              </li>
-              <li>
-                <a
-                  href={`mailto:${CONTACT_EMAIL}`}
-                  className={`flex items-center gap-xs ${linkClass}`}
-                >
-                  <Mail className="size-4 shrink-0" aria-hidden="true" />
-                  <span className="truncate">{CONTACT_EMAIL}</span>
+                  <span className="tabular">{CONTACT_WHATSAPP_DISPLAY}</span>
                 </a>
               </li>
               <li className="mt-xs flex flex-wrap items-center gap-x-md gap-y-xs">

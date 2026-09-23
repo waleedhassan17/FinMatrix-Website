@@ -13,9 +13,18 @@ import { cn } from '@/lib/cn';
  *
  * `secondary` is deliberately white-with-a-border rather than a second accent
  * colour. One action colour, and the primary button is it.
+ *
+ * THE PRESS STATE IS APP-WIDE, on purpose. Every button in the product had a
+ * hover colour and nothing at all on the way down, which on a touch screen means
+ * no acknowledgement until the next screen renders — the gap where people tap a
+ * second time. 1% and 70ms is under the threshold where it reads as an effect;
+ * it only reads as the button having been pressed. Excluded under reduced motion
+ * like every other transform here.
  */
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 rounded-sm text-label-lg whitespace-nowrap transition-colors ' +
+  'inline-flex items-center justify-center gap-2 rounded-sm text-label-lg whitespace-nowrap ' +
+    'transition-[color,background-color,border-color,transform] duration-150 ' +
+    'active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100 ' +
     'disabled:pointer-events-none disabled:opacity-60 ' +
     '[&_svg]:pointer-events-none [&_svg]:shrink-0',
   {

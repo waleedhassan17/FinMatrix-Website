@@ -14,7 +14,9 @@
 import { Building2, PackageCheck, ShieldCheck, UserPlus } from 'lucide-react';
 
 import { Reveal } from '@/components/motion/Reveal';
+import { useInView } from '@/components/motion/useInView';
 import { SectionIntro } from '@/features/landing/SectionIntro';
+import { cn } from '@/lib/cn';
 
 const STEPS = [
   {
@@ -49,6 +51,12 @@ const STEPS = [
 ];
 
 export function WorkflowSection() {
+  const {
+    ref: railRef,
+    armed: railArmed,
+    inView: railInView,
+  } = useInView<HTMLDivElement>();
+
   return (
     <section
       id="how-it-works"
@@ -60,7 +68,7 @@ export function WorkflowSection() {
         className="pointer-events-none absolute inset-0 -z-10 pattern-grid fade-mask-radial"
       />
 
-      <div className="mx-auto max-w-[1200px] px-lg">
+      <div className="mx-auto max-w-[1280px] px-xl">
         <SectionIntro
           id="how-heading"
           overline="Getting started"
@@ -70,10 +78,22 @@ export function WorkflowSection() {
 
         <div className="relative mt-xxxxl">
           {/* The rail shows only in the gaps between cards — each card's white
-              surface covers the part behind it. */}
+              surface covers the part behind it.
+
+              It draws left to right as the section arrives, which is what turns
+              four cards into one sequence. `origin-left` plus `scale-x` keeps it
+              on the compositor; animating `width` would lay out the row on every
+              frame. The cards stagger 90ms apart and the rail takes 900ms, so the
+              line stays roughly level with the step being revealed. */}
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute top-[48px] right-[12.5%] left-[12.5%] hidden h-[2px] rounded-full bg-linear-to-r from-primary-200 via-primary to-primary-200 lg:block"
+            ref={railRef}
+            className={cn(
+              'pointer-events-none absolute top-[48px] right-[12.5%] left-[12.5%] hidden h-[2px] origin-left rounded-full bg-linear-to-r from-primary-200 via-primary to-primary-200 lg:block',
+              railArmed &&
+                'transition-transform duration-[900ms] ease-out motion-reduce:transition-none',
+              railArmed && (railInView ? 'scale-x-100' : 'scale-x-0'),
+            )}
           />
 
           <ol className="relative grid gap-lg md:grid-cols-2 lg:grid-cols-4">

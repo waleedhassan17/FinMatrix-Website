@@ -172,8 +172,30 @@ describe('landing page structure', () => {
   it('names the sections the nav links to', () => {
     const { container } = renderLanding();
     // BILLING-DISABLED BUILD: 'pricing' removed with the section.
-    for (const id of ['modules', 'how-it-works', 'faq']) {
+    for (const id of ['modules', 'how-it-works', 'how-it-holds-up', 'faq']) {
       expect(container.querySelector(`#${id}`)).not.toBeNull();
     }
+  });
+
+  /**
+   * The assurance section is what the page offers INSTEAD of the logo wall and
+   * the user count the bans above rule out. If it is ever deleted because it
+   * "looks thin", the page goes back to answering "why should I believe these
+   * figures" with nothing — so it is pinned here rather than left to judgement.
+   *
+   * These are the two claims in it that are checkable outside the marketing
+   * copy: the ledger is double-entry, and role separation is enforced by the
+   * server rather than by the UI.
+   */
+  it('answers why the figures can be believed, without inventing proof', () => {
+    const { container } = renderLanding();
+    const section = container.querySelector('#how-it-holds-up');
+    const text = section?.textContent ?? '';
+
+    expect(section).not.toBeNull();
+    expect(text).toMatch(/double-entry/i);
+    expect(text).toMatch(/server/i);
+    // Whatever it says, it may not reach for the things the bans exist to stop.
+    expect(text).not.toMatch(/certified|guarantee/i);
   });
 });

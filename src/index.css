@@ -9,6 +9,21 @@
 @import '@fontsource/roboto/latin-700.css';
 @import '@fontsource/roboto/latin-800.css';
 
+/* Instrument Sans — the MARKETING face, and only that.
+   Roboto above is the product's face and matches the Android build, so it must
+   not move. But Roboto is Android's system UI font: on a public page selling
+   financial software to a company, it reads as a phone, not as an institution.
+
+   `wght.css` is the weight axis (400–700) in ONE variable woff2 — 30 kB for the
+   latin subset, against several static files for the same range. The latin-ext
+   face in the same file carries its own unicode-range, so a page with no
+   extended-latin glyphs never downloads it.
+
+   Nothing is code-split, and nothing needs to be: @font-face is lazy by spec.
+   The product UI never names a `hero-*` role, so a signed-in user downloads the
+   ~1 kB of @font-face rules and none of the font. */
+@import '@fontsource-variable/instrument-sans/wght.css';
+
 /* ═══════════════════════════════════════════════════════
    Design tokens → Tailwind theme
    ═══════════════════════════════════════════════════════
@@ -22,6 +37,12 @@
 @theme {
   /* ── Font ─────────────────────────────────────────── */
   --font-sans: Roboto, Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* The marketing display face. Bound to the `hero-*` type roles below rather
+     than to a wrapper class, so it reaches headlines and NOTHING else — a class
+     on the landing root would pull body copy onto it too. Falls back to the
+     product stack, so a failed font load changes weight, never layout. */
+  --font-display: 'Instrument Sans Variable', Roboto, system-ui, sans-serif;
 
   /* ── Action colour ────────────────────────────────── */
   --color-primary: #1f4e79;
@@ -123,16 +144,46 @@
   /* ── Type scale ───────────────────────────────────────
      Name a role, never a size and weight: `text-h2`, not
      `text-[22px] font-bold`. scripts/check-design-tokens.js enforces this. */
+  /* ── Marketing hero roles ─────────────────────────────
+     The only roles that carry --font-display, and the only ones the product
+     never names. Set at 600, not 800: weight 800 at display size is the single
+     loudest "startup" signal a page can send, and enterprise software sets its
+     headlines at 500–600. The size does the work instead of the weight.
+
+     Tailwind v4 merges the @utility blocks further down into these same
+     classes, which is where the display family is attached. */
+  --text-hero-xl: 62px;
+  --text-hero-xl--line-height: 68px;
+  --text-hero-xl--font-weight: 600;
+  --text-hero-xl--letter-spacing: -2px;
+
+  --text-hero-lg: 48px;
+  --text-hero-lg--line-height: 54px;
+  --text-hero-lg--font-weight: 600;
+  --text-hero-lg--letter-spacing: -1.2px;
+
+  --text-hero-md: 34px;
+  --text-hero-md--line-height: 40px;
+  --text-hero-md--font-weight: 600;
+  --text-hero-md--letter-spacing: -0.8px;
+
   /* The hero role. display-lg (36px) was the ceiling, and a marketing hero at
-     36px on a 1440px screen reads as a subheading. */
+     36px on a 1440px screen reads as a subheading.
+
+     800 → 600 on both of these. Verified reach before changing: display-xl has
+     exactly one consumer in the UI (the landing hero) and display-lg has two,
+     both on the landing page. pdf/pdfTheme.ts reads displayLg's SIZE only, so
+     the weight change does not reach the PDFs. display-md is left alone — it is
+     authenticated product (OnboardingShell, AuthShell, PlanCard, DocumentPaper)
+     and shares its values with the Android build. */
   --text-display-xl: 56px;
   --text-display-xl--line-height: 62px;
-  --text-display-xl--font-weight: 800;
+  --text-display-xl--font-weight: 600;
   --text-display-xl--letter-spacing: -1.4px;
 
   --text-display-lg: 36px;
   --text-display-lg--line-height: 44px;
-  --text-display-lg--font-weight: 800;
+  --text-display-lg--font-weight: 600;
   --text-display-lg--letter-spacing: -0.5px;
 
   --text-display-md: 32px;
@@ -246,8 +297,13 @@
   --spacing-section: 88px;
   --spacing-section-lg: 120px;
 
-  /* ── Motion ─────────────────────────────────────────── */
-  --animate-float: float 7s ease-in-out infinite;
+  /* ── Motion ───────────────────────────────────────────
+     Hand-rolled, because there is no animation plugin here and no animation
+     runtime either — see the header of src/components/motion/Reveal.tsx for why
+     framer-motion was turned down. `tailwindcss-animate` is NOT installed, so
+     `animate-in`, `fade-in-0` and friends do not exist in this project: a class
+     like that compiles to nothing and fails silently. Anything that animates
+     declares its keyframes here. */
   --animate-float-late: float 7s ease-in-out 1.8s infinite;
 
   @keyframes float {
@@ -259,12 +315,59 @@
       transform: translateY(-8px);
     }
   }
+
+  /* The mobile nav drawer. Radix holds the node on close until the animation
+     ends, so the exit needs its own keyframe or the panel vanishes instantly. */
+  --animate-drawer-in: drawer-in 220ms cubic-bezier(0.22, 0.8, 0.28, 1);
+  --animate-drawer-out: drawer-out 160ms ease-in;
+
+  @keyframes drawer-in {
+    from {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes drawer-out {
+    from {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+  }
 }
 
 /* `overline` is uppercase by role; Tailwind's type scale cannot express
    text-transform, so it is applied here. */
 @utility text-overline {
   text-transform: uppercase;
+}
+
+/* The display face, attached to the three marketing roles.
+   Tailwind's type scale cannot express font-family either, so it is applied the
+   same way `text-overline` applies text-transform: v4 folds this block into the
+   class the --text-hero-* variables already generate.
+
+   Binding the family HERE rather than to a landing-page wrapper is what keeps
+   it off body copy. It also makes leakage into the product structurally
+   impossible: nothing outside src/features/landing names a hero-* role. */
+@utility text-hero-xl {
+  font-family: var(--font-display);
+}
+
+@utility text-hero-lg {
+  font-family: var(--font-display);
+}
+
+@utility text-hero-md {
+  font-family: var(--font-display);
 }
 
 /* Money is always right-aligned with lining, fixed-width figures so columns of
@@ -431,6 +534,44 @@
   @media (forced-colors: active) {
     background-image: none;
     color: CanvasText;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   The FAQ accordion, opening rather than snapping
+   ═══════════════════════════════════════════════════════
+   A native <details> has always jumped to its open height in one frame, and on a
+   page where everything else eases that jump is the loudest static moment left.
+
+   Animating it needs `interpolate-size: allow-keywords`, which is what makes a
+   transition to `auto` possible at all, plus `::details-content`. Both are recent
+   and neither is everywhere yet, so the whole block sits behind @supports:
+   browsers without it keep exactly today's behaviour, which is a working
+   accordion. This is an enhancement, never a dependency.
+
+   `content-visibility` needs `allow-discrete` or the content pops in at the start
+   of the transition instead of being revealed by it. Opted out of under reduced
+   motion along with everything else.
+
+   Scoped by data attribute rather than a utility class because ::details-content
+   is a pseudo-element, which Tailwind has no syntax to reach. */
+@supports (interpolate-size: allow-keywords) {
+  @media (prefers-reduced-motion: no-preference) {
+    :root {
+      interpolate-size: allow-keywords;
+    }
+
+    details[data-animated]::details-content {
+      block-size: 0;
+      overflow: clip;
+      transition:
+        block-size 280ms cubic-bezier(0.22, 0.8, 0.28, 1),
+        content-visibility 280ms allow-discrete;
+    }
+
+    details[data-animated][open]::details-content {
+      block-size: auto;
+    }
   }
 }
 

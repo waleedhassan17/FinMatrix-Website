@@ -82,7 +82,7 @@ export function RolesSection() {
       aria-labelledby="roles-heading"
       className="bg-surface py-section lg:py-section-lg"
     >
-      <div className="mx-auto max-w-[1200px] px-lg">
+      <div className="mx-auto max-w-[1280px] px-xl">
         <SectionIntro
           id="roles-heading"
           overline="Your team"

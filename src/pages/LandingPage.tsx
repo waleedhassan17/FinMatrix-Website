@@ -16,6 +16,7 @@
 import { useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 
+import { AssuranceSection } from '@/features/landing/AssuranceSection';
 import { CtaSection } from '@/features/landing/CtaSection';
 import { FaqSection } from '@/features/landing/FaqSection';
 import { HeroSection } from '@/features/landing/HeroSection';
@@ -80,6 +81,10 @@ export default function LandingPage() {
         <ProofStrip />
         <ModulesSection />
         <WorkflowSection />
+        {/* The dark anchor in the middle of the page, and the answer to "why
+            should I believe the figures". It sits where PricingSection used to,
+            which is also what keeps the light sections from running five deep. */}
+        <AssuranceSection />
         <RolesSection />
         {/* BILLING-DISABLED BUILD: the public plan grid. Nothing is for
             sale during the warehouse testing phase. */}

@@ -2,10 +2,17 @@
 // FinMatrix Web — Hero product picture
 // ═══════════════════════════════════════════════════════
 // A picture of the real console, assembled from the real atoms: StatusBadge for
-// document states, formatMoney + `tabular` for figures, the product's own card
+// document states, formatAmount + `tabular` for figures, the product's own card
 // surface and navy. Built this way it doubles as a standing check that those
 // atoms still look right — a mockup drawn in a design tool could drift from the
 // app without anyone noticing.
+//
+// FIGURES CARRY NO CURRENCY SYMBOL. They used formatMoney, whose default prefix
+// is 'Rs ' — so the one part of the page a visitor reads as evidence of what the
+// product does was also quietly telling them which country it was for. The
+// product itself already has the convention for this: formatAmount is what it
+// uses wherever the column, not the cell, names the currency. Reaching for a
+// different symbol would only have swapped one market for another.
 //
 // It is exposed to assistive technology as ONE image with a description, not as
 // forty fragments of fake invoice data read out one by one.
@@ -16,11 +23,13 @@
 // page whose load time matters most. Twelve points and one <path> have neither
 // problem. Colours are token expressions (CHART_SERIES, colors.*), never hex.
 
-import { ClipboardCheck, TrendingUp, Truck } from 'lucide-react';
+import { TrendingUp, Truck } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
+import { useInView } from '@/components/motion/useInView';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { CHART_SERIES, colors } from '@/theme/tokens';
-import { formatMoney } from '@/utils/money';
+import { formatAmount } from '@/utils/money';
 
 /** Illustrative shape only — a product picture, not a customer's books. */
 const SERIES = [28, 34, 31, 42, 39, 48, 52, 47, 58, 63, 61, 72];
@@ -28,41 +37,209 @@ const SERIES = [28, 34, 31, 42, 39, 48, 52, 47, 58, 63, 61, 72];
 const W = 320;
 const H = 96;
 
-const linePath = (values: number[]): string => {
+/** The series as points, so the path string and its LENGTH share one source. */
+const points = (values: number[]): [number, number][] => {
   const max = Math.max(...values);
   const min = Math.min(...values);
   const span = max - min || 1;
 
-  return values
-    .map((v, i) => {
-      const x = (i / (values.length - 1)) * W;
-      const y = H - ((v - min) / span) * (H - 8) - 4;
-      return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(' ');
+  return values.map((v, i) => [
+    (i / (values.length - 1)) * W,
+    H - ((v - min) / span) * (H - 8) - 4,
+  ]);
 };
 
-const line = linePath(SERIES);
+const POINTS = points(SERIES);
+
+const line = POINTS.map(
+  ([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`,
+).join(' ');
+
 const area = `${line} L${W},${H} L0,${H} Z`;
+
+/**
+ * The path's length in user units, summed here rather than measured.
+ *
+ * The obvious way to get this is `path.getTotalLength()`. jsdom implements
+ * NEITHER that method NOR SVGPathElement — the property is undefined, calling it
+ * is a TypeError, and `instanceof` cannot be used to guard it. Since this path is
+ * straight segments through known points, Pythagoras gives the exact same number
+ * with no DOM read, nothing to guard, and no way for the test suite to trip on it.
+ *
+ * Rounded up so the dash is never a hair shorter than the line, which would leave
+ * a gap at the end of the draw.
+ */
+const LINE_LENGTH = Math.ceil(
+  POINTS.reduce(
+    (sum, [x, y], i) =>
+      i === 0 ? 0 : sum + Math.hypot(x - POINTS[i - 1][0], y - POINTS[i - 1][1]),
+    0,
+  ),
+);
+
+/**
+ * Intermediate frames only. formatAmount is Decimal-backed and allocates one per
+ * call, which is wasteful sixty times a second — but for a positive number it is
+ * exactly this call with an empty prefix, so the two cannot disagree. The last
+ * frame snaps to the real `value` string regardless, so they never have to.
+ */
+const TICK = new Intl.NumberFormat('en-US', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+const COUNT_MS = 900;
 
 function KpiTile({
   label,
   value,
+  amount,
   delta,
+  delay = 0,
 }: {
   label: string;
+  /** The real, final string. Rendered on the first paint. */
   value: string;
+  /** The same figure as a number, for the count. */
+  amount: number;
   delta: string;
+  delay?: number;
 }) {
+  // Seeded to the FINAL value, which is what makes every fallback path correct
+  // at once: first paint, reduced motion, and the jsdom suite all read the real
+  // number with no special casing. The count only ever replaces it temporarily.
+  const [display, setDisplay] = useState(value);
+  const { ref, armed, inView } = useInView<HTMLDivElement>({ playOnMount: true });
+
+  useEffect(() => {
+    if (!armed || !inView) return;
+    if (typeof requestAnimationFrame !== 'function') return;
+
+    let frame = 0;
+    let start = 0;
+
+    const step = (now: number) => {
+      if (!start) start = now;
+      const t = Math.min((now - start - delay) / COUNT_MS, 1);
+
+      if (t < 0) {
+        frame = requestAnimationFrame(step);
+        return;
+      }
+
+      // Ease-out cubic: fast enough at the start to feel responsive, and it
+      // settles rather than stopping dead.
+      const eased = 1 - (1 - t) ** 3;
+
+      // The last frame is the real string, never a re-derived one.
+      setDisplay(t >= 1 ? value : TICK.format(amount * eased));
+
+      if (t < 1) frame = requestAnimationFrame(step);
+    };
+
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [armed, inView, amount, value, delay]);
+
   return (
-    <div className="rounded-lg border border-border-light bg-surface-2 p-md">
+    <div
+      ref={ref}
+      className="rounded-lg border border-border-light bg-surface-2 p-md"
+    >
       <p className="text-label-sm text-text-secondary">{label}</p>
-      <p className="mt-xxs text-h3 tabular text-text-primary">{value}</p>
+      {/* `tabular` is load-bearing here, not decoration: fixed-width digits are
+          what stop the tile reflowing on every frame of the count. */}
+      <p className="mt-xxs text-h3 tabular text-text-primary">{display}</p>
       <p className="mt-xxs flex items-center gap-xxs text-caption text-success">
         <TrendingUp className="size-3.5" aria-hidden="true" />
         {delta}
       </p>
     </div>
+  );
+}
+
+/**
+ * The twelve-week trend, drawing itself once.
+ *
+ * This is the page's one piece of moving data, and it is doing a job rather than
+ * decorating: the product's whole claim is that the figures move together, and a
+ * line that draws says "live" in a way no sentence on the page does.
+ *
+ * The dash is set with an inline style, not a class. Two reasons: Tailwind cannot
+ * JIT a value computed at runtime, and going through cn() would risk the
+ * transition-class collision documented in Reveal. When `armed` is false no style
+ * object is attached at all, so the chart renders exactly as it did before any of
+ * this existed — which is what jsdom and a reduced-motion visitor both get.
+ *
+ * Pacing caveat: `preserveAspectRatio="none"` stretches the viewBox horizontally,
+ * so the browser measures the dash in scaled screen space and the sweep is not
+ * perfectly linear. The END state is unaffected — an offset of zero against a
+ * dasharray at least as long as the path is always fully solid. Do not try to fix
+ * the pacing by measuring the DOM; that is exactly what LINE_LENGTH avoids.
+ */
+function TrendChart() {
+  const { ref, armed, inView } = useInView<SVGSVGElement>({ playOnMount: true });
+
+  return (
+    <svg
+      ref={ref}
+      viewBox={`0 0 ${W} ${H}`}
+      className="mt-sm h-24 w-full"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <defs>
+        <linearGradient id="fm-hero-fill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={CHART_SERIES[0]} stopOpacity="0.3" />
+          <stop offset="100%" stopColor={CHART_SERIES[0]} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {[0.25, 0.5, 0.75].map((f) => (
+        <line
+          key={f}
+          x1="0"
+          x2={W}
+          y1={H * f}
+          y2={H * f}
+          stroke={colors.borderLight}
+          strokeWidth="1"
+          vectorEffect="non-scaling-stroke"
+        />
+      ))}
+      {/* The fill cannot be drawn — a dasharray does nothing to a filled shape —
+          so it fades in under the line, a beat behind it. */}
+      <path
+        d={area}
+        fill="url(#fm-hero-fill)"
+        style={
+          armed
+            ? {
+                opacity: inView ? 1 : 0,
+                transition: 'opacity 700ms ease-out 260ms',
+              }
+            : undefined
+        }
+      />
+      <path
+        d={line}
+        fill="none"
+        stroke={CHART_SERIES[0]}
+        strokeWidth="2.25"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        vectorEffect="non-scaling-stroke"
+        style={
+          armed
+            ? {
+                strokeDasharray: LINE_LENGTH,
+                strokeDashoffset: inView ? 0 : LINE_LENGTH,
+                transition: 'stroke-dashoffset 1100ms ease-out',
+              }
+            : undefined
+        }
+      />
+    </svg>
   );
 }
 
@@ -90,7 +267,7 @@ function DocRow({
       </div>
       <div className="flex shrink-0 items-center gap-sm">
         <span className="text-label-md tabular text-text-primary">
-          {formatMoney(amount)}
+          {formatAmount(amount)}
         </span>
         <StatusBadge status={status} />
       </div>
@@ -102,7 +279,7 @@ export function HeroPreview() {
   return (
     <div
       role="img"
-      aria-label="Illustration of the FinMatrix warehouse dashboard: stock value, receivables, a weekly dispatch trend, recent invoices, a purchase order awaiting approval and a dispatched delivery."
+      aria-label="Illustration of the FinMatrix dashboard: stock value, receivables, a weekly dispatch trend, recent invoices and a dispatched delivery."
       className="relative"
     >
       {/* Light pooled behind the window, so it reads as lifted off the ground. */}
@@ -134,13 +311,16 @@ export function HeroPreview() {
           <div className="mt-lg grid grid-cols-2 gap-sm">
             <KpiTile
               label="Stock on hand"
-              value={formatMoney(4820000)}
+              value={formatAmount(4820000)}
+              amount={4820000}
               delta="4.1% this month"
             />
             <KpiTile
               label="Receivables"
-              value={formatMoney(1264500)}
+              value={formatAmount(1264500)}
+              amount={1264500}
               delta="1.8% this month"
+              delay={90}
             />
           </div>
 
@@ -151,80 +331,36 @@ export function HeroPreview() {
               </p>
               <p className="text-caption text-success">Trending up</p>
             </div>
-            <svg
-              viewBox={`0 0 ${W} ${H}`}
-              className="mt-sm h-24 w-full"
-              preserveAspectRatio="none"
-              aria-hidden="true"
-              focusable="false"
-            >
-              <defs>
-                <linearGradient id="fm-hero-fill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={CHART_SERIES[0]} stopOpacity="0.3" />
-                  <stop offset="100%" stopColor={CHART_SERIES[0]} stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              {[0.25, 0.5, 0.75].map((f) => (
-                <line
-                  key={f}
-                  x1="0"
-                  x2={W}
-                  y1={H * f}
-                  y2={H * f}
-                  stroke={colors.borderLight}
-                  strokeWidth="1"
-                  vectorEffect="non-scaling-stroke"
-                />
-              ))}
-              <path d={area} fill="url(#fm-hero-fill)" />
-              <path
-                d={line}
-                fill="none"
-                stroke={CHART_SERIES[0]}
-                strokeWidth="2.25"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                vectorEffect="non-scaling-stroke"
-              />
-            </svg>
+            <TrendChart />
           </div>
 
           <div className="mt-lg">
             <p className="text-overline text-neutral-500">Recent invoices</p>
             <div className="mt-xs divide-y divide-border-light">
-              <DocRow docRef="INV-1042" party="Karachi Traders" amount={185000} status="paid" />
-              <DocRow docRef="INV-1041" party="Ravi Distributors" amount={92400} status="overdue" />
-              <DocRow docRef="INV-1040" party="Sialkot Supply Co" amount={56750} status="partial" />
+              {/* Party names carry no country. They were Karachi Traders, Ravi
+                  Distributors and Sialkot Supply Co — which placed the product
+                  in one market more concretely than any line of copy did, in
+                  the one part of the page a visitor reads as evidence. */}
+              <DocRow docRef="INV-1042" party="Meridian Trading" amount={185000} status="paid" />
+              <DocRow docRef="INV-1041" party="Halden Distribution" amount={92400} status="overdue" />
+              <DocRow docRef="INV-1040" party="Aster Supply Co" amount={56750} status="partial" />
             </div>
           </div>
         </div>
       </div>
 
-      {/* Floating: the maker-checker flow, in miniature. xl only — at narrower
-          widths these would collide with the headline column. Its left offset is
-          capped at the 40px column gap: any further and it sits on the hero
-          paragraph. It rests over the lower chart, clear of both the KPI figures
-          above and the "Recent invoices" label below, so it hides decoration,
-          not content. */}
-      <div className="absolute top-[49%] -left-xl hidden w-[252px] rounded-xl border border-border-light bg-surface p-md shadow-xl motion-safe:animate-float xl:block">
-        <div className="flex items-center gap-sm">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-warning-lighter">
-            <ClipboardCheck className="size-5 text-warning" aria-hidden="true" />
-          </span>
-          <div className="min-w-0">
-            <p className="text-label-md text-text-primary">Approval requested</p>
-            <p className="truncate text-caption text-text-secondary">
-              PO-2031 · {formatMoney(212000)}
-            </p>
-          </div>
-        </div>
-        <div className="mt-sm flex items-center justify-between">
-          <StatusBadge status="pending_approval" label="Awaiting owner" />
-          <span className="text-caption text-text-secondary">2m ago</span>
-        </div>
-      </div>
+      {/* THE SECOND FLOATING CARD IS GONE.
+          It was an "Approval requested" panel pinned at top-[49%] -left-xl. Two
+          things were wrong with it. It sat *on* the chart rather than beside it,
+          so the picture's one piece of moving data was permanently half-hidden;
+          and two cards drifting on separate loops over a third card is the kind
+          of decoration that reads as a template, which is the opposite of what
+          this page needs. Maker-checker is still claimed — in the hero's proof
+          list, in the modules grid and in the assurance section, all of which
+          say it without covering anything up.
 
-      {/* Floating: a dispatched load. */}
+          Floating: a dispatched load. Kept because it overlaps the corner, not
+          the content. */}
       <div className="absolute -right-md -bottom-xl hidden w-[236px] rounded-xl border border-border-light bg-surface p-md shadow-xl motion-safe:animate-float-late xl:block">
         <div className="flex items-center gap-sm">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary-50">

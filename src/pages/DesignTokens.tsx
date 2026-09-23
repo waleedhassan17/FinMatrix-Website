@@ -17,6 +17,9 @@ import { colors, form, typography, type TypeRoleName } from '@/theme/tokens';
 const TYPE_ROLES = Object.keys(typography) as TypeRoleName[];
 
 const TYPE_CLASS: Record<TypeRoleName, string> = {
+  heroXl: 'text-hero-xl',
+  heroLg: 'text-hero-lg',
+  heroMd: 'text-hero-md',
   displayXl: 'text-display-xl',
   displayLg: 'text-display-lg',
   displayMd: 'text-display-md',

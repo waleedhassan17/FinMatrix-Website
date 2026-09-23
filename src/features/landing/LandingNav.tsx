@@ -18,10 +18,11 @@
 // scroll lock and aria-modal are four things a hand-rolled drawer gets wrong.
 
 import * as Dialog from '@radix-ui/react-dialog';
-import { ArrowRight, BarChart3, Menu, X } from 'lucide-react';
+import { ArrowRight, Menu, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { Logo } from '@/components/brand/Logo';
 import { Button } from '@/components/ui/Button';
 import { useScrollY } from '@/components/motion/useScrollY';
 import { cn } from '@/lib/cn';
@@ -30,6 +31,7 @@ import { cn } from '@/lib/cn';
 const LINKS = [
   { id: 'modules', label: 'Features' },
   { id: 'how-it-works', label: 'How it works' },
+  { id: 'how-it-holds-up', label: 'Assurance' },
   // BILLING-DISABLED BUILD: #pricing is no longer rendered, so the link
   // would scroll nowhere and the scroll-spy would never highlight it.
   // { id: 'pricing', label: 'Pricing' },
@@ -90,31 +92,35 @@ export function LandingNav() {
         solid ? 'glass-light border-border-light shadow-card' : 'border-transparent',
       )}
     >
+      {/* The bar tightens from 72px to 60px once the page has moved. It is a
+          small thing and it is the detail that most reads as a considered
+          product site rather than a template: the header gives the content back
+          twelve pixels the moment it stops being the thing you are looking at.
+          Height is not a composited property, but this fires once per scroll
+          direction rather than per frame, so it costs one layout, not sixty. */}
       <nav
         aria-label="Main"
-        className="mx-auto flex h-[72px] max-w-[1200px] items-center justify-between gap-lg px-lg"
+        className={cn(
+          'mx-auto flex max-w-[1280px] items-center justify-between gap-lg px-xl',
+          'transition-[height] duration-300 ease-out motion-reduce:transition-none',
+          solid ? 'h-[60px]' : 'h-[72px]',
+        )}
       >
         <Link
           to="/"
           aria-label="FinMatrix home"
           className="flex items-center gap-sm rounded-md"
         >
-          <span
+          {/* The mark no longer sits in a tinted box. The box existed to give a
+              borrowed icon somewhere to live; a real mark stands on its own, and
+              the chrome around it was most of what read as "template". */}
+          <Logo
+            tone="inherit"
             className={cn(
-              'flex size-9 items-center justify-center rounded-lg transition-colors duration-300',
-              solid ? 'bg-primary shadow-md' : 'bg-white/10 ring-1 ring-inset ring-white/20',
+              'transition-colors duration-300',
+              solid ? 'text-primary-900' : 'text-text-inverse',
             )}
-          >
-            <BarChart3 className="size-5 text-text-inverse" aria-hidden="true" />
-          </span>
-          <span
-            className={cn(
-              'text-h3 transition-colors duration-300',
-              solid ? 'text-text-primary' : 'text-text-inverse',
-            )}
-          >
-            FinMatrix
-          </span>
+          />
         </Link>
 
         <ul className="hidden items-center gap-xxs md:flex">
@@ -176,18 +182,20 @@ export function LandingNav() {
           </Dialog.Trigger>
 
           <Dialog.Portal>
-            <Dialog.Content className="fixed inset-0 z-[60] flex flex-col overflow-y-auto surface-mesh-navy px-lg pb-xl text-text-inverse md:hidden">
+            {/* The drawer used to appear between one frame and the next, which
+                on a phone reads as a glitch rather than a panel. Radix puts
+                data-state="open"/"closed" on this node and holds the exit until
+                the animation finishes, so a short fade and slide is all it takes.
+                Both states need an animation or the close is instant again. */}
+            <Dialog.Content className="fixed inset-0 z-[60] flex flex-col overflow-y-auto surface-mesh-navy px-lg pb-xl text-text-inverse data-[state=closed]:animate-drawer-out data-[state=open]:animate-drawer-in motion-reduce:animate-none md:hidden">
               <div
                 aria-hidden="true"
                 className="pointer-events-none absolute inset-0 pattern-grid-dark fade-mask-b"
               />
 
               <div className="relative flex h-[72px] shrink-0 items-center justify-between">
-                <Dialog.Title className="flex items-center gap-sm text-h3 text-text-inverse">
-                  <span className="flex size-9 items-center justify-center rounded-lg bg-white/10 ring-1 ring-inset ring-white/20">
-                    <BarChart3 className="size-5" aria-hidden="true" />
-                  </span>
-                  FinMatrix
+                <Dialog.Title asChild>
+                  <Logo tone="light" />
                 </Dialog.Title>
                 <Dialog.Close asChild>
                   <button

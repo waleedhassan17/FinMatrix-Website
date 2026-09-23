@@ -1,14 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import {
-  BarChart3,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  X,
-} from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 
+import { Logo, LogoMark } from '@/components/brand/Logo';
 import { cn } from '@/lib/cn';
 import {
   navForRole,
@@ -244,11 +239,14 @@ export function Sidebar({
   const content = (
     <>
       <div className="flex h-16 items-center justify-between border-b border-white/10 px-md">
-        <Link to="/dashboard" className="flex items-center gap-sm">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-white/10">
-            <BarChart3 className="size-5 text-white" />
-          </span>
-          {!collapsed && <span className="text-h4 text-white">FinMatrix</span>}
+        {/* Collapsed, the rail is too narrow for the wordmark, so the mark
+            carries the brand alone and needs its own label. */}
+        <Link
+          to="/dashboard"
+          className="flex items-center gap-sm text-text-inverse"
+          aria-label={collapsed ? 'FinMatrix — dashboard' : undefined}
+        >
+          {collapsed ? <LogoMark className="size-8" /> : <Logo tone="light" />}
         </Link>
         <button
           type="button"

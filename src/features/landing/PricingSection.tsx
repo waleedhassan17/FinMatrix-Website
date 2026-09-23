@@ -47,7 +47,7 @@ export function PricingSection() {
         className="pointer-events-none absolute inset-0 -z-10 texture-grain opacity-[0.06]"
       />
 
-      <div className="mx-auto max-w-[1200px] px-lg">
+      <div className="mx-auto max-w-[1280px] px-xl">
         <SectionIntro
           id="pricing-heading"
           tone="dark"

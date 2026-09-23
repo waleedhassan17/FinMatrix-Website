@@ -12,6 +12,9 @@ import { cn } from '@/lib/cn';
  */
 
 const ROLES = [
+  'hero-xl',
+  'hero-lg',
+  'hero-md',
   'display-xl',
   'display-lg',
   'display-md',
@@ -66,6 +69,31 @@ describe('type roles survive a text colour', () => {
     expect(
       classes(cn('text-display-md lg:text-display-xl', 'text-white')),
     ).toEqual(['text-display-md', 'lg:text-display-xl', 'text-white']);
+  });
+
+  /**
+   * The hero roles carry the display FACE, not just a size — the family is
+   * attached to the class in src/index.css. If the merger drops one of these
+   * against a colour, the headline silently falls back to Roboto and the whole
+   * point of the marketing typeface is lost with no error anywhere.
+   */
+  it('keeps the hero roles, which carry the display face, beside a colour', () => {
+    expect(
+      classes(cn('text-hero-md lg:text-hero-xl', 'text-text-inverse')),
+    ).toEqual(['text-hero-md', 'lg:text-hero-xl', 'text-text-inverse']);
+  });
+});
+
+describe('the marketing font family', () => {
+  it('resolves against the product family rather than stacking', () => {
+    expect(cn('font-sans', 'font-display')).toBe('font-display');
+  });
+
+  it('survives beside a type role and a colour', () => {
+    const out = classes(cn('font-display text-hero-xl', 'text-text-inverse'));
+    expect(out).toContain('font-display');
+    expect(out).toContain('text-hero-xl');
+    expect(out).toContain('text-text-inverse');
   });
 });
 

@@ -16,11 +16,17 @@
 // anytime" stays out as well: nothing renews, so there is nothing to cancel.
 // landingHonesty.test.tsx enforces all of this.
 
-import { ArrowRight, Check } from 'lucide-react';
+import { ArrowRight, CalendarClock, Check } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 import { Button } from '@/components/ui/Button';
 import { Reveal } from '@/components/motion/Reveal';
+import { CONTACT_EMAILS_MAILTO } from '@/features/landing/constants';
+
+/** Same mail as the hero's, so a buyer who scrolled past it still has the door. */
+const DEMO_HREF = `mailto:${CONTACT_EMAILS_MAILTO}?subject=${encodeURIComponent(
+  'FinMatrix demo request',
+)}`;
 
 // BILLING-DISABLED BUILD: the middle fact promised a free trial, and
 // "nothing renews automatically" answers a question nobody can ask when
@@ -42,7 +48,7 @@ export function CtaSection() {
       aria-labelledby="cta-heading"
       className="bg-background pb-section lg:pb-section-lg"
     >
-      <div className="mx-auto max-w-[1200px] px-lg">
+      <div className="mx-auto max-w-[1280px] px-xl">
         <Reveal>
           <div className="relative isolate overflow-hidden rounded-2xl surface-mesh-navy px-xl py-xxxxl text-center text-text-inverse shadow-xl sm:px-xxxxl lg:py-section">
             <div
@@ -56,9 +62,9 @@ export function CtaSection() {
 
             <h2
               id="cta-heading"
-              className="mx-auto max-w-[720px] text-display-sm text-text-inverse sm:text-display-md lg:text-display-lg"
+              className="mx-auto max-w-[760px] text-display-sm text-text-inverse sm:text-display-md lg:text-hero-lg"
             >
-              Put your warehouse and your ledger on the same page
+              Put your stock and your ledger on the same page
             </h2>
 
             {/* BILLING-DISABLED BUILD: was "try every feature free for 30
@@ -97,9 +103,24 @@ export function CtaSection() {
                 asChild
                 className="border border-white/20 bg-white/5 px-xl text-text-inverse hover:bg-white/10"
               >
-                <Link to="/get-started">Sign in</Link>
+                <a href={DEMO_HREF}>
+                  <CalendarClock className="size-4" aria-hidden="true" />
+                  Book a demo
+                </a>
               </Button>
             </div>
+
+            {/* Sign-in stays reachable but stops competing with the two things
+                a first-time visitor is actually here to do. */}
+            <p className="mt-lg text-body-sm text-white/60">
+              Already have an account?{' '}
+              <Link
+                to="/get-started"
+                className="text-text-inverse underline underline-offset-4 hover:text-white/80"
+              >
+                Sign in
+              </Link>
+            </p>
 
             <ul className="mt-xl flex flex-wrap justify-center gap-x-xl gap-y-xs">
               {FACTS.map((fact) => (

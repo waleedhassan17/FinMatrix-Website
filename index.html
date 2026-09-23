@@ -2,31 +2,140 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
     <!--
       `/` is the public landing page and there is no server rendering, so this is
       the only title and description a crawler or a shared link ever sees. Stated
       in product terms, with no claim the product cannot back.
+
+      ╔══════════════════════════════════════════════════════════════════════╗
+      ║  NO-DOMAIN BUILD — restore these four things once a domain exists.   ║
+      ╚══════════════════════════════════════════════════════════════════════╝
+      Every tag that needs an ABSOLUTE origin is commented out below, because
+      the origin used to be https://finmatrix.com and nobody owns it. A
+      canonical link is the dangerous one: pointing it at a domain you do not
+      control tells search engines to credit that site instead of yours, which
+      is worse than having no canonical at all.
+
+      When the real host is known, search this file for NO-DOMAIN and restore:
+        1. <link rel="canonical">
+        2. <meta property="og:url">
+        3. the og:image / twitter:image block — public/og-image.png is already
+           generated and sitting in the build, it just needs an absolute URL
+        4. "url" and "@id" on the JSON-LD Organization
+
+      Relative paths are not a workaround: crawlers do not resolve a relative
+      og:image, and most never run the JavaScript that could fill one in.
     -->
-    <title>FinMatrix — Warehouse accounting, inventory and deliveries</title>
+    <title>FinMatrix — Inventory, deliveries and accounting on one ledger</title>
     <meta
       name="description"
-      content="FinMatrix runs inventory, purchasing, deliveries and accounting on one ledger. Built for warehouse and distribution businesses in Pakistan."
+      content="FinMatrix runs inventory, purchasing, deliveries and accounting on one ledger, so your stock and your books hold the same number. Built for businesses that move physical goods."
     />
+    <!-- NO-DOMAIN: <link rel="canonical" href="https://YOUR-DOMAIN/" /> -->
     <meta name="theme-color" content="#1f4e79" />
 
+    <!-- Icons. The favicon was Vite's own scaffold icon until this pass, so
+         every visitor's browser tab showed the build tool's logo. -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- NO <link rel="preload"> for the marketing font, deliberately. The only
+         path available here is the node_modules one, and Vite rewrites and
+         hashes that into /assets/ at build time — so a preload written here
+         resolves in dev and 404s in production, costing a failed request and
+         buying nothing. The @font-face reaches the browser with the stylesheet,
+         which is render-blocking anyway, and it is font-display: swap, so the
+         headline paints in the fallback rather than not at all. -->
+
+    <!-- Open Graph. og:locale was en_PK and both descriptions named Pakistan,
+         which told every share target the page was for one country. -->
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="FinMatrix" />
     <meta
       property="og:title"
-      content="FinMatrix — Warehouse accounting, inventory and deliveries"
+      content="FinMatrix — Inventory, deliveries and accounting on one ledger"
     />
     <meta
       property="og:description"
-      content="Stock, suppliers, customers and cash in one system. Built for warehouse and distribution businesses in Pakistan."
+      content="Stock, suppliers, customers and cash in one system, on a double-entry ledger. Your stock and your books, the same number."
     />
-    <meta property="og:locale" content="en_PK" />
+    <meta property="og:locale" content="en" />
+
+    <!-- The title and description still give a shared link something to show.
+         What is missing until there is a domain is the picture — a text-only
+         card is plain, a card whose image 404s on someone else's host is worse. -->
+    <meta name="twitter:card" content="summary" />
+    <meta
+      name="twitter:title"
+      content="FinMatrix — Inventory, deliveries and accounting on one ledger"
+    />
+    <meta
+      name="twitter:description"
+      content="Stock, suppliers, customers and cash in one system, on a double-entry ledger."
+    />
+
+    <!-- NO-DOMAIN: restore this whole block with the real origin, and switch
+         twitter:card above back to "summary_large_image".
+    <meta property="og:url" content="https://YOUR-DOMAIN/" />
+    <meta property="og:image" content="https://YOUR-DOMAIN/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="FinMatrix — your stock and your books, the same number."
+    />
+    <meta name="twitter:image" content="https://YOUR-DOMAIN/og-image.png" />
+    -->
+
+
+    <!--
+      Structured data. Deliberately minimal: name, what it is, and how to reach a
+      human. No aggregateRating and no offers — a rating needs reviews that exist,
+      and Google penalises invented ones. The same rule the landing copy follows.
+    -->
+    <!-- NO-DOMAIN: every absolute URL is out. "@id" is a fragment rather than a
+         full URL so the publisher reference still resolves inside this graph;
+         add "url" and "logo" back alongside it when there is a host. The two
+         contact addresses match src/features/landing/constants.ts — if one
+         changes there, change it here. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "#organization",
+            "name": "FinMatrix",
+            "contactPoint": [
+              {
+                "@type": "ContactPoint",
+                "contactType": "customer service",
+                "email": "waleedhassansfd@gmail.com",
+                "availableLanguage": ["en"]
+              },
+              {
+                "@type": "ContactPoint",
+                "contactType": "customer service",
+                "email": "zaidvirk49@gmail.com",
+                "availableLanguage": ["en"]
+              }
+            ]
+          },
+          {
+            "@type": "SoftwareApplication",
+            "name": "FinMatrix",
+            "applicationCategory": "BusinessApplication",
+            "applicationSubCategory": "Enterprise Resource Planning",
+            "operatingSystem": "Web, Android",
+            "publisher": { "@id": "#organization" },
+            "description": "Inventory, purchasing, deliveries and accounting on one double-entry ledger."
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

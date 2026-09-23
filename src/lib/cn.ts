@@ -26,6 +26,9 @@ const twMerge = extendTailwindMerge({
   extend: {
     theme: {
       text: [
+        'hero-xl',
+        'hero-lg',
+        'hero-md',
         'display-xl',
         'display-lg',
         'display-md',
@@ -45,6 +48,11 @@ const twMerge = extendTailwindMerge({
         'overline',
       ],
       shadow: ['card'],
+      // `font` is the font-FAMILY group, which is separate from `text` above —
+      // that one is font-size. Without this, `font-display` is unrecognised and
+      // will not resolve against `font-sans`, so both would survive a merge and
+      // the winner would be left to CSS source order.
+      font: ['display'],
       spacing: [
         'xxs',
         'xs',

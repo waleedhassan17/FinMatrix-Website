@@ -785,3 +785,147 @@ re-averaged the item.
 - **A per-item version of I23 is a diagnostic, not a gate.** An item whose
   average was repriced without a matching movement cannot reconcile
   individually even though its company ties exactly. See `qa/DIAGNOSIS.md`.
+
+---
+
+# Enterprise pass — landing page brand, typography and assurance
+
+The first visual overhaul (above) fixed the page's *surfaces*. What was left was
+the thing a corporate buyer reads in the first two seconds: a placeholder brand,
+a consumer typeface, copy pinned to one country and one industry, and a personal
+Gmail address as the only way to reach the company. FinMatrix is being sold
+internationally, and none of those survive contact with a procurement team.
+
+The constraint that shaped the whole pass is `landingHonesty.test.tsx`, which
+bans every shortcut a marketing page normally takes: customer counts, "trusted
+by", uptime figures, "bank-grade", testimonials. Those bans are correct and none
+were relaxed. So the page earns authority from things that are true and checkable
+instead — see the assurance section below.
+
+## Already verified
+
+| Check | Evidence |
+|---|---|
+| Gate green | `npm run verify` clean — `tsc -b`, `check:tokens`, **1101 tests** across 56 files (1046 before) |
+| New type roles reach the CSS | Built CSS greps for `.text-hero-xl{font-family:var(--font-display)}` AND the size rule Tailwind generates from `--text-hero-*`; both emit, as does `.font-display{font-family:var(--font-display)}` |
+| Marketing font ships and is subset | `instrument-sans-latin-wght-normal` **30.1 kB** (the 400–700 axis in one variable woff2) plus an 11.1 kB latin-ext face behind its own unicode-range |
+| Bundle | CSS 69 kB / 12.2 kB gzip → **83.3 kB / 14.7 kB gzip**. JS entry 567 kB / 178 kB → **547.8 kB / 170.5 kB gzip** — down, because the removed floating card took two lucide icons with it |
+| No horizontal scroll at 390 px | `document.documentElement.scrollWidth` is exactly **390** under real device-metrics emulation, on the page and with the mobile drawer open |
+| Reduced motion | Under `prefers-reduced-motion: reduce`, after scrolling the full 6,328 px: **0** running animations, `html.style.scrollBehavior` unset, and **0** `Reveal` nodes left at opacity 0 (the six transparent nodes are all hover underlines) |
+| Drawer accessibility | Radix resolves `aria-labelledby` to the text "FinMatrix"; 0 console errors or warnings |
+| Rendered and reviewed | Headless Chrome at 1440 px (hero, assurance band, closing CTA, footer) and CDP device emulation at 390×844 (hero, product picture, drawer) |
+
+## Bugs found and fixed
+
+1. **`Logo` swallowed the props Radix hands it, and the mobile drawer lost its
+   accessible name.** `Dialog.Title asChild` clones its child and passes the `id`
+   that the dialog's `aria-labelledby` points at. The first version of the
+   component destructured only its own named props, so the id reached no element,
+   `aria-labelledby` referenced an id that did not exist, and the drawer had **no
+   accessible name at all**. Nothing threw, nothing looked wrong, and every test
+   still passed — it was visible only in the accessibility tree. `Logo` now
+   extends `ComponentProps<'span'>` and spreads the rest;
+   `src/components/brand/__tests__/Logo.test.tsx` pins it.
+2. **The hero's floating "Approval requested" card sat on top of the chart.**
+   Pinned at `top-[49%] -left-xl` with a 252 px width, it covered most of the
+   12-week trend line — the picture's only piece of moving data. Removed rather
+   than nudged; see the decisions below.
+3. **The product picture was advertising one country.** Its invoice rows read
+   *Karachi Traders*, *Ravi Distributors* and *Sialkot Supply Co*, and every
+   figure carried `formatMoney`'s default `Rs ` prefix. That is the part of the
+   page a visitor reads as evidence, and it fixed the market more concretely than
+   any line of copy did.
+
+## Decisions worth knowing before you read the code
+
+- **The favicon was Vite's.** `public/favicon.svg` was the stock scaffold icon in
+  Vite's brand purple (`#863bff`), so every visitor's browser tab showed the build
+  tool's logo. `public/icons.svg` was the template's social sprite — Bluesky and
+  Discord. Both are gone, along with `src/assets/{react.svg,vite.svg,hero.png}`,
+  all confirmed unreferenced.
+- **The mark is monochrome, and that is a system decision, not a taste one.** The
+  obvious two-tone treatment would spend the brand teal on the logo. Teal is not
+  free here: it is the staff portal's wayfinding colour, the one thing that tells
+  a staff member they are at a different door. The second ledger rule is
+  separated by opacity instead, which also survives every ground it lands on —
+  `#0f766e` on navy does not.
+- **The marketing face is bound to the type ROLES, not to a wrapper class.**
+  `--font-display` is attached to `text-hero-xl/lg/md` through `@utility` blocks,
+  mirroring how `text-overline` already applies `text-transform`. A class on the
+  landing root would have pulled body copy onto the display face too. Leakage
+  into the product is structurally impossible: nothing outside
+  `src/features/landing` names a `hero-*` role, so a signed-in user downloads the
+  ~1 kB of `@font-face` rules and none of the font.
+- **`display-xl` and `display-lg` dropped 800 → 600; `display-md` did not.**
+  Reach was checked before changing: `display-xl` has exactly one consumer in the
+  UI and `display-lg` two, all on the landing page (`pdf/pdfTheme.ts` reads
+  displayLg's *size* only). `display-md` is authenticated product — OnboardingShell,
+  AuthShell, PlanCard, DocumentPaper — and shares its values with the Android
+  build, so it keeps 800.
+- **Adding a typography key breaks `tsc -b` in a place nothing documents.**
+  `src/pages/DesignTokens.tsx` declares `TYPE_CLASS: Record<TypeRoleName, string>`,
+  which is exhaustive. A new role in `tokens.ts` is a compile error until a row is
+  added there. Likewise `src/lib/cn.ts` must list the role or tailwind-merge
+  deletes it silently — and note its `text` array is font-SIZE; font-family needs
+  the separate `font` key, which is why `font: ['display']` is there.
+- **The hero headline gave up a word so the type could stay large.** "Your stock
+  and your books, the same number." at 68 px is three lines in this column however
+  it is balanced, and the browser hung "the" alone on the end of the second.
+  Sizing down far enough to fix that alone meant ~51 px — *below* the 56 px it
+  replaced. Instead the copy lost one "your" and the type went to 62 px, and it
+  sets as two even lines.
+- **One floating card, not two.** Two cards drifting on separate loops over a
+  third card reads as a template. Maker-checker is still claimed — in the hero
+  proof list, the modules grid and the assurance section — without covering up
+  the chart to do it.
+- **The assurance section is what replaces the logo wall.** It is the answer to
+  "why should I believe these figures", built only from things pointable at in the
+  repo: reports that reconcile (`qa/invariants.sql`, `test:reports-reflect`, AR
+  aging tied to 1100 and AP to 2000), a double-entry ledger, four server-enforced
+  roles (`src/types/index.ts`), and approvals with an audit log. It is a **dark**
+  band because disabling pricing left five light sections in a row with no anchor
+  between the hero and the footer; it sits where pricing used to.
+- **The demo path is a `mailto:`, deliberately.** A contact form needs an endpoint
+  and there is none. A form that silently drops what a buyer types is worse than
+  no demo path. It is an `<a href="mailto:">`, which the structure test ignores
+  because that test only inspects `a[href^="/"]`.
+- **Figures in the product picture carry no currency symbol.** `formatAmount`
+  rather than `formatMoney` — the product's own convention for where the column,
+  not the cell, names the currency. Reaching for `$` would only have swapped one
+  market for another.
+
+## What needs a human
+
+- [ ] **The domain is a placeholder.** `finmatrix.com` stands in throughout
+      `src/features/landing/constants.ts` and `index.html` (canonical, `og:url`,
+      `og:image`, JSON-LD). Point them at the real host and at real, monitored
+      `support@` and `sales@` inboxes. An address on the site that bounces is
+      worse than no address, and a canonical pointing at a domain you do not own
+      tells search engines to credit someone else.
+- [ ] **Confirm the WhatsApp number is still right** in E.164 (`+92 312 489 0176`).
+      Only its form changed, not its digits.
+- [ ] **Safari, macOS and iOS**: the display face at weight 600, `text-balance` on
+      the hero headline, and `background-clip: text` on the gradient phrase.
+- [ ] **Lighthouse on `/`** after `npm run build && npm run preview`, target ≥ 90
+      on Performance, Best Practices and Accessibility.
+- [ ] **Validate the share card** through a social-card debugger once the real
+      domain is live — `og:image` is absolute and cannot resolve until then.
+- [ ] **Contrast on dark grounds** still unmeasured for the `white/55`–`white/70`
+      small text, now including the assurance card bodies.
+
+## Known gaps, by design
+
+- **No internationalisation.** There is no i18n library and no `Intl` use beyond
+  two model files. This pass makes the page *read* multinational — it does not
+  make the product multilingual or multi-currency, which is a product-wide
+  project, not a landing page change.
+- **`public/og-image.png` is generated, not hand-designed**, and its text is
+  baked in. If the `<title>`/`og:title` or the hero headline changes, the card
+  has to be regenerated or it will contradict the page.
+- **The origin line is a claim about the company, not the product.** "Built in
+  Pakistan · Working worldwide" is in the footer. If there is no non-Pakistani
+  customer yet, "Working worldwide" is an aspiration — reword it rather than let
+  it become the kind of line this file exists to catch.
+- **Pricing is still disabled.** `BILLING_DISABLED_BUILD` is unchanged, and
+  `PricingSection` was carried through the container widening so it still
+  compiles and still matches the other sections when it is restored.

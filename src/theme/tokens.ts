@@ -271,9 +271,23 @@ export interface TypeRole {
 }
 
 export const typography = {
+  // ── Marketing hero roles ────────────────────────────────
+  // WEB LANDING PAGE ONLY, and the only roles that carry the display face
+  // (--font-display / Instrument Sans, bound in src/index.css). The Android app
+  // has no marketing surface, so it never renders these.
+  //
+  // Set at 600. Weight 800 at display size reads as a startup; institutional
+  // software sets headlines at 500–600 and lets the size carry the emphasis.
+  heroXl: { fontSize: 62, lineHeight: 68, fontWeight: 600, letterSpacing: -1.8 },
+  heroLg: { fontSize: 48, lineHeight: 54, fontWeight: 600, letterSpacing: -1.2 },
+  heroMd: { fontSize: 34, lineHeight: 40, fontWeight: 600, letterSpacing: -0.8 },
+
   // Marketing hero only. Nothing inside the product is set this large.
-  displayXl: { fontSize: 56, lineHeight: 62, fontWeight: 800, letterSpacing: -1.4 },
-  displayLg: { fontSize: 36, lineHeight: 44, fontWeight: 800, letterSpacing: -0.5 },
+  // displayXl/displayLg dropped 800 → 600 with the hero roles above; both are
+  // landing-page-only in the UI. displayMd keeps 800 — it is authenticated
+  // product and shares its values with the Android build.
+  displayXl: { fontSize: 56, lineHeight: 62, fontWeight: 600, letterSpacing: -1.4 },
+  displayLg: { fontSize: 36, lineHeight: 44, fontWeight: 600, letterSpacing: -0.5 },
   displayMd: { fontSize: 32, lineHeight: 40, fontWeight: 800, letterSpacing: -0.5 },
   displaySm: { fontSize: 24, lineHeight: 30, fontWeight: 700, letterSpacing: -0.3 },
 

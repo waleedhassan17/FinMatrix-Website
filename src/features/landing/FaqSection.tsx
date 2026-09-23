@@ -14,7 +14,7 @@
 import { Mail, Plus } from 'lucide-react';
 
 import { Reveal } from '@/components/motion/Reveal';
-import { CONTACT_EMAIL } from '@/features/landing/constants';
+import { CONTACT_EMAILS } from '@/features/landing/constants';
 import { SectionIntro } from '@/features/landing/SectionIntro';
 
 // BILLING-DISABLED BUILD: three of these answered questions about trials,
@@ -61,7 +61,7 @@ export function FaqSection() {
       aria-labelledby="faq-heading"
       className="scroll-mt-20 bg-background py-section lg:py-section-lg"
     >
-      <div className="mx-auto grid max-w-[1200px] gap-xxxl px-lg lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-xxxxl">
+      <div className="mx-auto grid max-w-[1280px] gap-xxxl px-xl lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-xxxxl">
         <div className="lg:sticky lg:top-[112px] lg:self-start">
           <SectionIntro
             id="faq-heading"
@@ -70,19 +70,30 @@ export function FaqSection() {
             body="The things people ask us first. Anything else — write to us."
           />
 
+          {/* Two addresses, listed plainly, with nothing said about who is
+              behind them. An earlier draft framed these as the founders'
+              addresses; that is the kind of detail a company knows about itself
+              and does not announce. A buyer wants to know where to write, not
+              how many people will read it. */}
           <Reveal delay={80}>
-            <div className="mt-xl flex items-center gap-md rounded-xl border border-border-light bg-surface p-lg shadow-card">
+            <div className="mt-xl flex items-start gap-md rounded-xl border border-border-light bg-surface p-lg shadow-card">
               <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary-50">
                 <Mail className="size-5 text-primary" aria-hidden="true" />
               </span>
               <div className="min-w-0">
                 <p className="text-label-md text-text-primary">Talk to us</p>
-                <a
-                  href={`mailto:${CONTACT_EMAIL}`}
-                  className="block truncate text-body-sm text-primary hover:underline"
-                >
-                  {CONTACT_EMAIL}
-                </a>
+                <ul className="mt-sm flex flex-col gap-xxs">
+                  {CONTACT_EMAILS.map((email) => (
+                    <li key={email}>
+                      <a
+                        href={`mailto:${email}`}
+                        className="block truncate text-body-sm text-primary transition-colors hover:underline"
+                      >
+                        {email}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
               </div>
             </div>
           </Reveal>
@@ -91,7 +102,14 @@ export function FaqSection() {
         <div className="flex flex-col gap-sm">
           {FAQS.map((faq, i) => (
             <Reveal key={faq.q} delay={i * 50}>
-              <details className="group rounded-xl border border-border-light bg-surface shadow-card transition-[border-color,box-shadow] duration-200 open:border-primary-200 open:shadow-md">
+              {/* data-animated is read by a ::details-content rule in
+                  src/index.css, behind an @supports guard. Where the browser
+                  does not support it the accordion snaps open exactly as it
+                  always has. */}
+              <details
+                data-animated
+                className="group rounded-xl border border-border-light bg-surface shadow-card transition-[border-color,box-shadow] duration-200 open:border-primary-200 open:shadow-md"
+              >
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-md px-lg py-lg text-h4 text-text-primary marker:content-none [&::-webkit-details-marker]:hidden">
                   {faq.q}
                   <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-50 transition-[transform,background-color] duration-200 group-open:rotate-45 group-open:bg-primary motion-reduce:transition-none">
