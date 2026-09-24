@@ -150,9 +150,11 @@ function StatementTableRow({
     <tr
       className={cn(
         row.isTotal && 'border-t border-border-light',
-        // The bottom line gets a heavier rule, in the text colour rather than the
-        // hairline grey, so it reads as the end of the statement.
-        row.isGrand && 'border-t-2 border-text-primary',
+        // The bottom line: ruled in ink above, double-ruled below — the same
+        // closing rule as the aging table's footer, so it reads as the end of
+        // the statement.
+        row.isGrand &&
+          'border-t border-text-primary border-b-[3px] border-b-border-strong border-double bg-surface-2',
       )}
     >
       <td

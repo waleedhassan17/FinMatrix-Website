@@ -4,14 +4,13 @@ import { useState } from 'react';
 
 import { Card } from '@/components/ui/Card';
 import { BalanceWarning } from '@/features/reports/BalanceWarning';
-import { KpiTile } from '@/features/reports/KpiTile';
+import { Figure, FigureStrip } from '@/features/reports/FigureStrip';
 import { PeriodPicker } from '@/features/reports/PeriodPicker';
 import { ReportShell } from '@/features/reports/ReportShell';
 import { ReportTitleBlock } from '@/features/reports/ReportTitleBlock';
 import { csvAmount, csvFilename, downloadCsv, toCsv, type CsvRow } from '@/models/reportCsv';
 import { defaultReportRange, rangeLabel } from '@/models/reportPeriod';
 import { getTrialBalance } from '@/networks/reports/trialBalanceNetwork';
-import { colors } from '@/theme/tokens';
 import { formatAmount, isBalanced as columnsBalance } from '@/utils/money';
 
 export default function TrialBalancePage() {
@@ -71,6 +70,7 @@ export default function TrialBalancePage() {
     <ReportShell
       title="Trial Balance"
       subtitle="Every account’s movement in the period, debits against credits."
+      meta={[rangeLabel(range.startDate, range.endDate), 'Movements in the period']}
       controls={<PeriodPicker value={range} onChange={setRange} />}
       onExportCsv={exportCsv}
       pdf={{
@@ -139,18 +139,10 @@ export default function TrialBalancePage() {
           </p>
         )}
 
-        <div className="grid gap-md sm:grid-cols-2 print:hidden">
-          <KpiTile
-            label="Total debits"
-            value={report?.totalDebits ?? 0}
-            accent={colors.info}
-          />
-          <KpiTile
-            label="Total credits"
-            value={report?.totalCredits ?? 0}
-            accent={colors.primary}
-          />
-        </div>
+        <FigureStrip columns={2} className="print:hidden">
+          <Figure label="Total debits" value={report?.totalDebits ?? 0} caption="Moved in the period" />
+          <Figure label="Total credits" value={report?.totalCredits ?? 0} caption="Moved in the period" />
+        </FigureStrip>
 
         <Card className="p-lg">
           <ReportTitleBlock
@@ -196,7 +188,7 @@ export default function TrialBalancePage() {
                 ))}
               </tbody>
               <tfoot>
-                <tr className="border-t-2 border-text-primary">
+                <tr className="border-t border-text-primary border-b-[3px] border-b-border-strong border-double bg-surface-2">
                   <td className="px-md py-sm text-h5 text-text-primary">Total</td>
                   <td className="px-md py-sm text-right tabular text-h5 whitespace-nowrap text-text-primary">
                     {formatAmount(report?.totalDebits ?? 0)}

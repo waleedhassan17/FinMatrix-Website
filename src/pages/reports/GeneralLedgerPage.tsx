@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Combobox } from '@/components/ui/Combobox';
 import { TablePager } from '@/components/ui/DataTable';
-import { CountTile, KpiTile } from '@/features/reports/KpiTile';
+import { Figure, FigureStrip } from '@/features/reports/FigureStrip';
 import { PeriodPicker } from '@/features/reports/PeriodPicker';
 import { ReportShell } from '@/features/reports/ReportShell';
 import { ReportTitleBlock } from '@/features/reports/ReportTitleBlock';
@@ -23,7 +23,6 @@ import {
   getGeneralLedger,
   getLedgerAccounts,
 } from '@/networks/reports/generalLedgerNetwork';
-import { colors } from '@/theme/tokens';
 import { formatAmount, formatMoney } from '@/utils/money';
 
 const PAGE_SIZE = 100;
@@ -194,6 +193,10 @@ export default function GeneralLedgerPage() {
     <ReportShell
       title="General Ledger"
       subtitle="Every posting, in order, with a running balance."
+      meta={[
+        rangeLabel(range.startDate, range.endDate),
+        accountCode ? `Account ${accountCode}` : 'All accounts',
+      ]}
       controls={
         <div className="flex flex-col gap-md">
           <PeriodPicker value={range} onChange={setRange} />
@@ -277,24 +280,16 @@ export default function GeneralLedgerPage() {
       }
     >
       <div className="flex flex-col gap-lg">
-        <div className="grid gap-md sm:grid-cols-3 print:hidden">
-          <KpiTile
-            label="Total debits"
-            value={ledger.data?.totals.debit ?? 0}
-            accent={colors.info}
-          />
-          <KpiTile
-            label="Total credits"
-            value={ledger.data?.totals.credit ?? 0}
-            accent={colors.primary}
-          />
-          {/* A count, not an amount — KpiTile would render it as `Rs 120`. */}
-          <CountTile
+        <FigureStrip columns={3} className="print:hidden">
+          <Figure label="Total debits" value={ledger.data?.totals.debit ?? 0} caption="In the period" />
+          <Figure label="Total credits" value={ledger.data?.totals.credit ?? 0} caption="In the period" />
+          {/* A count, not an amount — a number value would print as `Rs 120`. */}
+          <Figure
             label="Ledger lines"
-            value={entries.length}
-            hint={`Showing ${pageRows.length} on this page, ${order === 'newest' ? 'newest' : 'oldest'} first`}
+            value={entries.length.toLocaleString('en-US')}
+            caption={`Showing ${pageRows.length} on this page, ${order === 'newest' ? 'newest' : 'oldest'} first`}
           />
-        </div>
+        </FigureStrip>
 
         <Card className="p-lg">
           <ReportTitleBlock
@@ -388,7 +383,7 @@ export default function GeneralLedgerPage() {
                 )}
               </tbody>
               <tfoot>
-                <tr className="border-t-2 border-text-primary">
+                <tr className="border-t border-text-primary border-b-[3px] border-b-border-strong border-double bg-surface-2">
                   <td
                     className="px-md py-sm text-h5 text-text-primary"
                     colSpan={3}

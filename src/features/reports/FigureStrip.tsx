@@ -1,3 +1,4 @@
+import { ArrowDownRight, ArrowUpRight } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { Card } from '@/components/ui/Card';
@@ -48,20 +49,48 @@ export function Figure({
 }
 
 /**
+ * "+12.4%" with an arrow, for a figure's caption — green when the move is good
+ * news, red when it is not. `good` is the caller's call: revenue up is good,
+ * expenses up is not.
+ */
+export function Change({ text, good }: { text: string; good: boolean }) {
+  const up = !text.startsWith('−') && !text.startsWith('-');
+  const Icon = up ? ArrowUpRight : ArrowDownRight;
+  return (
+    <span className={cn('inline-flex items-center gap-[2px] tabular', good ? 'text-success' : 'text-danger')}>
+      <Icon className="size-3.5" aria-hidden="true" />
+      {text}
+    </span>
+  );
+}
+
+/**
  * Headline figures in one card, divided by hairlines rather than floated as
  * separate tiles — they are one reading of one report, and a single surface
  * says so. Two across on a phone, four on a wide screen.
  */
 export function FigureStrip({
   children,
+  columns = 4,
   className,
 }: {
   children: ReactNode;
+  /** How many figures sit in a row on a wide screen. */
+  columns?: 2 | 3 | 4;
   className?: string;
 }) {
   return (
     <Card className={className}>
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg bg-border-light lg:grid-cols-4">
+      <div
+        className={cn(
+          'grid gap-px overflow-hidden rounded-lg bg-border-light',
+          columns === 2
+            ? 'grid-cols-1 sm:grid-cols-2'
+            : columns === 3
+              ? 'grid-cols-1 sm:grid-cols-3'
+              : 'grid-cols-2 lg:grid-cols-4',
+        )}
+      >
         {children}
       </div>
     </Card>

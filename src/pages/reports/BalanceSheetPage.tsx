@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 
 import { Card } from '@/components/ui/Card';
 import { BalanceWarning } from '@/features/reports/BalanceWarning';
-import { KpiTile } from '@/features/reports/KpiTile';
+import { Figure, FigureStrip } from '@/features/reports/FigureStrip';
 import { AsOfPicker } from '@/features/reports/PeriodPicker';
 import { ReportShell } from '@/features/reports/ReportShell';
 import { statementSection } from '@/features/reports/reportPdfTable';
@@ -15,6 +15,7 @@ import { asOfLabel, formatReportDate } from '@/models/reportPeriod';
 import {
   ASSET_GROUPS,
   bucketStatementLines,
+  formatRatio,
   LIABILITY_GROUPS,
   reconcile,
   type BucketedLines,
@@ -22,7 +23,6 @@ import {
 } from '@/models/reportStatement';
 import { getBalanceSheet } from '@/networks/reports/balanceSheetNetwork';
 import type { StatementLine } from '@/models/reportStatement';
-import { colors } from '@/theme/tokens';
 
 /** A bucketed section rendered as heading → accounts → subtotal. */
 const sectionRows = (
@@ -181,6 +181,7 @@ export default function BalanceSheetPage() {
     <ReportShell
       title="Balance Sheet"
       subtitle="What the business owns and owes on a given day."
+      meta={[asOfLabel(asOfDate), 'Accrual basis']}
       controls={<AsOfPicker value={asOfDate} onChange={setAsOfDate} />}
       onExportCsv={exportCsv}
       pdf={{
@@ -210,15 +211,20 @@ export default function BalanceSheetPage() {
           />
         )}
 
-        <div className="grid gap-md sm:grid-cols-3 print:hidden">
-          <KpiTile label="Total assets" value={report?.totalAssets ?? 0} accent={colors.info} />
-          <KpiTile
+        <FigureStrip columns={3} className="print:hidden">
+          <Figure label="Total assets" value={report?.totalAssets ?? 0} caption="What the business owns" />
+          <Figure
             label="Total liabilities"
             value={report?.totalLiabilities ?? 0}
-            accent={colors.warning}
+            caption={`${formatRatio(report?.totalLiabilities ?? 0, report?.totalAssets ?? 0)} of assets`}
           />
-          <KpiTile label="Total equity" value={report?.totalEquity ?? 0} accent={colors.primary} />
-        </div>
+          <Figure
+            label="Total equity"
+            value={report?.totalEquity ?? 0}
+            tone={(report?.totalEquity ?? 0) < 0 ? 'danger' : 'default'}
+            caption={`${formatRatio(report?.totalEquity ?? 0, report?.totalAssets ?? 0)} of assets`}
+          />
+        </FigureStrip>
 
         <Card className="p-lg">
           <ReportTitleBlock report="Balance Sheet" periodLabel={asOfLabel(asOfDate)} />

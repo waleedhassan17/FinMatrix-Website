@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 
 import { Card } from '@/components/ui/Card';
 import { Switch } from '@/components/ui/Field';
-import { KpiTile } from '@/features/reports/KpiTile';
+import { Figure, FigureStrip } from '@/features/reports/FigureStrip';
 import { PeriodPicker } from '@/features/reports/PeriodPicker';
 import { ReportShell } from '@/features/reports/ReportShell';
 import { statementSection } from '@/features/reports/reportPdfTable';
@@ -16,10 +16,9 @@ import {
   defaultReportRange,
   rangeLabel,
 } from '@/models/reportPeriod';
-import { reconcile, type StatementRowData } from '@/models/reportStatement';
+import { formatRatio, reconcile, type StatementRowData } from '@/models/reportStatement';
 import { getProfitLoss } from '@/networks/reports/profitLossNetwork';
 import type { ProfitLossReport } from '@/serializers/reportSerializers';
-import { colors } from '@/theme/tokens';
 import { sumMoney } from '@/utils/money';
 
 const lineRows = (
@@ -194,6 +193,7 @@ export default function ProfitLossPage() {
     <ReportShell
       title="Profit & Loss"
       subtitle="What you earned and what it cost over the period."
+      meta={[rangeLabel(range.startDate, range.endDate), 'Accrual basis']}
       controls={
         <PeriodPicker
           value={range}
@@ -233,16 +233,27 @@ export default function ProfitLossPage() {
       hasData={Boolean(report)}
     >
       <div className="flex flex-col gap-lg">
-        <div className="grid gap-md sm:grid-cols-2 lg:grid-cols-4 print:hidden">
-          <KpiTile label="Revenue" value={report?.revenue ?? 0} accent={colors.success} />
-          <KpiTile label="Gross profit" value={report?.grossProfit ?? 0} accent={colors.info} />
-          <KpiTile label="Expenses" value={report?.expenses ?? 0} accent={colors.warning} />
-          <KpiTile
+        {/* The same figure strip as the other reports: one surface, colour
+            only where it is a fact (a loss). */}
+        <FigureStrip className="print:hidden">
+          <Figure label="Revenue" value={report?.revenue ?? 0} caption="Income for the period" />
+          <Figure
+            label="Gross profit"
+            value={report?.grossProfit ?? 0}
+            caption={`${formatRatio(report?.grossProfit ?? 0, report?.revenue ?? 0)} gross margin`}
+          />
+          <Figure
+            label="Expenses"
+            value={report?.expenses ?? 0}
+            caption={`${formatRatio(report?.expenses ?? 0, report?.revenue ?? 0)} of revenue`}
+          />
+          <Figure
             label="Net income"
             value={report?.netIncome ?? 0}
-            accent={(report?.netIncome ?? 0) < 0 ? colors.danger : colors.primary}
+            tone={(report?.netIncome ?? 0) < 0 ? 'danger' : 'default'}
+            caption={`${formatRatio(report?.netIncome ?? 0, report?.revenue ?? 0)} net margin`}
           />
-        </div>
+        </FigureStrip>
 
         <Card className="p-lg">
           <ReportTitleBlock

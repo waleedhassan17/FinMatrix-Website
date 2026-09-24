@@ -8,6 +8,7 @@ import {
   reconcile,
   variance,
   type StatementLine,
+  formatRatio,
 } from '@/models/reportStatement';
 
 const line = (accountCode: string, amount = 100, accountName = 'Account'): StatementLine => ({
@@ -198,5 +199,13 @@ describe('variance', () => {
 
   it('does not drift on decimal amounts', () => {
     expect(variance(0.3, 0.1).delta).toBe(0.2);
+  });
+});
+
+describe('formatRatio', () => {
+  it('prints margins to one place, signs a loss, and has nothing to say over zero', () => {
+    expect(formatRatio(412, 1000)).toBe('41.2%');
+    expect(formatRatio(-31, 1000)).toBe('−3.1%');
+    expect(formatRatio(5, 0)).toBe('—');
   });
 });

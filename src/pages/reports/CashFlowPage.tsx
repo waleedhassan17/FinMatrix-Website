@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { Switch } from '@/components/ui/Field';
-import { KpiTile } from '@/features/reports/KpiTile';
+import { Figure, FigureStrip } from '@/features/reports/FigureStrip';
 import { PeriodPicker } from '@/features/reports/PeriodPicker';
 import { ReportShell } from '@/features/reports/ReportShell';
 import { statementSection } from '@/features/reports/reportPdfTable';
@@ -18,7 +18,6 @@ import {
 import type { StatementRowData } from '@/models/reportStatement';
 import { getCashFlow } from '@/networks/reports/cashFlowNetwork';
 import type { CashFlowReport, CashFlowSection } from '@/serializers/reportSerializers';
-import { colors } from '@/theme/tokens';
 
 const ACTIVITIES: {
   key: 'operating' | 'investing' | 'financing';
@@ -159,6 +158,7 @@ export default function CashFlowPage() {
     <ReportShell
       title="Cash Flow"
       subtitle="Where the money actually came from and went."
+      meta={[rangeLabel(range.startDate, range.endDate), 'Direct method']}
       controls={<PeriodPicker value={range} onChange={setRange} />}
       actions={
         <Switch
@@ -187,23 +187,16 @@ export default function CashFlowPage() {
       hasData={Boolean(report)}
     >
       <div className="flex flex-col gap-lg">
-        <div className="grid gap-md sm:grid-cols-3 print:hidden">
-          <KpiTile
-            label="Cash at start"
-            value={report?.beginningCash ?? 0}
-            accent={colors.info}
-          />
-          <KpiTile
+        <FigureStrip columns={3} className="print:hidden">
+          <Figure label="Cash at start" value={report?.beginningCash ?? 0} caption="In cash and bank accounts" />
+          <Figure
             label="Net change"
             value={report?.netChange ?? 0}
-            accent={(report?.netChange ?? 0) < 0 ? colors.danger : colors.success}
+            tone={(report?.netChange ?? 0) < 0 ? 'danger' : 'default'}
+            caption={(report?.netChange ?? 0) < 0 ? 'More went out than came in' : 'More came in than went out'}
           />
-          <KpiTile
-            label="Cash at end"
-            value={report?.endingCash ?? 0}
-            accent={colors.primary}
-          />
-        </div>
+          <Figure label="Cash at end" value={report?.endingCash ?? 0} caption="Matches the Balance Sheet’s cash" />
+        </FigureStrip>
 
         <Card className="p-lg">
           <ReportTitleBlock

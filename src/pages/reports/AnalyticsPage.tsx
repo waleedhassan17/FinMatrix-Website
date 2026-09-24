@@ -1,5 +1,4 @@
 import { useQuery } from '@tanstack/react-query';
-import { ArrowDownRight, ArrowUpRight } from 'lucide-react';
 import { useMemo } from 'react';
 
 import { Card } from '@/components/ui/Card';
@@ -9,7 +8,7 @@ import {
   AnalyticsLegend,
   AnalyticsMonthlyChart,
 } from '@/features/reports/AnalyticsMonthlyChart';
-import { Figure, FigureStrip } from '@/features/reports/FigureStrip';
+import { Change, Figure, FigureStrip } from '@/features/reports/FigureStrip';
 import { RankedBars } from '@/features/reports/RankedBars';
 import { ReportShell } from '@/features/reports/ReportShell';
 import { cn } from '@/lib/cn';
@@ -30,17 +29,6 @@ const RANK_LIMIT = 5;
 
 const ranked = (points: TrendPoint[]) =>
   points.map((p, i) => ({ key: `${p.label}-${i}`, label: p.label || '(no name)', value: p.value }));
-
-/** "+12.4%" with an arrow, green up and red down — for revenue, up is good. */
-function Change({ text, up }: { text: string; up: boolean }) {
-  const Icon = up ? ArrowUpRight : ArrowDownRight;
-  return (
-    <span className={cn('inline-flex items-center gap-[2px] tabular', up ? 'text-success' : 'text-danger')}>
-      <Icon className="size-3.5" aria-hidden="true" />
-      {text}
-    </span>
-  );
-}
 
 /**
  * Twelve months of trading, in the shape an operator reads it: the headline
@@ -179,7 +167,7 @@ export default function AnalyticsPage() {
             caption={
               latestChange && summary.previous ? (
                 <>
-                  <Change text={latestChange} up={(summary.latest?.change?.delta ?? 0) >= 0} />{' '}
+                  <Change text={latestChange} good={(summary.latest?.change?.delta ?? 0) >= 0} />{' '}
                   on {summary.previous.label}
                 </>
               ) : (
@@ -309,7 +297,7 @@ export default function AnalyticsPage() {
                         </td>
                         <td className="px-lg py-sm text-right text-caption whitespace-nowrap">
                           {change ? (
-                            <Change text={change} up={(m.change?.delta ?? 0) >= 0} />
+                            <Change text={change} good={(m.change?.delta ?? 0) >= 0} />
                           ) : (
                             <span className="text-text-tertiary">—</span>
                           )}
