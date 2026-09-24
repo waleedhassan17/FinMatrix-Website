@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Info } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -69,6 +69,11 @@ export default function InventoryValuationPage() {
     queryKey: ['reports', 'inventory-performance', range, sort],
     queryFn: () => getInventoryPerformance(range, sort),
     retry: false,
+    // A new period or ranking keeps the current rows on screen, dimmed, until
+    // the answer lands. Without it the table drops its revenue and margin
+    // columns, the ranking card and the P&L tie-out vanish, and all of it
+    // snaps back a moment later.
+    placeholderData: keepPreviousData,
   });
 
   const report = query.data;
@@ -198,7 +203,7 @@ export default function InventoryValuationPage() {
         </div>
       }
       isLoading={query.isLoading}
-      isRefetching={query.isFetching}
+      isRefetching={query.isFetching || perfQuery.isFetching}
       error={query.error as Error | null}
       onRetry={() => query.refetch()}
       hasData={rows.length > 0}

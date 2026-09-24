@@ -4,10 +4,14 @@ import {
   AGING_SORT_OPTIONS,
   NO_PARTY_NAME,
   agingPartyLabel,
+  bucketShares,
   bucketTopParties,
   canDrillParty,
   defaultAgingSort,
+  formatShare,
+  overduePartyCount,
   resolveSelectedBucket,
+  topAgingParties,
   visibleAgingRows,
 } from '@/models/reportAging';
 import type { AgingBucketDef, AgingRow } from '@/serializers/reportSerializers';
@@ -282,5 +286,103 @@ describe('AGING_SORT_OPTIONS', () => {
       'total',
       'name',
     ]);
+  });
+});
+
+describe('visibleAgingRows — finding a party by name', () => {
+  const find = (search: string, selectedBucket: string | null = null) =>
+    visibleAgingRows({ rows: ROWS, buckets: BUCKETS, selectedBucket, sort: 'name', search })
+      .map((r) => r.customerId);
+
+  it('matches any part of the name, whatever the case', () => {
+    expect(find('foods')).toEqual(['c2']);
+    expect(find('  MART ')).toEqual(['c3']);
+  });
+
+  it('shows everyone for a blank search', () => {
+    expect(find('')).toEqual(['c1', 'c2', 'c3']);
+  });
+
+  it('combines with a bucket filter rather than replacing it', () => {
+    // Allama and Metro both hold 1–30; only Metro is a "Foods".
+    expect(find('foods', 'd1to30')).toEqual(['c2']);
+    expect(find('allama', 'd31to60')).toEqual([]);
+  });
+});
+
+describe('bucketShares', () => {
+  it('gives each bucket its share of the server total, in column order', () => {
+    const shares = bucketShares(BUCKETS, {
+      amounts: { current: 500, d1to30: 500, d31to60: 0, d61plus: 0 },
+      total: 1000,
+    });
+    expect(shares.map((s) => [s.key, s.amount, s.share])).toEqual([
+      ['current', 500, 0.5],
+      ['d1to30', 500, 0.5],
+      ['d31to60', 0, 0],
+      ['d61plus', 0, 0],
+    ]);
+  });
+
+  it('reads 0 rather than dividing by a zero total', () => {
+    expect(bucketShares(BUCKETS, { amounts: {}, total: 0 }).every((s) => s.share === 0)).toBe(
+      true,
+    );
+  });
+});
+
+describe('formatShare', () => {
+  it('never prints 0% beside an amount that is not zero', () => {
+    expect(formatShare(0.001)).toBe('<1%');
+    expect(formatShare(0)).toBe('0%');
+    expect(formatShare(0.524)).toBe('52%');
+    expect(formatShare(1)).toBe('100%');
+  });
+});
+
+describe('overduePartyCount', () => {
+  it('counts parties holding anything past its due date', () => {
+    // Allama and Metro hold 1–30 or later; Sukoon holds 61+. All three.
+    expect(overduePartyCount(ROWS, BUCKETS)).toBe(3);
+    expect(overduePartyCount([row('c9', 'Early Bird', { current: 10 })], BUCKETS)).toBe(0);
+  });
+});
+
+describe('topAgingParties', () => {
+  it('ranks by total and stacks every positive bucket, in column order', () => {
+    const top = topAgingParties({ rows: ROWS, buckets: BUCKETS, selectedBucket: null, limit: 10 });
+    expect(top.parties.map((p) => p.name)).toEqual(['Allama Traders', 'Metro Foods', 'Sukoon Mart']);
+    expect(top.parties[0]).toEqual({
+      id: 'c1',
+      name: 'Allama Traders',
+      amount: 800,
+      segments: [
+        { key: 'current', amount: 500 },
+        { key: 'd1to30', amount: 300 },
+      ],
+    });
+    expect(top.moreCount).toBe(0);
+  });
+
+  it('follows a selected bucket: ranks by it, draws only it, drops who holds none', () => {
+    const top = topAgingParties({ rows: ROWS, buckets: BUCKETS, selectedBucket: 'd1to30', limit: 10 });
+    expect(top.parties.map((p) => [p.name, p.amount])).toEqual([
+      ['Allama Traders', 300],
+      ['Metro Foods', 200],
+    ]);
+    expect(top.parties[1].segments).toEqual([{ key: 'd1to30', amount: 200 }]);
+  });
+
+  it('folds the tail instead of dropping it', () => {
+    const top = topAgingParties({ rows: ROWS, buckets: BUCKETS, selectedBucket: null, limit: 1 });
+    expect(top.parties).toHaveLength(1);
+    expect(top.moreCount).toBe(2);
+    expect(top.moreAmount).toBe(350 + 90);
+  });
+
+  it('leaves out a credit balance, which has no length to draw', () => {
+    const credit = row('c8', 'Refund Due', { current: -40 });
+    const top = topAgingParties({ rows: [credit, SUKOON], buckets: BUCKETS, selectedBucket: null, limit: 10 });
+    expect(top.parties.map((p) => p.name)).toEqual(['Sukoon Mart']);
   });
 });

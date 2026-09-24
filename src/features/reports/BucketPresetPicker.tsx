@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AlertCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/Button';
+import { Select } from '@/components/ui/Select';
 import { cn } from '@/lib/cn';
 import type { AgingPresetKey } from '@/serializers/reportSerializers';
 
@@ -65,11 +66,16 @@ export interface BucketPresetPickerProps {
 /**
  * How the aging report slices its columns.
  *
- * A chip row rather than a Select: there are five options, they are short, and
- * the point of the control is that the alternatives are visible — someone who
- * does not already know the report can be re-bucketed will never open a
- * dropdown to find out. Modelled on PeriodPicker's chips, which is the house
- * pattern for exactly this.
+ * A segmented control rather than a Select: there are five options, they are
+ * short, and the point of the control is that the alternatives are visible —
+ * someone who does not already know the report can be re-bucketed will never
+ * open a dropdown to find out. Segments rather than the pills this used to be:
+ * one bordered group, the same 40px height as the search box and the sort
+ * beside it, so the toolbar reads as one row of controls.
+ *
+ * "Custom" opens a small editor anchored under the control instead of pushing
+ * the toolbar apart, and shows what the boundaries will produce before they
+ * are applied.
  */
 export function BucketPresetPicker({
   preset,
@@ -84,31 +90,59 @@ export function BucketPresetPicker({
   const valid = parsed.days.length > 0;
 
   return (
-    <div className="print:hidden">
-      <p className="mb-xs text-overline text-text-tertiary">Age by</p>
+    // As wide as its contents, so the Custom editor — anchored to this box's
+    // right edge — opens under the Custom segment wherever the picker sits.
+    <div className="relative flex w-fit max-w-full items-center gap-xs print:hidden">
+      <span id="aging-age-by" className="shrink-0 text-label-md text-text-secondary">
+        Age by
+      </span>
 
-      <div className="flex flex-wrap gap-xs">
-        {PRESETS.map((opt) => {
-          const on = preset === opt.key;
+      {/* On a phone five segments do not fit, and a control that scrolls
+          sideways hides its last option. The same choices as a dropdown. */}
+      <Select
+        compact
+        value={preset ?? ''}
+        onChange={(key: AgingPresetKey) => {
+          if (key === 'custom') {
+            setDraft(customBuckets);
+            setEditing(true);
+            return;
+          }
+          setEditing(false);
+          onPickPreset(key);
+        }}
+        options={PRESETS.map((p) => ({ value: p.key, label: p.label }))}
+        containerClassName="w-[10rem] sm:hidden"
+      />
+
+      <div
+        role="group"
+        aria-labelledby="aging-age-by"
+        className="hidden h-10 max-w-full overflow-x-auto rounded-md border border-border bg-surface sm:flex"
+      >
+        {PRESETS.map((opt, i) => {
+          const on = preset === opt.key || (opt.key === 'custom' && editing);
           return (
             <button
               key={opt.key}
               type="button"
-              aria-pressed={on}
+              aria-pressed={preset === opt.key}
+              aria-expanded={opt.key === 'custom' ? editing : undefined}
               onClick={() => {
                 if (opt.key === 'custom') {
                   setDraft(customBuckets);
-                  setEditing(true);
+                  setEditing((v) => !v);
                   return;
                 }
                 setEditing(false);
                 onPickPreset(opt.key);
               }}
               className={cn(
-                'rounded-full border px-md py-xxs text-label-sm transition-colors',
+                'shrink-0 px-sm text-label-md whitespace-nowrap transition-colors',
+                i > 0 && 'border-l border-border',
                 on
-                  ? 'border-primary bg-primary text-text-inverse'
-                  : 'border-border bg-surface text-text-secondary hover:bg-surface-hover',
+                  ? 'bg-primary-tint text-primary'
+                  : 'text-text-secondary hover:bg-surface-2 hover:text-text-primary',
               )}
             >
               {opt.label}
@@ -118,23 +152,35 @@ export function BucketPresetPicker({
       </div>
 
       {editing && (
-        <div className="mt-sm rounded-md bg-surface-2 p-md">
-          <label
-            htmlFor="aging-buckets"
-            className="block text-caption text-text-tertiary"
-          >
-            Column ends, in days overdue — ascending
+        <div
+          role="dialog"
+          aria-label="Custom aging periods"
+          className="absolute right-0 top-full z-30 mt-xs w-[min(22rem,calc(100vw-2rem))] rounded-lg border border-border bg-surface p-md shadow-md"
+        >
+          <label htmlFor="aging-buckets" className="block text-label-md text-text-primary">
+            Custom periods
           </label>
+          <p className="text-caption text-text-tertiary">
+            Where each column ends, in days overdue, smallest first.
+          </p>
           <input
             id="aging-buckets"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setEditing(false);
+              if (e.key === 'Enter' && valid) {
+                setEditing(false);
+                onApplyCustom(draft.trim());
+              }
+            }}
             placeholder="3, 6, 9, 12"
             inputMode="numeric"
             autoComplete="off"
+            autoFocus
             aria-invalid={!valid}
             aria-describedby="aging-buckets-hint"
-            className="mt-xs w-full rounded-md border border-border bg-surface px-sm py-xs text-body-md text-text-primary"
+            className="mt-sm h-10 w-full rounded-md border border-border bg-surface px-sm text-body-md text-text-primary"
           />
 
           {/* What they are about to get, before they commit to it. */}
@@ -146,14 +192,15 @@ export function BucketPresetPicker({
             )}
           >
             {!valid && <AlertCircle className="size-3.5 shrink-0" />}
-            {valid ? previewColumns(parsed.days) : parsed.why}
+            {valid ? `Columns: ${previewColumns(parsed.days)}` : parsed.why}
           </p>
 
-          <div className="mt-sm flex justify-end gap-sm">
-            <Button variant="secondary" onClick={() => setEditing(false)}>
+          <div className="mt-md flex justify-end gap-xs">
+            <Button variant="secondary" size="sm" onClick={() => setEditing(false)}>
               Cancel
             </Button>
             <Button
+              size="sm"
               disabled={!valid}
               onClick={() => {
                 setEditing(false);

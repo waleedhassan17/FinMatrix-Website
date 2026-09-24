@@ -25,8 +25,12 @@ const DOCUMENT_PATHS: Record<string, (id: string) => string> = {
   bill: (id) => `/bills/${id}`,
 };
 
-/** The frame every state shares, so the panel does not jump as it loads. */
-const FRAME = 'ml-xl border-l-2 border-border-light py-xs pl-md';
+/**
+ * The frame every state shares, so the panel does not jump as it loads: a
+ * recessed band under the row, indented to the name it belongs to, with a rule
+ * on the left tying it to that row.
+ */
+const FRAME = 'bg-surface-2 py-sm pl-[2.75rem] pr-md';
 
 /**
  * How late, in words.
@@ -139,28 +143,39 @@ export function AgingPartyDocuments({
 
   const truncated = (data?.total ?? 0) > documents.length;
 
+  const docHeader = partyType === 'vendor' ? 'Bill' : 'Invoice';
+
   return (
     <div className={FRAME}>
-      <table className="w-full border-collapse">
+      <table className="w-full border-collapse border-l-2 border-primary-200">
+        <thead>
+          <tr className="border-b border-border-light">
+            <th className="py-xxs pl-sm pr-sm text-left text-overline text-text-tertiary">{docHeader}</th>
+            <th className="py-xxs pr-sm text-left text-overline text-text-tertiary">Due</th>
+            <th className="py-xxs pr-sm text-left text-overline text-text-tertiary">Period</th>
+            <th className="py-xxs pr-sm text-left text-overline text-text-tertiary">Age</th>
+            <th className="py-xxs text-right text-overline text-text-tertiary">Balance</th>
+          </tr>
+        </thead>
         <tbody>
           {documents.map((d: AgingPartyDocument) => {
             const href = DOCUMENT_PATHS[d.documentType]?.(d.documentId);
             return (
               <tr key={d.documentId} className="align-baseline">
-                <td className="py-xxs pr-sm text-caption whitespace-nowrap text-text-tertiary">
-                  {formatShortDate(d.dueDate)}
-                </td>
-                <td className="py-xxs pr-sm text-body-sm text-text-primary">
+                <td className="py-xxs pl-sm pr-sm text-body-sm text-text-primary">
                   {href && d.documentId ? (
                     <Link
                       to={href}
-                      className="text-text-primary underline-offset-2 hover:text-primary hover:underline"
+                      className="text-label-md text-primary underline-offset-4 hover:underline"
                     >
                       {d.documentNumber || d.documentId}
                     </Link>
                   ) : (
                     <span>{d.documentNumber || '—'}</span>
                   )}
+                </td>
+                <td className="py-xxs pr-sm text-caption whitespace-nowrap text-text-secondary">
+                  {formatShortDate(d.dueDate)}
                 </td>
                 <td className="py-xxs pr-sm text-caption whitespace-nowrap text-text-secondary">
                   {d.bucketLabel}
@@ -182,7 +197,7 @@ export function AgingPartyDocuments({
       </table>
 
       {truncated && (
-        <p className="mt-xxs text-caption text-text-tertiary">
+        <p className="mt-xxs pl-sm text-caption text-text-tertiary">
           {/* Said out loud. A list that silently stops reads as complete, and
               the reader would conclude the balance is smaller than it is. */}
           Showing {documents.length} of {data?.total} open {noun}.

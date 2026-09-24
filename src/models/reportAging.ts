@@ -159,15 +159,21 @@ export const visibleAgingRows = ({
   buckets,
   selectedBucket,
   sort,
+  search = '',
 }: {
   rows: AgingRow[];
   buckets: AgingBucketDef[];
   selectedBucket: string | null;
   sort: AgingSort;
+  /** Narrows by party name, case-insensitively. Blank shows everyone. */
+  search?: string;
 }): AgingRow[] => {
-  const shown = selectedBucket
-    ? rows.filter((row) => (row.amounts[selectedBucket] ?? 0) > 0)
-    : rows;
+  const term = search.trim().toLowerCase();
+  const shown = rows.filter(
+    (row) =>
+      (!selectedBucket || (row.amounts[selectedBucket] ?? 0) > 0) &&
+      (!term || agingPartyLabel(row).toLowerCase().includes(term)),
+  );
 
   const byName = (a: AgingRow, b: AgingRow) =>
     agingPartyLabel(a).localeCompare(agingPartyLabel(b));
@@ -187,4 +193,116 @@ export const visibleAgingRows = ({
   // Copied before sorting: `rows` belongs to the query cache, and sorting it in
   // place would reorder what every other consumer of that cache entry sees.
   return [...shown].sort(compare);
+};
+
+// ─── The summary above the table ────────────────────────────────────────────
+// Shares and counts for display. None of it foots a column: every amount here
+// is one the server sent, and a share is that amount over the server's total.
+
+/** One bucket's slice of the report. */
+export interface BucketShare {
+  key: string;
+  label: string;
+  amount: number;
+  /** 0–1, of the report total. */
+  share: number;
+}
+
+/** Every bucket with its share of the total, in the report's column order. */
+export const bucketShares = (
+  buckets: AgingBucketDef[],
+  totals: { amounts: Record<string, number>; total: number },
+): BucketShare[] =>
+  buckets.map((b) => {
+    const amount = totals.amounts[b.key] ?? 0;
+    return {
+      key: b.key,
+      label: b.label,
+      amount,
+      share: totals.total > 0 ? amount / totals.total : 0,
+    };
+  });
+
+/**
+ * A share as the page prints it. A sliver that rounds to 0% is said as "<1%":
+ * printing "0%" beside an amount that is not zero reads as a contradiction.
+ */
+export const formatShare = (share: number): string => {
+  if (!(share > 0)) return '0%';
+  if (share < 0.005) return '<1%';
+  return `${Math.round(share * 100)}%`;
+};
+
+/** One bar of the top-parties chart. */
+export interface TopAgingParty {
+  id: string;
+  name: string;
+  /** The row's total, or its amount in the selected bucket. A server figure either way. */
+  amount: number;
+  /** The positive bucket amounts, in column order — what the bar is stacked from. */
+  segments: { key: string; amount: number }[];
+}
+
+export interface TopAgingParties {
+  parties: TopAgingParty[];
+  /** Parties past the limit. 0 when everything fitted. */
+  moreCount: number;
+  /** What those folded parties hold between them. */
+  moreAmount: number;
+}
+
+/**
+ * The parties holding the most, each split by how late its money is.
+ *
+ * With no bucket selected this ranks by the row total and stacks every bucket,
+ * so the bar answers "who owes the most, and how old is it". With one selected
+ * it ranks by that bucket alone and draws only that segment: the chart follows
+ * the table's filter instead of contradicting it, and bar length stays in step
+ * with the figure beside it. The tail is folded, not dropped, for the reason
+ * `bucketTopParties` gives.
+ *
+ * Only positive amounts become segments. A credit sitting in one bucket has no
+ * length to draw; the figure printed beside the bar is still the server's total.
+ */
+export const topAgingParties = ({
+  rows,
+  buckets,
+  selectedBucket,
+  limit,
+}: {
+  rows: AgingRow[];
+  buckets: AgingBucketDef[];
+  selectedBucket: string | null;
+  limit: number;
+}): TopAgingParties => {
+  const keys = selectedBucket ? [selectedBucket] : buckets.map((b) => b.key);
+
+  const held = rows
+    .map((row) => ({
+      id: row.customerId,
+      name: agingPartyLabel(row),
+      amount: selectedBucket ? (row.amounts[selectedBucket] ?? 0) : row.total,
+      segments: keys
+        .map((key) => ({ key, amount: row.amounts[key] ?? 0 }))
+        .filter((s) => s.amount > 0),
+    }))
+    .filter((p) => p.amount > 0)
+    .sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name));
+
+  const tail = held.slice(limit);
+  return {
+    parties: held.slice(0, limit),
+    moreCount: tail.length,
+    moreAmount: tail.reduce((sum, p) => sum + p.amount, 0),
+  };
+};
+
+/**
+ * How many parties hold anything past its due date — a count of rows, never a
+ * sum. "Overdue" follows the bucket spec (every bucket starting at day 1 or
+ * later), exactly as `overdueTotal` does, so the two cannot disagree.
+ */
+export const overduePartyCount = (rows: AgingRow[], buckets: AgingBucketDef[]): number => {
+  const late = buckets.filter((b) => b.minDays > 0).map((b) => b.key);
+  return rows.filter((row) => late.some((k) => (row.amounts[k] ?? 0) > 0)).length;
 };

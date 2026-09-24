@@ -231,10 +231,20 @@ export function Sidebar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
-  const toggle = (title: string) =>
+  const toggle = (title: string) => {
+    // On the collapsed rail a group has nowhere to show its links, so a click
+    // opens the sidebar with that group expanded. Toggling in place would
+    // flip hidden state and do nothing visible — every grouped page, Reports
+    // included, was unreachable from the rail.
+    if (collapsed) {
+      setCollapsed(false);
+      setExpanded((prev) => (prev.includes(title) ? prev : [...prev, title]));
+      return;
+    }
     setExpanded((prev) =>
       prev.includes(title) ? prev.filter((t) => t !== title) : [...prev, title],
     );
+  };
 
   const content = (
     <>

@@ -1,6 +1,6 @@
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
-import { Info, X } from 'lucide-react';
+import { keepPreviousData, useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { useMemo, useRef, useState } from 'react';
+import { X } from 'lucide-react';
 
 import {
   saveAgingPreference,
@@ -8,24 +8,28 @@ import {
   type AgingParams,
 } from '@/networks/reports/agingNetwork';
 
-import { Card, SectionHeader } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
+import { SearchInput } from '@/components/ui/SearchInput';
+import { Select } from '@/components/ui/Select';
 import { AgingChart } from '@/features/reports/AgingChart';
 import { AgingPartyDocuments } from '@/features/reports/AgingPartyDocuments';
+import { AgingSummary } from '@/features/reports/AgingSummary';
 import { AgingTable } from '@/features/reports/AgingTable';
+import { AgingTopParties } from '@/features/reports/AgingTopParties';
 import { BucketPresetPicker } from '@/features/reports/BucketPresetPicker';
-import { KpiTile } from '@/features/reports/KpiTile';
 import { ReportShell } from '@/features/reports/ReportShell';
 import { ReportTitleBlock } from '@/features/reports/ReportTitleBlock';
-import { Select } from '@/components/ui/Select';
 import {
   AGING_SORT_OPTIONS,
   defaultAgingSort,
   resolveSelectedBucket,
   visibleAgingRows,
   type AgingSort,
+  type TopAgingParty,
 } from '@/models/reportAging';
 import { csvAmount, csvFilename, downloadCsv, toCsv, type CsvRow } from '@/models/reportCsv';
-import { asOfLabel } from '@/models/reportPeriod';
+import { asOfLabel, formatReportDate } from '@/models/reportPeriod';
 import {
   LEGACY_AGING_BUCKETS,
   notYetDueTotal,
@@ -34,7 +38,6 @@ import {
   type AgingReport,
   type AgingTotals,
 } from '@/serializers/reportSerializers';
-import { colors } from '@/theme/tokens';
 
 /** Placeholder totals, so the table and chart render their frame while loading. */
 const ZERO_TOTALS: AgingTotals = {
@@ -69,9 +72,14 @@ export interface AgingReportViewProps {
   onSelectBucket: (key: string | null) => void;
   sort: AgingSort;
   onChangeSort: (sort: AgingSort) => void;
+  /** Narrows the table by party name. */
+  search: string;
+  onChangeSearch: (search: string) => void;
   /** Which party rows are open, keyed by party id. */
   expanded: Record<string, boolean>;
   onToggleParty: (partyId: string) => void;
+  /** Open one party's documents, closing any others. */
+  onOpenParty: (partyId: string) => void;
   /** 'customer' on receivables, 'vendor' on payables. */
   partyType: 'customer' | 'vendor';
   /** The bucket spec to pass through to the drill-down. */
@@ -114,11 +122,15 @@ export function AgingReportView({
   onSelectBucket,
   sort,
   onChangeSort,
+  search,
+  onChangeSearch,
   expanded,
   onToggleParty,
+  onOpenParty,
   partyType,
   detailParams,
 }: AgingReportViewProps) {
+  const tableRef = useRef<HTMLDivElement>(null);
   const report = query.data;
   const totals = report?.totals;
   // Columns come from the payload; the classic five stand in only while the
@@ -129,10 +141,25 @@ export function AgingReportView({
 
   const allRows = report?.rows ?? [];
   const visibleRows = useMemo(
-    () => visibleAgingRows({ rows: allRows, buckets, selectedBucket, sort }),
-    [allRows, buckets, selectedBucket, sort],
+    () => visibleAgingRows({ rows: allRows, buckets, selectedBucket, sort, search }),
+    [allRows, buckets, selectedBucket, sort, search],
   );
   const selectedLabel = buckets.find((b) => b.key === selectedBucket)?.label;
+  const partyNoun = counterpartyHeader.toLowerCase();
+  const narrowed = Boolean(selectedBucket) || search.trim().length > 0;
+  const plural = (n: number) => `${n} ${partyNoun}${n === 1 ? '' : 's'}`;
+  const asOf = asOfLabel(report?.asOfDate ?? '');
+
+  // From the top-parties chart: narrow the table to that party, open its
+  // documents, and bring the table into view — the answer to "who is this".
+  const findParty = (party: TopAgingParty) => {
+    onChangeSearch(party.name);
+    if (party.id) onOpenParty(party.id);
+    const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    requestAnimationFrame(() =>
+      tableRef.current?.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' }),
+    );
+  };
 
   const exportCsv = () => {
     if (!report) return;
@@ -164,7 +191,24 @@ export function AgingReportView({
     <ReportShell
       title={title}
       subtitle={subtitle}
+      // The report's terms, stated as facts in the header. They used to be a
+      // paragraph-long banner above the figures and a footnote below them.
+      meta={report ? [asOf, 'Accrual basis', `Draft ${documentNoun}s excluded`] : undefined}
       onExportCsv={exportCsv}
+      // While the next bucket set loads, what is on screen is the previous
+      // one — not something to export under the new heading.
+      canExport={!query.isPlaceholderData}
+      // The report's one parameter, above the figures like every other
+      // report's period picker — and outside the area that dims while the
+      // next set loads, so the tab just picked stays crisp.
+      controls={
+        <BucketPresetPicker
+          preset={preset}
+          customBuckets={customBuckets}
+          onPickPreset={onPickPreset}
+          onApplyCustom={onApplyCustom}
+        />
+      }
       pdf={{
         periodLabel: asOfLabel(report?.asOfDate ?? ''),
         cacheKey: String(query.dataUpdatedAt),
@@ -200,131 +244,154 @@ export function AgingReportView({
       }
     >
       <div className="flex flex-col gap-lg">
-        <div className="flex items-start gap-sm rounded-md bg-surface-2 p-md print:hidden">
-          <Info className="mt-[2px] size-4 shrink-0 text-text-secondary" />
-          <p className="text-body-sm text-text-secondary">
-            Aged as of today, with buckets measured against each document’s own due
-            date — which is why there is no date to choose. Draft {documentNoun}s
-            are excluded, so this total can be lower than the dashboard’s figure:
-            nothing is owed until a {documentNoun} is issued.
-          </p>
-        </div>
-
-        <div className="grid gap-md sm:grid-cols-3 print:hidden">
-          <KpiTile
-            label="Total outstanding"
-            value={totals?.total ?? 0}
-            accent={colors.primary}
-          />
-          <KpiTile
-            label="Not yet due"
-            value={notDue}
-            accent={colors.success}
-          />
-          <KpiTile
-            label="Overdue"
-            value={overdue}
-            accent={overdue > 0 ? colors.danger : colors.success}
-            hint="Past the due date"
-          />
-        </div>
-
-        <Card className="p-lg print:hidden">
-          <SectionHeader
-            title="How much, by how late"
-            right={
-              <BucketPresetPicker
-                preset={preset}
-                customBuckets={customBuckets}
-                onPickPreset={onPickPreset}
-                onApplyCustom={onApplyCustom}
-              />
-            }
-          />
-          <AgingChart
+        <div className="print:hidden">
+          <AgingSummary
             buckets={buckets}
             totals={totals ?? ZERO_TOTALS}
             rows={allRows}
+            notDue={notDue}
+            overdue={overdue}
+            partyNoun={partyNoun}
+          />
+        </div>
+
+        {/* The two pictures. Screen-only, like the summary: the printed report
+            is the table, and a chart resized for paper by a script mid-print
+            is not something to hand an auditor. */}
+        <div className="grid gap-lg xl:grid-cols-5 print:hidden">
+          <Card className="flex flex-col xl:col-span-3">
+            <CardHeader className="items-center">
+              <div className="min-w-0">
+                <CardTitle className="text-h5">
+                  Outstanding by period
+                  {selectedLabel && <span className="text-text-tertiary"> · {selectedLabel}</span>}
+                </CardTitle>
+                <CardDescription className="mt-[2px] text-caption text-text-tertiary">
+                  {selectedLabel
+                    ? 'The table shows this period only'
+                    : 'Select a bar to filter the table'}
+                </CardDescription>
+              </div>
+              {selectedBucket && (
+                <Button variant="text" size="sm" onClick={() => onSelectBucket(null)}>
+                  Show all periods
+                </Button>
+              )}
+            </CardHeader>
+            <div className="min-h-[18rem] flex-1 px-md pb-sm pt-md">
+              <AgingChart
+                labelled
+                className="h-full min-h-[16rem]"
+                buckets={buckets}
+                totals={totals ?? ZERO_TOTALS}
+                rows={allRows}
+                selectedBucket={selectedBucket}
+                onSelectBucket={onSelectBucket}
+              />
+            </div>
+          </Card>
+
+          <AgingTopParties
+            className="xl:col-span-2"
+            buckets={buckets}
+            rows={allRows}
             selectedBucket={selectedBucket}
-            onSelectBucket={onSelectBucket}
+            partyNoun={partyNoun}
+            onFindParty={findParty}
           />
-        </Card>
+        </div>
 
-        <Card className="p-lg">
-          <ReportTitleBlock
-            report={`${title} Summary`}
-            periodLabel={asOfLabel(report?.asOfDate ?? '')}
-          />
+        {/* The scroll target for the top-parties chart. */}
+        <div ref={tableRef} className="scroll-mt-lg">
+          <Card>
+            {/* On paper only. On screen the page header already names the
+                company, the report and its date; a centred letterhead inside the
+                card repeated all three. */}
+            <div className="hidden px-lg pt-lg print:block">
+              <ReportTitleBlock report={`${title} Summary`} periodLabel={asOf} />
+            </div>
 
-          {/* Screen-only: a printed report carries no filter, so a chip naming
-              one over an apparently-unfiltered table would misread. */}
-          <div className="mt-md flex flex-wrap items-center justify-between gap-sm print:hidden">
-            <div className="flex flex-wrap items-center gap-sm">
-              {selectedBucket && selectedLabel ? (
-                <>
+            {/* The toolbar. Screen-only: a printed report carries no filter, so a
+                chip naming one over an apparently-unfiltered table would misread. */}
+            <div className="flex flex-col gap-sm border-b border-border-light p-md sm:flex-row sm:items-center sm:justify-between print:hidden">
+              <div className="flex min-w-0 flex-wrap items-center gap-sm">
+                <SearchInput
+                  value={search}
+                  onValueChange={onChangeSearch}
+                  placeholder={`Find a ${partyNoun}`}
+                  aria-label={`Find a ${partyNoun}`}
+                  containerClassName="w-full sm:w-[16rem]"
+                />
+                {selectedBucket && selectedLabel && (
                   <button
                     type="button"
                     onClick={() => onSelectBucket(null)}
                     aria-label={`Clear the ${selectedLabel} filter`}
-                    className="flex items-center gap-xxs rounded-full border border-border bg-surface-2 px-md py-xxs text-label-sm text-text-primary hover:bg-surface-hover"
+                    className="flex h-8 items-center gap-xxs rounded-md border border-primary bg-primary-tint px-sm text-label-md text-primary hover:bg-primary-100"
                   >
                     {selectedLabel} only
-                    <X className="size-3" aria-hidden="true" />
+                    <X className="size-3.5" aria-hidden="true" />
                   </button>
-                  <span className="text-caption text-text-tertiary">
-                    {visibleRows.length} of {allRows.length}{' '}
-                    {counterpartyHeader.toLowerCase()}
-                    {allRows.length === 1 ? '' : 's'}
-                  </span>
-                </>
-              ) : (
+                )}
                 <span className="text-caption text-text-tertiary">
-                  {allRows.length} {counterpartyHeader.toLowerCase()}
-                  {allRows.length === 1 ? '' : 's'} · select a column or a bar to
-                  narrow it
+                  {narrowed
+                    ? `${visibleRows.length} of ${plural(allRows.length)}`
+                    : plural(allRows.length)}
                 </span>
-              )}
+              </div>
+
+              <div className="flex shrink-0 items-center gap-sm">
+                <Select
+                  compact
+                  value={sort}
+                  onChange={onChangeSort}
+                  options={AGING_SORT_OPTIONS}
+                  containerClassName="w-[10.5rem]"
+                />
+              </div>
             </div>
 
-            <Select
-              compact
-              value={sort}
-              onChange={onChangeSort}
-              options={AGING_SORT_OPTIONS}
-              containerClassName="w-[11rem]"
+            <AgingTable
+              className="rounded-b-lg"
+              buckets={buckets}
+              rows={visibleRows}
+              totals={totals ?? ZERO_TOTALS}
+              counterpartyHeader={counterpartyHeader}
+              selectedBucket={selectedBucket}
+              onSelectBucket={onSelectBucket}
+              filtered={narrowed}
+              expanded={expanded}
+              onToggleParty={onToggleParty}
+              renderDetail={(row) => (
+                <AgingPartyDocuments
+                  partyId={row.customerId}
+                  partyType={partyType}
+                  params={detailParams}
+                  // The figure this panel has to reconcile against: the bucket
+                  // amount when one is selected, the row total otherwise.
+                  rowAmount={
+                    selectedBucket ? (row.amounts[selectedBucket] ?? 0) : row.total
+                  }
+                  bucketLabel={selectedLabel}
+                />
+              )}
             />
-          </div>
 
-          <AgingTable
-            className="mt-md"
-            buckets={buckets}
-            rows={visibleRows}
-            totals={totals ?? ZERO_TOTALS}
-            counterpartyHeader={counterpartyHeader}
-            selectedBucket={selectedBucket}
-            onSelectBucket={onSelectBucket}
-            expanded={expanded}
-            onToggleParty={onToggleParty}
-            renderDetail={(row) => (
-              <AgingPartyDocuments
-                partyId={row.customerId}
-                partyType={partyType}
-                params={detailParams}
-                // The figure this panel has to reconcile against: the bucket
-                // amount when one is selected, the row total otherwise.
-                rowAmount={
-                  selectedBucket ? (row.amounts[selectedBucket] ?? 0) : row.total
-                }
-                bucketLabel={selectedLabel}
-              />
+            {visibleRows.length === 0 && (
+              <p className="border-t border-border-light px-lg py-lg text-center text-body-sm text-text-tertiary print:hidden">
+                {search.trim()
+                  ? `No ${partyNoun} matches “${search.trim()}”${selectedLabel ? ` in ${selectedLabel}` : ''}.`
+                  : `No ${partyNoun} has anything in ${selectedLabel ?? 'this period'}.`}
+              </p>
             )}
-          />
-        </Card>
+          </Card>
+        </div>
 
-        <p className="text-caption text-text-tertiary">
-          “Overdue” counts everything past its due date, split into the columns
-          above. Change how it is split with the control beside the chart — the
-          total never moves, only how it is divided.
+        <p className="text-caption text-text-tertiary print:hidden">
+          Each period counts days past the {documentNoun}’s own due date, as of{' '}
+          {report?.asOfDate ? formatReportDate(report.asOfDate) : 'today'}. Changing the periods re-divides the same
+          total; it never changes it. Draft {documentNoun}s are excluded, so this
+          total can be lower than the dashboard’s.
         </p>
       </div>
     </ReportShell>
@@ -353,6 +420,7 @@ export const useAgingReport = (
   // without a setState inside an effect.
   const [sortRaw, setSort] = useState<AgingSort | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [search, setSearch] = useState('');
 
   // A custom preset with no boundaries is not sent: the server rejects it, and
   // the user is mid-edit rather than mistaken.
@@ -368,6 +436,10 @@ export const useAgingReport = (
   const query = useQuery({
     queryKey: ['reports', key, params],
     queryFn: () => fetcher(params),
+    // Picking another bucket set keeps the current report on screen, dimmed,
+    // until the new one lands. Without this the new key starts with no data
+    // and the whole page drops to "Loading…" for the length of the request.
+    placeholderData: keepPreviousData,
   });
 
   // A bucket key only means something within the bucket set that produced it:
@@ -416,9 +488,12 @@ export const useAgingReport = (
     },
     sort: sortRaw ?? defaultAgingSort(selectedBucket),
     onChangeSort: setSort,
+    search,
+    onChangeSearch: setSearch,
     expanded,
     onToggleParty: (partyId: string) =>
       setExpanded((prev) => ({ ...prev, [partyId]: !prev[partyId] })),
+    onOpenParty: (partyId: string) => setExpanded({ [partyId]: true }),
     // What the drill-down must be told, so its buckets are the report's
     // buckets. `selectedBucket` is validated against the live payload above.
     detailParams: { ...params, ...(selectedBucket ? { bucket: selectedBucket } : {}) },

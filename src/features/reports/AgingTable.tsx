@@ -1,4 +1,4 @@
-import { MinusSquare, PlusSquare } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { Fragment, type ReactNode } from 'react';
 
 import { cn } from '@/lib/cn';
@@ -43,6 +43,12 @@ export interface AgingTableProps {
   expanded?: Record<string, boolean>;
   onToggleParty?: (partyId: string) => void;
   renderDetail?: (row: AgingRow) => ReactNode;
+  /**
+   * Whether some parties are hidden. Defaults to "a bucket is selected"; the
+   * page also passes true while a name search is narrowing the rows, because
+   * the footer then covers parties that are not on screen either way.
+   */
+  filtered?: boolean;
   className?: string;
 }
 
@@ -63,6 +69,9 @@ export interface AgingTableProps {
  * exceed what is on screen, which is why the footer relabels itself rather than
  * re-adding anything — this client never foots a column (see reportStatement.ts).
  */
+/** The first column, pinned while the figures scroll horizontally beneath it. */
+const STICKY = 'sticky left-0 z-[1]';
+
 export function AgingTable({
   buckets,
   rows,
@@ -73,10 +82,11 @@ export function AgingTable({
   expanded,
   onToggleParty,
   renderDetail,
+  filtered: filteredProp,
   className,
 }: AgingTableProps) {
   const oldestKey = buckets[buckets.length - 1]?.key;
-  const filtered = Boolean(selectedBucket);
+  const filtered = filteredProp ?? Boolean(selectedBucket);
   // Counterparty + every bucket + Total. Computed, never a literal: the bucket
   // set is configurable and runs from five columns to fourteen.
   const columnCount = buckets.length + 2;
@@ -86,7 +96,9 @@ export function AgingTable({
       <table className="w-full border-collapse">
         <thead>
           <tr className="border-b border-border bg-surface-2">
-            <th className="px-md py-sm text-left text-overline text-text-secondary">
+            {/* The name column stays put while a wide bucket set scrolls under
+                it — fourteen columns of figures with no name are unreadable. */}
+            <th className={cn(STICKY, 'min-w-[11rem] bg-surface-2 px-md py-sm text-left text-overline text-text-secondary')}>
               {counterpartyHeader}
             </th>
             {buckets.map(({ key, label }) => (
@@ -95,7 +107,7 @@ export function AgingTable({
                 aria-sort={key === selectedBucket ? 'descending' : undefined}
                 className={cn(
                   'px-md py-sm text-right text-overline whitespace-nowrap text-text-secondary',
-                  key === selectedBucket && 'bg-surface-hover text-text-primary',
+                  key === selectedBucket && 'bg-primary-tint text-primary',
                 )}
               >
                 {onSelectBucket ? (
@@ -105,7 +117,7 @@ export function AgingTable({
                     onClick={() =>
                       onSelectBucket(key === selectedBucket ? null : key)
                     }
-                    className="text-overline underline-offset-2 hover:text-primary hover:underline"
+                    className="text-overline underline-offset-4 hover:text-primary hover:underline"
                   >
                     {label}
                   </button>
@@ -131,8 +143,19 @@ export function AgingTable({
 
             return (
               <Fragment key={row.customerId || row.customerName}>
-                <tr className="border-b border-border-light">
-                  <td className="px-md py-sm text-body-sm text-text-primary">
+                <tr
+                  className={cn(
+                    'group border-b border-border-light transition-colors hover:bg-surface-2',
+                    isOpen && 'bg-surface-2',
+                  )}
+                >
+                  <td
+                    className={cn(
+                      STICKY,
+                      'px-md py-sm text-body-sm text-text-primary group-hover:bg-surface-2',
+                      isOpen ? 'bg-surface-2' : 'bg-surface',
+                    )}
+                  >
                     {expandable ? (
                       // The whole name is the target, not just the icon — a
                       // 14px glyph is a mean thing to ask anyone to hit.
@@ -140,17 +163,19 @@ export function AgingTable({
                         type="button"
                         aria-expanded={isOpen}
                         onClick={() => onToggleParty?.(row.customerId)}
-                        className="flex items-center gap-xs text-left text-body-sm text-text-primary hover:text-primary"
+                        className="flex items-center gap-xs text-left text-label-md text-text-primary hover:text-primary"
                       >
-                        {isOpen ? (
-                          <MinusSquare className="size-4 shrink-0 text-text-tertiary" aria-hidden="true" />
-                        ) : (
-                          <PlusSquare className="size-4 shrink-0 text-text-tertiary" aria-hidden="true" />
-                        )}
+                        <ChevronRight
+                          aria-hidden="true"
+                          className={cn(
+                            'size-4 shrink-0 text-text-tertiary transition-transform',
+                            isOpen && 'rotate-90 text-primary',
+                          )}
+                        />
                         {label}
                       </button>
                     ) : (
-                      label
+                      <span className="pl-xl text-label-md">{label}</span>
                     )}
                   </td>
                   {buckets.map(({ key }) => (
@@ -163,16 +188,18 @@ export function AgingTable({
                         // is now depends on the preset, so it is read off the
                         // spec rather than hardcoded to bucket90Plus. Severity,
                         // not selection — orthogonal, and both can apply at once.
-                        key === oldestKey && (row.amounts[key] ?? 0) > 0
-                          ? 'text-danger'
-                          : 'text-text-primary',
-                        key === selectedBucket && 'bg-surface-hover',
+                        !row.amounts[key]
+                          ? 'text-text-tertiary'
+                          : key === oldestKey
+                            ? 'text-danger'
+                            : 'text-text-primary',
+                        key === selectedBucket && 'bg-primary-tint/60',
                       )}
                     >
                       {row.amounts[key] ? formatAmount(row.amounts[key]) : '—'}
                     </td>
                   ))}
-                  <td className="px-md py-sm text-right tabular text-label-lg whitespace-nowrap text-text-primary">
+                  <td className="px-md py-sm text-right tabular text-label-md whitespace-nowrap text-text-primary">
                     {formatAmount(row.total)}
                   </td>
                 </tr>
@@ -193,8 +220,10 @@ export function AgingTable({
         </tbody>
 
         <tfoot>
-          <tr className="bg-surface-2">
-            <td className="px-md py-sm text-label-lg text-text-primary">
+          {/* The accounting convention for a total: a rule above it, a double
+              rule beneath. It is how a reader finds the bottom line. */}
+          <tr className="border-t border-text-primary border-b-[3px] border-b-border-strong border-double bg-surface-2">
+            <td className={cn(STICKY, 'bg-surface-2 px-md py-sm text-label-lg text-text-primary')}>
               {/* Said out loud while filtered: every column except the selected
                   one is summed over parties that are not on screen. */}
               {filtered ? 'Total (all parties)' : 'Total'}
@@ -204,7 +233,7 @@ export function AgingTable({
                 key={key}
                 className={cn(
                   'px-md py-sm text-right tabular text-label-lg whitespace-nowrap text-text-primary',
-                  key === selectedBucket && 'bg-surface-hover',
+                  key === selectedBucket && 'bg-primary-tint',
                 )}
               >
                 {totals.amounts[key] ? formatAmount(totals.amounts[key]) : '—'}

@@ -77,7 +77,6 @@ import {
   MyRequestsPage,
   OpeningBalancePage,
   ProfitLossPage,
-  ReportsHubPage,
   TrialBalancePage,
   PODetailPage,
   POFormPage,
@@ -493,10 +492,12 @@ export const router = createBrowserRouter([
           },
 
           // ── Module 17: Reports ──────────────────────────────────
-          // `/reports` itself is not a nav item, so it is not in the staff
-          // prefix list that routeAccess derives from the nav — see
-          // STAFF_EXTRA_PREFIXES there, which is what lets staff reach the hub.
-          { path: 'reports', element: <ReportsHubPage /> },
+          // No hub. The sidebar's Reports group already lists every report,
+          // with the same tier and role gating, so a page repeating that list
+          // was a second menu reached only by a "back" link. The bare path
+          // still resolves — for bookmarks and typed URLs — to the first report.
+          // Staff reach it through STAFF_EXTRA_PREFIXES in routeAccess.
+          { path: 'reports', element: <Navigate to="/reports/profit-loss" replace /> },
           { path: 'reports/profit-loss', element: <ProfitLossPage /> },
           { path: 'reports/balance-sheet', element: <BalanceSheetPage /> },
           { path: 'reports/trial-balance', element: <TrialBalancePage /> },

@@ -81,8 +81,8 @@ const ALLOWED = [
   '/journal-entries/new',
   '/journal-entries/opening-balance',
   '/tax/liability',
-  // The hub is not a nav item — the Reports group has no path of its own — so it
-  // relies on STAFF_EXTRA_PREFIXES rather than on the nav-derived list.
+  // Redirects to Profit & Loss. Not a nav item — the Reports group has no path
+  // of its own — so it relies on STAFF_EXTRA_PREFIXES, not the nav-derived list.
   '/reports',
   '/reports/profit-loss',
   '/reports/balance-sheet',

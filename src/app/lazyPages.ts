@@ -174,7 +174,6 @@ export const OpeningBalancePage = lazyWithReload(
 
 // Reports. Lazy matters more here than anywhere: four of these pull in recharts,
 // and nobody reaches a report in the first few seconds of a session.
-export const ReportsHubPage = lazyWithReload(() => import('@/pages/reports/ReportsHubPage'));
 export const ProfitLossPage = lazyWithReload(() => import('@/pages/reports/ProfitLossPage'));
 export const BalanceSheetPage = lazyWithReload(() => import('@/pages/reports/BalanceSheetPage'));
 export const TrialBalancePage = lazyWithReload(() => import('@/pages/reports/TrialBalancePage'));

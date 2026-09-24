@@ -23,11 +23,20 @@ export interface ReportPdfOptions {
 export interface ReportShellProps {
   title: string;
   subtitle?: string;
+  /**
+   * Short facts under the title, separated by dots — "As of 24 Sep 2026",
+   * "Accrual basis". Where a report states its terms, instead of a paragraph.
+   */
+  meta?: ReactNode[];
   /** The period controls — `PeriodPicker`, `AsOfPicker`, or nothing. */
   controls?: ReactNode;
   /** Extra controls beside the export actions, e.g. a comparison toggle. */
   actions?: ReactNode;
-  /** Where "back" goes. Defaults to the reports hub; `null` for none. */
+  /**
+   * A parent to go back to, for a report that drills out of another — an item's
+   * history under Inventory Valuation. None by default: a report is a top-level
+   * destination, opened from the sidebar like Invoices or Customers.
+   */
   back?: { to: string; label: string } | null;
 
   /** Called for Download CSV. Omit to hide the button. */
@@ -74,6 +83,7 @@ export interface ReportShellProps {
 export function ReportShell({
   title,
   subtitle,
+  meta,
   controls,
   actions,
   back,
@@ -89,7 +99,7 @@ export function ReportShell({
   children,
 }: ReportShellProps) {
   const company = useDocumentCompany();
-  const backLink = back === undefined ? { to: '/reports', label: 'Reports' } : (back ?? undefined);
+  const backLink = back ?? undefined;
 
   return (
     <div className="flex flex-col gap-lg">
@@ -98,6 +108,7 @@ export function ReportShell({
         back={backLink}
         title={title}
         description={subtitle}
+        meta={meta}
         actions={
           <>
             {actions}
@@ -175,10 +186,13 @@ export function ReportShell({
       {!isLoading && !error && hasData && (
         <div
           className={cn(
-            'transition-opacity',
+            'transition-opacity duration-200 ease-out motion-reduce:transition-none',
             // Dimmed, not replaced. `aria-busy` tells a screen reader the same
-            // thing the opacity tells everyone else.
-            isRefetching && 'pointer-events-none opacity-50',
+            // thing the opacity tells everyone else. The dim waits 150ms
+            // before it starts: most refetches land inside that, and a page
+            // that flickers grey on every click reads as broken, not busy.
+            // Leaving the state has no delay, so new figures appear at once.
+            isRefetching ? 'pointer-events-none opacity-60 delay-150' : 'opacity-100',
           )}
           aria-busy={isRefetching}
         >

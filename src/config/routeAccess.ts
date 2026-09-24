@@ -20,9 +20,9 @@ import type { UserRole } from '@/types';
  *
  * `/reports` is here because the prefix list below is built from nav GROUPS' own
  * `path` plus their items' paths, and the Reports group has items but no path of
- * its own — every report is `/reports/something`. Without this entry the reports
- * hub is the one page in the module staff cannot open, and they would be bounced
- * to the dashboard from a link the sidebar happily shows them.
+ * its own — every report is `/reports/something`. The bare `/reports` redirects
+ * to Profit & Loss; without this entry staff following an old bookmark to it
+ * would be bounced to the dashboard instead.
  */
 const STAFF_EXTRA_PREFIXES: string[] = ['/dev/', '/reports'];
 
