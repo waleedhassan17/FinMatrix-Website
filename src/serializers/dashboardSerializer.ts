@@ -11,11 +11,6 @@
 
 import { toNumber, type MoneyInput } from '@/utils/money';
 
-export interface TrendPoint {
-  label: string;
-  value: number;
-}
-
 export interface RecentTransaction {
   id: string;
   type: 'invoice' | 'bill' | 'payment' | 'other';
@@ -31,6 +26,16 @@ export interface DashboardAlert {
   message: string;
 }
 
+/** Delivery orders by status, company-wide. */
+export interface DeliveryCounts {
+  pending: number;
+  assigned: number;
+  inTransit: number;
+  delivered: number;
+  failed: number;
+  total: number;
+}
+
 export interface DashboardData {
   totalRevenue: number;
   totalExpenses: number;
@@ -41,6 +46,7 @@ export interface DashboardData {
   /** Revenue minus expenses for the period. Derived, not sent. */
   netIncome: number;
   inventoryItems: number;
+  deliveries: DeliveryCounts;
   recentTransactions: RecentTransaction[];
   alerts: DashboardAlert[];
   period?: { startDate?: string; endDate?: string } | null;
@@ -71,16 +77,45 @@ const transactionSerializer = (
   };
 };
 
+// The server names severities by colour (red / amber / blue), the same words
+// the app's AlertBanner keys on. Reading only the semantic names turned every
+// alert into `info`, so an overdue invoice rendered like a delivery notice.
+const SEVERITY: Record<string, DashboardAlert['severity']> = {
+  red: 'danger',
+  amber: 'warning',
+  blue: 'info',
+  danger: 'danger',
+  warning: 'warning',
+  info: 'info',
+};
+
 const alertSerializer = (
   raw: Record<string, unknown>,
   index: number,
 ): DashboardAlert => ({
   id: String(raw.id ?? index),
-  severity: (['info', 'warning', 'danger'].includes(String(raw.severity))
-    ? raw.severity
-    : 'info') as DashboardAlert['severity'],
+  severity: SEVERITY[String(raw.severity)] ?? 'info',
   message: String(raw.message ?? raw.text ?? ''),
 });
+
+const deliveryCounts = (breakdown: unknown, total: unknown): DeliveryCounts => {
+  const b = (breakdown ?? {}) as Record<string, unknown>;
+  const counts = {
+    pending: num(b.pending as MoneyInput),
+    assigned: num(b.assigned as MoneyInput),
+    inTransit: num(b.in_transit as MoneyInput),
+    delivered: num(b.delivered as MoneyInput),
+    failed: num(b.failed as MoneyInput),
+  };
+  return {
+    ...counts,
+    // The server's own total also counts cancelled and unassigned orders, which
+    // none of the fields above carry. Summed as a fallback only.
+    total:
+      num(total as MoneyInput) ||
+      Object.values(counts).reduce((t, n) => t + n, 0),
+  };
+};
 
 export const dashboardSerializer = (raw: unknown): DashboardData => {
   // The app unwraps one more level here (`summaryRaw?.data ?? summaryRaw`)
@@ -106,6 +141,7 @@ export const dashboardSerializer = (raw: unknown): DashboardData => {
     // derives it the same way.
     netIncome: totalRevenue - totalExpenses,
     inventoryItems: num(d.inventoryItems as MoneyInput),
+    deliveries: deliveryCounts(d.deliveryBreakdown, d.deliveryTotal),
     recentTransactions,
     alerts: asArray(d.alerts).map(alertSerializer),
     period: (d.period as DashboardData['period']) ?? null,
@@ -116,31 +152,4 @@ export const dashboardSerializer = (raw: unknown): DashboardData => {
       pendingAP === 0 &&
       recentTransactions.length === 0,
   };
-};
-
-/**
- * Monthly revenue for the dashboard chart.
- *
- * null = the call failed (the card says "unavailable").
- * []   = the company genuinely has no revenue history yet.
- * Those read very differently to a user, so they stay distinct.
- */
-export const revenueTrendSerializer = (
-  raw: unknown,
-  months = 6,
-): TrendPoint[] | null => {
-  const data = (raw ?? {}) as Record<string, unknown>;
-  const points = data.revenueTrend ?? data.trend;
-  if (!Array.isArray(points)) return null;
-
-  return points
-    .filter(
-      (p): p is Record<string, unknown> =>
-        !!p && typeof (p as Record<string, unknown>).label === 'string',
-    )
-    .map((p) => ({
-      label: String(p.label),
-      value: num(p.value as MoneyInput),
-    }))
-    .slice(-months);
 };

@@ -1,324 +1,217 @@
 import { useQuery } from '@tanstack/react-query';
-import { AlertCircle, ArrowRight, Inbox } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+import { format } from 'date-fns';
+import { AlertCircle, RotateCw } from 'lucide-react';
 
-import { Card, SectionHeader } from '@/components/ui/Card';
-import { StatusBadge } from '@/components/ui/StatusBadge';
-import { QUICK_ACTIONS } from '@/config/nav';
-import { useCapability, useFeature, useIsOwner } from '@/hooks/useCapability';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { AttentionCard } from '@/features/dashboard/AttentionCard';
+import { KpiGroup } from '@/features/dashboard/KpiGroup';
+import { NewDocumentMenu } from '@/features/dashboard/NewDocumentMenu';
+import { OperationsCard } from '@/features/dashboard/OperationsCard';
+import { ReceivablesAgeCard } from '@/features/dashboard/ReceivablesAgeCard';
+import { RecentActivityCard } from '@/features/dashboard/RecentActivityCard';
+import { RevenueCard } from '@/features/dashboard/RevenueCard';
+import { useFeature, useIsOwner } from '@/hooks/useCapability';
 import { cn } from '@/lib/cn';
+import { periodLabel } from '@/models/dashboard';
 import { fetchPendingApprovalCount } from '@/networks/approvals/approvalsNetwork';
-import {
-  getDashboardSummary,
-  getRevenueTrend,
-} from '@/networks/dashboards/dashboardNetwork';
-import { CHART_SERIES, colors, typography } from '@/theme/tokens';
-import { compactMoney, formatMoney } from '@/utils/money';
+import { getDashboardSummary } from '@/networks/dashboards/dashboardNetwork';
+import { getAnalytics } from '@/networks/reports/analyticsNetwork';
 
-// Recharts renders SVG <text>, which needs a numeric size rather than a class,
-// so the axis tick style is built from the caption role instead of hardcoded.
-const AXIS_TICK = {
-  fill: colors.textTertiary,
-  fontSize: typography.caption.fontSize,
-} as const;
-
-// ───────────────────────────────────────────────────────────────────────────
-
-function KpiTile({
-  label,
-  value,
-  accent,
-  loading,
-}: {
-  label: string;
-  value: number;
-  accent: string;
-  loading: boolean;
-}) {
-  return (
-    <Card className="relative overflow-hidden p-lg">
-      {/* The 4px status rail, ported from the app's TxnCard. */}
-      <span
-        className="absolute inset-y-0 left-0 w-1"
-        style={{ backgroundColor: accent }}
-      />
-      <div className="pl-xs">
-        <p className="text-caption text-text-secondary">{label}</p>
-        {loading ? (
-          <div className="mt-xxs h-7 w-28 animate-pulse rounded-sm bg-neutral-100" />
-        ) : (
-          // compactMoney, not formatMoney: a tile is not wide enough for
-          // Rs 12,345,678.00, and the app compacts here too. The full figure
-          // is in the title attribute for anyone who needs it.
-          <p
-            className="mt-xxs text-h2 text-text-primary tabular"
-            title={formatMoney(value)}
-          >
-            {compactMoney(value)}
-          </p>
-        )}
-      </div>
-    </Card>
-  );
-}
-
-function QuickActionButton({
-  action,
-}: {
-  action: (typeof QUICK_ACTIONS)[number];
-}) {
-  const { allowed, needsApproval } = useCapability(action.capability);
-  const featureOn = useFeature(action.feature);
-  if (!allowed || !featureOn) return null;
-
-  const Icon = action.icon;
-  return (
-    <Link
-      to={action.path}
-      className="flex items-center gap-sm rounded-md border border-border bg-surface px-md py-sm transition-colors hover:bg-surface-hover"
-    >
-      <span className="flex size-9 items-center justify-center rounded-md bg-primary-tint">
-        <Icon className="size-4 text-primary" />
-      </span>
-      <span className="flex-1">
-        <span className="block text-label-lg text-text-primary">
-          {action.title}
-        </span>
-        {/* Say what will actually happen before they click, not after. */}
-        {needsApproval && (
-          <span className="block text-caption text-warning">
-            Goes to the owner for approval
-          </span>
-        )}
-      </span>
-      <ArrowRight className="size-4 text-text-tertiary" />
-    </Link>
-  );
-}
-
-// ───────────────────────────────────────────────────────────────────────────
-
+/**
+ * The owner's and staff's landing page: the month's figures, what needs doing,
+ * and the latest documents — each a summary of a report one click away.
+ *
+ * Three independent queries, and each panel owns its own loading and failure
+ * state. A failed summary used to replace the entire page with an error card,
+ * taking a perfectly good revenue chart down with it.
+ */
 export default function DashboardPage() {
   const isOwner = useIsOwner();
+  const deliveryOn = useFeature('delivery');
+  const inventoryOn = useFeature('inventory');
 
-  const { data, isLoading, isError, error } = useQuery({
+  const summary = useQuery({
     queryKey: ['dashboard', 'summary'],
     queryFn: getDashboardSummary,
   });
 
-  const { data: trend } = useQuery({
-    queryKey: ['dashboard', 'revenue-trend'],
-    queryFn: () => getRevenueTrend(6),
+  // Under the dashboard prefix rather than the Analytics page's own key, so the
+  // invalidations that already refresh the dashboard (approvals, PO receipts,
+  // account changes) refresh this too.
+  const analytics = useQuery({
+    queryKey: ['dashboard', 'analytics'],
+    queryFn: getAnalytics,
   });
 
-  const { data: pendingCount = 0 } = useQuery({
+  const approvals = useQuery({
     queryKey: ['approvals', 'pending-count'],
     queryFn: fetchPendingApprovalCount,
   });
 
-  if (isError) {
-    return (
-      <Card className="flex items-start gap-sm p-lg">
-        <AlertCircle className="mt-[2px] size-5 shrink-0 text-danger" />
-        <div>
-          <p className="text-label-lg text-text-primary">
-            Could not load the dashboard
-          </p>
-          <p className="text-body-sm text-text-secondary">
-            {error instanceof Error ? error.message : 'Please try again.'}
-          </p>
-        </div>
-      </Card>
-    );
-  }
+  const data = summary.data;
+  // Failed with nothing to show. A failed REFETCH keeps the last good figures,
+  // which are still true as of the time in the header.
+  const summaryFailed = summary.isError && !data;
+  const period = periodLabel(data?.period);
+  const refreshing = summary.isFetching || analytics.isFetching || approvals.isFetching;
+
+  const refresh = () => {
+    void summary.refetch();
+    void analytics.refetch();
+    void approvals.refetch();
+  };
+
+  const net = data?.netIncome ?? 0;
 
   return (
     <div className="flex flex-col gap-lg">
-      <div>
-        <h1 className="text-h2 text-text-primary">Dashboard</h1>
-        <p className="text-body-sm text-text-secondary">
-          Where the business stands today.
-        </p>
-      </div>
+      <PageHeader
+        title="Dashboard"
+        meta={[
+          period ? `Month to date · ${period}` : null,
+          summary.dataUpdatedAt
+            ? `Updated ${format(summary.dataUpdatedAt, 'HH:mm')}`
+            : null,
+        ]}
+        actions={
+          <>
+            <Button
+              variant="secondary"
+              size="icon"
+              onClick={refresh}
+              disabled={refreshing}
+              aria-label="Refresh dashboard"
+              title="Refresh"
+            >
+              <RotateCw
+                className={cn('size-4', refreshing && 'animate-spin motion-reduce:animate-none')}
+              />
+            </Button>
+            <NewDocumentMenu />
+          </>
+        }
+      />
 
-      {/* Approvals banner. One endpoint, two meanings: the server scopes the
-          count by role, so an owner sees what awaits their signature and a
-          staff member sees how many of their own requests are still waiting. */}
-      {pendingCount > 0 && (
-        <Link
-          to={isOwner ? '/approvals' : '/my-requests'}
-          className="flex items-center gap-sm rounded-lg border border-warning-light bg-warning-lighter px-lg py-md transition-colors hover:bg-warning-light"
-        >
-          <Inbox className="size-5 shrink-0 text-warning" />
-          <span className="flex-1 text-label-lg text-text-primary">
-            {isOwner
-              ? `${pendingCount} item${pendingCount === 1 ? '' : 's'} awaiting your approval`
-              : `${pendingCount} of your request${pendingCount === 1 ? ' is' : 's are'} pending`}
-          </span>
-          <ArrowRight className="size-4 text-text-secondary" />
-        </Link>
+      {summaryFailed && (
+        <Card className="flex items-start gap-sm border border-danger-light bg-danger-lighter p-lg">
+          <AlertCircle aria-hidden="true" className="mt-[2px] size-5 shrink-0 text-danger" />
+          <div className="min-w-0 flex-1">
+            <p className="text-label-lg text-text-primary">
+              Could not load this month&rsquo;s figures
+            </p>
+            <p className="text-body-sm text-text-secondary">
+              {summary.error instanceof Error ? summary.error.message : 'Please try again.'}
+            </p>
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => void summary.refetch()}>
+            Try again
+          </Button>
+        </Card>
       )}
 
-      <div className="grid gap-md sm:grid-cols-2 xl:grid-cols-4">
-        <KpiTile
-          label="Revenue this period"
-          value={data?.totalRevenue ?? 0}
-          accent={colors.success}
-          loading={isLoading}
+      <div className="grid gap-lg xl:grid-cols-5">
+        <KpiGroup
+          className="xl:col-span-3"
+          title={period ? `This month · ${period}` : 'This month'}
+          loading={summary.isLoading}
+          unavailable={summaryFailed}
+          cells={[
+            {
+              key: 'revenue',
+              label: 'Revenue',
+              value: data?.totalRevenue ?? 0,
+              caption: 'Invoiced this month',
+              to: '/reports/profit-loss',
+            },
+            {
+              key: 'expenses',
+              label: 'Expenses',
+              value: data?.totalExpenses ?? 0,
+              caption: 'Billed this month',
+              to: '/reports/profit-loss',
+            },
+            {
+              key: 'net',
+              label: 'Net income',
+              value: net,
+              caption: 'Revenue less expenses',
+              to: '/reports/profit-loss',
+              tone: net < 0 ? 'danger' : 'default',
+            },
+          ]}
         />
-        <KpiTile
-          label="Accounts receivable"
-          value={data?.outstandingAR ?? 0}
-          accent={colors.info}
-          loading={isLoading}
-        />
-        <KpiTile
-          label="Accounts payable"
-          value={data?.pendingAP ?? 0}
-          accent={colors.warning}
-          loading={isLoading}
-        />
-        <KpiTile
-          label="Net income"
-          value={data?.netIncome ?? 0}
-          accent={
-            (data?.netIncome ?? 0) < 0 ? colors.danger : colors.primary
-          }
-          loading={isLoading}
+        <KpiGroup
+          className="xl:col-span-2"
+          title="Outstanding balances"
+          loading={summary.isLoading}
+          unavailable={summaryFailed}
+          cells={[
+            {
+              key: 'ar',
+              label: 'Receivables',
+              value: data?.outstandingAR ?? 0,
+              caption: 'Due from customers',
+              to: '/reports/ar-aging',
+            },
+            {
+              key: 'ap',
+              label: 'Payables',
+              value: data?.pendingAP ?? 0,
+              caption: 'Owed to suppliers',
+              to: '/reports/ap-aging',
+            },
+          ]}
         />
       </div>
 
-      <div className="grid gap-lg xl:grid-cols-3">
-        <Card className="p-lg xl:col-span-2">
-          <SectionHeader title="Revenue trend" />
-          <div className="mt-md h-64">
-            {trend === null ? (
-              <p className="text-body-sm text-text-tertiary">
-                Trend data is unavailable right now.
-              </p>
-            ) : trend && trend.length === 0 ? (
-              <p className="text-body-sm text-text-tertiary">
-                No revenue history yet — it will appear once you raise your
-                first invoice.
-              </p>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={trend ?? []}>
-                  <defs>
-                    <linearGradient id="revFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop
-                        offset="0%"
-                        stopColor={CHART_SERIES[0]}
-                        stopOpacity={0.28}
-                      />
-                      <stop
-                        offset="100%"
-                        stopColor={CHART_SERIES[0]}
-                        stopOpacity={0}
-                      />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid
-                    vertical={false}
-                    stroke={colors.borderLight}
-                  />
-                  <XAxis
-                    dataKey="label"
-                    tickLine={false}
-                    axisLine={false}
-                    tick={AXIS_TICK}
-                  />
-                  <YAxis
-                    tickLine={false}
-                    axisLine={false}
-                    width={64}
-                    tick={AXIS_TICK}
-                    tickFormatter={(v: number) => compactMoney(v)}
-                  />
-                  <Tooltip
-                    // Recharts types the value as ValueType (string | number |
-                    // array), so it is narrowed here rather than asserted.
-                    formatter={(v) => formatMoney(v as number)}
-                    contentStyle={{
-                      borderRadius: 10,
-                      border: `1px solid ${colors.border}`,
-                    }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="value"
-                    stroke={CHART_SERIES[0]}
-                    strokeWidth={2}
-                    fill="url(#revFill)"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </Card>
+      <div className="grid items-start gap-lg xl:grid-cols-3">
+        <div className="flex min-w-0 flex-col gap-lg xl:col-span-2">
+          <RevenueCard
+            points={analytics.data?.revenueTrend}
+            loading={analytics.isLoading}
+            failed={analytics.isError}
+            onRetry={() => void analytics.refetch()}
+          />
+          <RecentActivityCard
+            transactions={data?.recentTransactions ?? []}
+            loading={summary.isLoading}
+            failed={summaryFailed}
+            companyIsEmpty={data?.isEmpty ?? false}
+          />
+        </div>
 
-        <Card className="p-lg">
-          <SectionHeader title="Quick actions" />
-          <div className="mt-md flex flex-col gap-xs">
-            {QUICK_ACTIONS.map((a) => (
-              <QuickActionButton key={a.path} action={a} />
-            ))}
-          </div>
-        </Card>
+        {/* First on a narrow screen, where the columns stack: what needs doing
+            comes before the trend, the same order the Android dashboard uses. */}
+        <div className="order-first flex min-w-0 flex-col gap-lg xl:order-none">
+          <AttentionCard
+            alerts={data?.alerts ?? []}
+            pendingApprovals={approvals.data ?? 0}
+            isOwner={isOwner}
+            deliveryEnabled={deliveryOn}
+            loading={summary.isLoading}
+            alertsFailed={summaryFailed}
+          />
+          <ReceivablesAgeCard
+            aging={analytics.data?.arAgingTrend[0]}
+            loading={analytics.isLoading}
+            failed={analytics.isError}
+            onRetry={() => void analytics.refetch()}
+          />
+          {/* Counts, not money: with no summary there is nothing honest to
+              draw, so the card waits for the retry rather than showing zeros. */}
+          {!summaryFailed && (
+            <OperationsCard
+              deliveries={data?.deliveries}
+              inventoryItems={data?.inventoryItems ?? 0}
+              showDeliveries={deliveryOn}
+              showInventory={inventoryOn}
+              loading={summary.isLoading}
+            />
+          )}
+        </div>
       </div>
-
-      <Card className="p-lg">
-        <SectionHeader title="Recent activity" />
-        {isLoading ? (
-          <div className="mt-md space-y-xs">
-            {[0, 1, 2].map((i) => (
-              <div
-                key={i}
-                className="h-12 animate-pulse rounded-md bg-neutral-100"
-              />
-            ))}
-          </div>
-        ) : data?.recentTransactions.length ? (
-          <ul className="mt-md divide-y divide-border-light">
-            {data.recentTransactions.map((t) => (
-              <li
-                key={t.id}
-                className="flex items-center gap-md py-sm first:pt-0 last:pb-0"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-label-lg text-text-primary">
-                    {t.description}
-                  </p>
-                  <p className="text-body-sm text-text-secondary">{t.date}</p>
-                </div>
-                <StatusBadge status={t.status} />
-                <span
-                  className={cn(
-                    'w-32 shrink-0 text-right text-label-lg text-text-primary tabular',
-                  )}
-                >
-                  {formatMoney(t.amount)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-md text-body-sm text-text-tertiary">
-            {data?.isEmpty
-              ? 'No transactions yet. Add a customer and raise your first invoice to get started.'
-              : 'Nothing recent.'}
-          </p>
-        )}
-      </Card>
     </div>
   );
 }

@@ -34,6 +34,12 @@ export interface MonthlySeriesChartProps {
   /** Short form, for the axis. */
   compact: (value: number) => string;
   color?: string;
+  /**
+   * A period to pick out. Given one, every other bar recedes to a pale step of
+   * the same ramp, so the eye lands on that month first and still reads the
+   * rest as context. Omitted, every bar takes `color`, as before.
+   */
+  highlight?: string;
   emptyLabel?: string;
 }
 
@@ -55,6 +61,7 @@ export function MonthlySeriesChart({
   format,
   compact,
   color = colors.primary,
+  highlight,
   emptyLabel = 'Nothing recorded in this period.',
 }: MonthlySeriesChartProps) {
   const known = points.filter((p) => p.value !== null);
@@ -63,7 +70,13 @@ export function MonthlySeriesChart({
   }
 
   // Recharts skips a null datum, which is exactly the gap we want.
-  const data = points.map((p) => ({ label: p.label, value: p.value }));
+  const data = points.map((p) => ({
+    period: p.period,
+    label: p.label,
+    value: p.value,
+  }));
+  const fillFor = (period: string) =>
+    highlight === undefined || period === highlight ? color : colors.navy200;
 
   return (
     <div className="h-56">
@@ -88,7 +101,7 @@ export function MonthlySeriesChart({
           {/* One series, so one hue and no legend — the section title names it. */}
           <Bar dataKey="value" radius={[4, 4, 0, 0]} fill={color}>
             {data.map((d) => (
-              <Cell key={d.label} fill={color} />
+              <Cell key={d.period} fill={fillFor(d.period)} />
             ))}
           </Bar>
         </BarChart>

@@ -8,6 +8,18 @@ import type { ReactNode } from 'react';
 
 import { cn } from '@/lib/cn';
 
+/**
+ * Per-column options, read from `columnDef.meta`.
+ *
+ * `className` lands on the column's header AND every cell, so one class can
+ * drop a secondary column on a narrow screen (`hidden sm:table-cell`) without
+ * the heading and the figures falling out of step.
+ */
+interface ColumnMeta {
+  align?: 'left' | 'right';
+  className?: string;
+}
+
 interface DataTableProps<T> {
   columns: ColumnDef<T, unknown>[];
   data: T[];
@@ -56,15 +68,15 @@ export function DataTable<T>({
           <thead>
             <tr className="border-b border-border">
               {table.getHeaderGroups()[0]?.headers.map((header) => {
-                const align =
-                  (header.column.columnDef.meta as { align?: string } | undefined)
-                    ?.align ?? 'left';
+                const meta = header.column.columnDef.meta as ColumnMeta | undefined;
+                const align = meta?.align ?? 'left';
                 return (
                   <th
                     key={header.id}
                     className={cn(
                       'whitespace-nowrap px-md py-sm text-overline text-text-secondary',
                       align === 'right' ? 'text-right' : 'text-left',
+                      meta?.className,
                     )}
                   >
                     {header.isPlaceholder
@@ -111,15 +123,15 @@ export function DataTable<T>({
                   )}
                 >
                   {row.getVisibleCells().map((cell) => {
-                    const align =
-                      (cell.column.columnDef.meta as { align?: string } | undefined)
-                        ?.align ?? 'left';
+                    const meta = cell.column.columnDef.meta as ColumnMeta | undefined;
+                    const align = meta?.align ?? 'left';
                     return (
                       <td
                         key={cell.id}
                         className={cn(
                           'px-md py-sm text-body-sm text-text-primary',
                           align === 'right' && 'text-right tabular',
+                          meta?.className,
                         )}
                       >
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}

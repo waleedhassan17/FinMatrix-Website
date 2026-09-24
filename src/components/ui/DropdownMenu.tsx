@@ -57,8 +57,18 @@ export function DropdownMenuItem({
       )}
       {...props}
     >
-      {icon}
-      {children}
+      {/* Only wrapped when there IS an icon. With `asChild`, Radix's Slot needs
+          exactly one element child, and React counts an absent icon rendered
+          beside it as a second node — every link item threw on open. An
+          asChild item carries its icon inside the child instead. */}
+      {icon ? (
+        <>
+          {icon}
+          {children}
+        </>
+      ) : (
+        children
+      )}
     </Menu.Item>
   );
 }
