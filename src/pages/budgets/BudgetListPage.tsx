@@ -104,8 +104,7 @@ export default function BudgetListPage() {
         onRowClick={(b) => navigate(`/budgets/${b.id}`)}
         empty={
           <div className="py-xl text-center">
-            <PiggyBank className="mx-auto size-8 text-text-tertiary" />
-            <p className="mt-sm text-body-md text-text-secondary">No budgets yet.</p>
+            <p className="text-body-md text-text-secondary">No budgets yet.</p>
             <Button asChild className="mt-lg">
               <Link to="/budgets/new">
                 <Plus className="size-4" />
