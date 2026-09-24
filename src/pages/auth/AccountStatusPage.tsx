@@ -1,13 +1,14 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Clock, Gift, RefreshCw, ShieldX, XCircle } from 'lucide-react';
-import { useState, type ComponentType } from 'react';
-import { Link, Navigate, useLocation } from 'react-router-dom';
+import { Clock, Gift, PauseCircle, RefreshCw, ShieldX, XCircle } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, type ComponentType } from 'react';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/Button';
 import { BILLING_DISABLED_BUILD } from '@/config/featureFlags';
 import { AuthShell } from '@/features/auth/AuthShell';
 import { useSignOut } from '@/features/auth/useSignOut';
-import { authMe } from '@/networks/auth/authNetwork';
+import { authMe, authRefreshSession, type MeResponse } from '@/networks/auth/authNetwork';
 import { getBillingStatus } from '@/networks/billing/billingNetwork';
 // BILLING-DISABLED BUILD: drives the draft branch's "Submit for approval".
 import { submitCompanyForApproval } from '@/networks/companies/companiesNetwork';
@@ -16,6 +17,7 @@ import {
   selectCompany,
   selectCompanyStatus,
   selectIsOwner,
+  selectUser,
   setIdentity,
 } from '@/store/authSlice';
 import { useAppDispatch, useAppSelector } from '@/store/store';
@@ -87,6 +89,22 @@ const COPY: Record<AccountStatus | 'unknown', Copy> = {
   },
 };
 
+/**
+ * BILLING-DISABLED BUILD: `inactive` no longer means a lapsed subscription —
+ * there is nothing to renew. It means a FinMatrix administrator paused the
+ * company, so saying "Subscription expired… renew" described something that
+ * had not happened and offered a fix that does not exist.
+ */
+const DEACTIVATED_COPY: Copy = {
+  icon: PauseCircle,
+  tone: 'text-warning',
+  title: 'Account deactivated',
+  body: 'Access to this company has been paused by FinMatrix. Your data is safe and untouched — contact FinMatrix support to restore access.',
+};
+
+/** How often a company awaiting review re-checks while this page is open. */
+const APPROVAL_POLL_MS = 30_000;
+
 const TRIAL_PENDING_COPY: Copy = {
   icon: Gift,
   tone: 'text-primary',
@@ -118,6 +136,8 @@ export default function AccountStatusPage() {
   const dispatch = useAppDispatch();
   const queryClient = useQueryClient();
   const location = useLocation();
+  const navigate = useNavigate();
+  const user = useAppSelector(selectUser);
   const authStatus = useAppSelector(selectAuthStatus);
   const sessionStatus = useAppSelector(selectCompanyStatus);
   const company = useAppSelector(selectCompany);
@@ -137,9 +157,52 @@ export default function AccountStatusPage() {
   const billing = useQuery({
     queryKey: ['billing', 'status'],
     queryFn: getBillingStatus,
-    enabled: signedIn && (status === 'pending' || status === 'inactive'),
+    // BILLING-DISABLED BUILD: nothing can be in billing review, so do not ask.
+    enabled:
+      !BILLING_DISABLED_BUILD && signedIn && (status === 'pending' || status === 'inactive'),
     retry: false,
   });
+
+  // Approved: the owner goes straight to their dashboard. The token is
+  // re-issued first — it was minted before the company existed and names none,
+  // so the dashboard's first request would otherwise fail. This used to be a
+  // "Check again" button and, on success, a dashboard that errored until the
+  // owner signed out and back in.
+  const wentLive = useRef(false);
+  const goLive = useCallback(
+    async (me: MeResponse) => {
+      if (wentLive.current) return;
+      wentLive.current = true;
+      await authRefreshSession();
+      dispatch(setIdentity(me));
+      queryClient.clear();
+      toast.success(`${me.company?.name ?? 'Your company'} is approved. Welcome to FinMatrix.`);
+      navigate('/dashboard', { replace: true });
+    },
+    [dispatch, navigate, queryClient],
+  );
+
+  // While a review is pending, look again every 30 seconds and whenever the
+  // tab comes back into view, so approval takes effect without a click.
+  const watch = useQuery({
+    queryKey: ['auth', 'approval-watch'],
+    queryFn: authMe,
+    enabled: signedIn && status === 'pending',
+    refetchInterval: APPROVAL_POLL_MS,
+    refetchOnWindowFocus: 'always',
+    retry: false,
+    gcTime: 0,
+  });
+  useEffect(() => {
+    const me = watch.data;
+    if (!me) return;
+    if (me.companyStatus === 'active') {
+      void goLive(me);
+    } else if (me.companyStatus !== status) {
+      // Rejected or sent back while waiting: show that state instead.
+      dispatch(setIdentity(me));
+    }
+  }, [watch.data, status, goLive, dispatch]);
 
   if (authStatus === 'anonymous' && !gateStatus) {
     return <Navigate to="/login" replace state={{ from: location }} />;
@@ -154,7 +217,9 @@ export default function AccountStatusPage() {
     ? TRIAL_PENDING_COPY
     : trialEnded
       ? TRIAL_ENDED_COPY
-      : COPY[status ?? 'unknown'];
+      : BILLING_DISABLED_BUILD && status === 'inactive'
+        ? DEACTIVATED_COPY
+        : COPY[status ?? 'unknown'];
   const Icon = copy.icon;
 
   // Re-checking is worth offering: `inactive` is computed live from the
@@ -164,6 +229,10 @@ export default function AccountStatusPage() {
     setChecking(true);
     try {
       const me = await authMe();
+      if (me.companyStatus === 'active') {
+        await goLive(me);
+        return;
+      }
       dispatch(setIdentity(me));
       queryClient.clear();
     } catch {
@@ -195,11 +264,31 @@ export default function AccountStatusPage() {
     <AuthShell title={copy.title} subtitle={company?.name}>
       <div className="flex flex-col items-center gap-md text-center">
         <Icon className={`size-10 ${copy.tone}`} />
-        <p className="text-body-md text-text-secondary">{copy.body}</p>
+        <p className="text-body-md text-text-secondary">
+          {/* Signed in, the page itself moves on — "you will be able to sign
+              in" would describe a step they will not have to take. */}
+          {signedIn && status === 'pending' && !trialPending
+            ? 'Your company is being reviewed by the FinMatrix team. Reviews usually finish within one business day.'
+            : copy.body}
+        </p>
 
         {trialPending && (
           <p className="text-body-sm text-text-tertiary">
             Free trials are usually activated within 24 hours.
+          </p>
+        )}
+
+        {/* Say where the answer will arrive, and that this page will not need
+            refreshing to see it. */}
+        {signedIn && status === 'pending' && !trialPending && (
+          <p className="text-body-sm text-text-tertiary">
+            {user?.email ? (
+              <>
+                We&rsquo;ll email <span className="text-label-md text-text-secondary">{user.email}</span>{' '}
+                as soon as it&rsquo;s approved.{' '}
+              </>
+            ) : null}
+            You can leave this page open — it moves on by itself.
           </p>
         )}
 

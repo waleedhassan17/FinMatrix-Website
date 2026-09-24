@@ -193,6 +193,20 @@ export const selectSelectedRole = (s: WithAuth): PortalRole | null =>
   s.auth.selectedRole;
 
 /**
+ * An owner whose email address is not confirmed yet.
+ *
+ * Signup and sign-in both hand such an owner a session, and the server refuses
+ * it everywhere except /auth. The client's job is to hold them on
+ * /verify-email, which moves them on by itself once the link is opened. The
+ * rule is the server's own (JwtStrategy): only an owner with an address to
+ * confirm can be unverified, so a username-only account never is.
+ */
+export const selectNeedsEmailVerification = (s: WithAuth): boolean =>
+  s.auth.user?.role === 'admin' &&
+  !!s.auth.user.email &&
+  s.auth.user.isEmailVerified === false;
+
+/**
  * Is the company in a state where business routes will work?
  *
  * Only 'active' passes. Signin deliberately lets 'draft' and 'inactive' through

@@ -16,6 +16,7 @@ import {
   selectAuthStatus,
   selectCompanyId,
   selectCompanyStatus,
+  selectNeedsEmailVerification,
   selectRole,
 } from '@/store/authSlice';
 import { useAppDispatch, useAppSelector } from '@/store/store';
@@ -125,6 +126,22 @@ export function RequireAuth({ children }: { children: ReactNode }) {
 }
 
 /**
+ * Holds an owner who has not confirmed their email on /verify-email.
+ *
+ * Their session is real — signup keeps it now, so the verify page can notice
+ * the link being opened and move on by itself — but the server refuses it
+ * everywhere past /auth. Without this gate that session would walk into
+ * company setup and fail on submit.
+ */
+export function RequireVerifiedEmail({ children }: { children: ReactNode }) {
+  const needsVerification = useAppSelector(selectNeedsEmailVerification);
+  if (needsVerification) {
+    return <Navigate to="/verify-email" replace />;
+  }
+  return <>{children}</>;
+}
+
+/**
  * Requires a company that business endpoints will actually serve.
  *
  * Sign-in deliberately succeeds for `draft` and `inactive` companies so the
@@ -201,8 +218,10 @@ export function RequireRouteAccess({ children }: { children: ReactNode }) {
  */
 export function RedirectIfAuthenticated({ children }: { children: ReactNode }) {
   const status = useAppSelector(selectAuthStatus);
+  const needsVerification = useAppSelector(selectNeedsEmailVerification);
   if (status === 'authenticated') {
-    return <Navigate to="/dashboard" replace />;
+    // Straight to the step they are on, rather than via a dashboard redirect.
+    return <Navigate to={needsVerification ? '/verify-email' : '/dashboard'} replace />;
   }
   return <>{children}</>;
 }

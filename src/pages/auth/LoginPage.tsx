@@ -21,7 +21,7 @@
 // would be offering a door that opens onto nothing.
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
@@ -59,6 +59,11 @@ export default function LoginPage() {
 
   const schema = useMemo(() => makeLoginSchema(role), [role]);
 
+  // Arriving from a confirmation link opened with no session here: the address
+  // is confirmed, and signing in is the one step left before company setup.
+  const justVerified = !isStaff && searchParams.get('verified') === '1';
+  const prefillEmail = isStaff ? '' : (searchParams.get('email') ?? '');
+
   const {
     register,
     handleSubmit,
@@ -66,7 +71,7 @@ export default function LoginPage() {
     formState: { errors, isSubmitting },
   } = useForm<LoginFormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { identifier: '', password: '' },
+    defaultValues: { identifier: prefillEmail, password: '' },
   });
 
   const redirectTo =
@@ -86,6 +91,18 @@ export default function LoginPage() {
     try {
       const result = await authLogin({ ...values, portal: role });
       dispatch(setIdentity(result));
+
+      // An owner who has not confirmed their email gets a session that can do
+      // nothing but wait for it, and the verify screen is where that happens —
+      // it moves on by itself once the link is opened.
+      if (
+        result.user.role === 'admin' &&
+        result.user.email &&
+        result.user.isEmailVerified === false
+      ) {
+        navigate('/verify-email', { replace: true, state: { email: result.user.email } });
+        return;
+      }
 
       // A token was issued, but the company may still be gated. Sign-in only
       // blocks `pending` and `rejected`; `draft` and `inactive` come back 200
@@ -113,7 +130,9 @@ export default function LoginPage() {
         //
         // EMAIL_NOT_VERIFIED is handled on the owner door only. A staff account
         // has no email to verify, so the server cannot raise it there; routing
-        // a staff member to a verification screen would strand them.
+        // a staff member to a verification screen would strand them. A current
+        // server no longer refuses the sign-in (see the branch above); this is
+        // for one that still does.
         if (!isStaff && e.code === 'EMAIL_NOT_VERIFIED') {
           navigate('/verify-email', {
             replace: true,
@@ -173,6 +192,15 @@ export default function LoginPage() {
       }
     >
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-md">
+        {justVerified && !formError && (
+          <div role="status" className="flex items-start gap-xs rounded-md bg-success-lighter p-sm">
+            <CheckCircle2 className="mt-[2px] size-4 shrink-0 text-success" aria-hidden="true" />
+            <span className="text-body-sm text-text-primary">
+              Your email is confirmed. Sign in to set up your company.
+            </span>
+          </div>
+        )}
+
         {formError && (
           <div
             role="alert"
@@ -201,7 +229,7 @@ export default function LoginPage() {
           type="text"
           inputMode={isStaff ? 'text' : 'email'}
           autoComplete="username"
-          autoFocus
+          autoFocus={!prefillEmail}
           error={errors.identifier?.message}
           {...register('identifier')}
         />
@@ -210,6 +238,7 @@ export default function LoginPage() {
           label="Password"
           type={showPassword ? 'text' : 'password'}
           autoComplete="current-password"
+          autoFocus={!!prefillEmail}
           error={errors.password?.message}
           trailing={
             <button

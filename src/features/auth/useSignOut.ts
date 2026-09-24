@@ -27,27 +27,37 @@ export function useSignOut() {
   const [signingOut, setSigningOut] = useState(false);
   const inFlight = useRef(false);
 
-  const signOut = useCallback(() => {
-    if (inFlight.current) return;
-    inFlight.current = true;
-    setSigningOut(true);
+  /**
+   * Sign out and land on `to`. `signOut` below is this with '/login', kept
+   * argument-free because it is wired straight into onClick, which would
+   * otherwise hand it the click event as a destination.
+   */
+  const signOutTo = useCallback(
+    (to: string) => {
+      if (inFlight.current) return;
+      inFlight.current = true;
+      setSigningOut(true);
 
-    // Before the server call: requests still in flight on the old token must
-    // not be refreshed or reported as an expired session (see authEvents).
-    markIntentionalSignOut();
+      // Before the server call: requests still in flight on the old token must
+      // not be refreshed or reported as an expired session (see authEvents).
+      markIntentionalSignOut();
 
-    // Not awaited on purpose — see above.
-    void authSignOut();
+      // Not awaited on purpose — see above.
+      void authSignOut();
 
-    dispatch(signOutAction());
-    queryClient.clear();
-    navigate('/login', { replace: true });
+      dispatch(signOutAction());
+      queryClient.clear();
+      navigate(to, { replace: true });
 
-    inFlight.current = false;
-    setSigningOut(false);
-  }, [dispatch, navigate, queryClient]);
+      inFlight.current = false;
+      setSigningOut(false);
+    },
+    [dispatch, navigate, queryClient],
+  );
 
-  return { signOut, signingOut };
+  const signOut = useCallback(() => signOutTo('/login'), [signOutTo]);
+
+  return { signOut, signOutTo, signingOut };
 }
 
 export default useSignOut;

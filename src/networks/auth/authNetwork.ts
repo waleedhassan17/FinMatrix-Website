@@ -9,6 +9,7 @@ import {
   api,
   clearTokens,
   extractErrorMessage,
+  refreshSessionTokens,
   setStoredCompanyId,
   setTokens,
   toApiError,
@@ -248,18 +249,24 @@ export interface RegisterPayload {
  * Self-signup is therefore an owner-shaped act by definition, and making the role
  * configurable would invite a caller to try the one value that 400s.
  *
- * Returns nothing useful: the server issues no token here. The account must
- * verify its email first, so the caller's next stop is /verify-email.
+ * The server answers with a session, and it is KEPT. It used to be thrown
+ * away, so an owner who confirmed their email had nothing to continue with and
+ * was sent back to sign in. The session is unverified — the server refuses it
+ * everywhere except /auth — and exists so /verify-email can notice the moment
+ * the link is opened, on any device, and carry the owner on into setup.
+ *
+ * Returns null when the server sent no token (never expected; handled so the
+ * caller can still send the owner to verify and sign in afterwards).
  */
 export const authRegister = async ({
   email,
   password,
   displayName,
   phone,
-}: RegisterPayload): Promise<void> => {
+}: RegisterPayload): Promise<Identity | null> => {
   try {
     const trimmedPhone = phone?.trim();
-    await api.post('/auth/signup', {
+    const response = await api.post('/auth/signup', {
       email: email.trim(),
       password,
       displayName: displayName.trim(),
@@ -268,6 +275,11 @@ export const authRegister = async ({
       // which is how the app learned to strip it rather than send an empty one.
       ...(trimmedPhone ? { phone: trimmedPhone } : {}),
     });
+    const data = unwrapEnvelope<RawAuthPayload & { tokens?: TokenPair }>(response.data);
+    if (!data?.tokens?.accessToken) return null;
+    setTokens(data.tokens.accessToken, data.tokens.refreshToken);
+    clearIntentionalSignOut();
+    return identitySerializer(data);
   } catch (e) {
     asAuthError(e);
   }
@@ -284,8 +296,16 @@ export interface MeResponse extends Identity {
  *
  * This is also the only way to learn that a role changed mid-session:
  * /auth/refresh-token returns tokens alone and carries the OLD token's role
- * and companyId forward, so a refresh will never tell us.
+ * forward (it fills in a missing companyId, nothing more), so a refresh will
+ * never tell us.
  */
+/**
+ * Re-issue the session's tokens now. See refreshSessionTokens: a new owner's
+ * token names no company, and the server fills it in on refresh — called once
+ * the company exists and again once it is approved.
+ */
+export const authRefreshSession = refreshSessionTokens;
+
 export const authMe = async (): Promise<MeResponse> => {
   try {
     const response = await api.get('/auth/me');
@@ -361,9 +381,25 @@ export const authResetPassword = async (params: {
 };
 
 // ─── Email verification ─────────────────────────────
-export const authVerifyEmail = async (token: string): Promise<void> => {
+/**
+ * Confirm an address with the token from the email link.
+ *
+ * `alreadyVerified` is true when the link had been used before but the address
+ * IS confirmed — a mail scanner opened it first, or the owner clicked twice.
+ * That is a success, and the page says so rather than "link expired".
+ */
+export const authVerifyEmail = async (
+  token: string,
+): Promise<{ alreadyVerified: boolean; email: string | null }> => {
   try {
-    await api.post('/auth/verify-email', { token });
+    const response = await api.post('/auth/verify-email', { token });
+    const data = unwrapEnvelope<{ alreadyVerified?: boolean; email?: string | null }>(
+      response.data,
+    );
+    return {
+      alreadyVerified: data?.alreadyVerified === true,
+      email: typeof data?.email === 'string' ? data.email : null,
+    };
   } catch (e) {
     throw toApiError(e);
   }

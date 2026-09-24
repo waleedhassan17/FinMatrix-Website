@@ -7,6 +7,7 @@ import {
   RequireAuth,
   RequireOwner,
   RequireRouteAccess,
+  RequireVerifiedEmail,
   SessionGate,
 } from '@/features/auth/SessionGate';
 import LandingPage from '@/pages/LandingPage';
@@ -244,7 +245,11 @@ export const router = createBrowserRouter([
       // arrives with neither a session nor that hand-off to /login.
       {
         path: '/account-status',
-        element: <AccountStatusPage />,
+        element: (
+          <RequireVerifiedEmail>
+            <AccountStatusPage />
+          </RequireVerifiedEmail>
+        ),
       },
 
       // ── Owner-only, and OUTSIDE RequireActiveCompany ──────────────
@@ -262,9 +267,11 @@ export const router = createBrowserRouter([
         path: '/onboarding/company',
         element: (
           <RequireAuth>
-            <RequireOwner>
-              <CompanySetupPage />
-            </RequireOwner>
+            <RequireVerifiedEmail>
+              <RequireOwner>
+                <CompanySetupPage />
+              </RequireOwner>
+            </RequireVerifiedEmail>
           </RequireAuth>
         ),
       },
@@ -315,11 +322,13 @@ export const router = createBrowserRouter([
       {
         element: (
           <RequireAuth>
-            <RequireActiveCompany>
-              <RequireRouteAccess>
-                <AppLayout />
-              </RequireRouteAccess>
-            </RequireActiveCompany>
+            <RequireVerifiedEmail>
+              <RequireActiveCompany>
+                <RequireRouteAccess>
+                  <AppLayout />
+                </RequireRouteAccess>
+              </RequireActiveCompany>
+            </RequireVerifiedEmail>
           </RequireAuth>
         ),
         // Its own boundary, matching AppLayout's own <Suspense>. Note this

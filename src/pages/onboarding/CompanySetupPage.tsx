@@ -21,7 +21,7 @@ import { OnboardingShell } from '@/features/onboarding/OnboardingShell';
 // that there is no plan/payment step to carry it.
 import { createCompany, submitCompanyForApproval } from '@/networks/companies/companiesNetwork';
 import { setStoredCompanyId } from '@/networks/network/apiHelpers';
-import { authMe } from '@/networks/auth/authNetwork';
+import { authMe, authRefreshSession } from '@/networks/auth/authNetwork';
 import { setIdentity } from '@/store/authSlice';
 import { useAppDispatch } from '@/store/store';
 
@@ -121,6 +121,11 @@ export default function CompanySetupPage() {
         }
       }
 
+      // The session was minted before this company existed, so its token names
+      // none. Re-issue it now: the server fills the company in, and the owner
+      // needs no second sign-in once the company is approved.
+      await authRefreshSession();
+
       // Re-read identity so the guards stop treating this owner as company-less.
       // Non-fatal — the company exists either way and the next step can proceed.
       try {
@@ -143,7 +148,11 @@ export default function CompanySetupPage() {
     <OnboardingShell
       step={1}
       title="Tell us about your business"
-      subtitle="This names your company on invoices and reports. You can change any of it later in Settings."
+      subtitle={
+        BILLING_DISABLED_BUILD
+          ? 'This names your company on invoices and reports, and it is what our team reviews before your account goes live. You can change any of it later in Settings.'
+          : 'This names your company on invoices and reports. You can change any of it later in Settings.'
+      }
     >
       <form
         onSubmit={handleSubmit(onSubmit)}
@@ -233,7 +242,11 @@ export default function CompanySetupPage() {
         </div>
 
         <Button type="submit" size="lg" className="mt-xxl" disabled={isSubmitting}>
-          {isSubmitting ? 'Creating company…' : 'Continue to plans'}
+          {isSubmitting
+            ? 'Submitting…'
+            : BILLING_DISABLED_BUILD
+              ? 'Submit for approval'
+              : 'Continue to plans'}
         </Button>
       </form>
     </OnboardingShell>

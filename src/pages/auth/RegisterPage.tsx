@@ -21,6 +21,8 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { AuthShell } from '@/features/auth/AuthShell';
 import { authRegister } from '@/networks/auth/authNetwork';
+import { setIdentity } from '@/store/authSlice';
+import { useAppDispatch } from '@/store/store';
 
 /** Exactly the server's rule. Kept beside the hint the form shows. */
 const PASSWORD_RULES = [
@@ -52,6 +54,7 @@ type FormValues = z.infer<typeof schema>;
 
 export default function RegisterPage() {
   const navigate = useNavigate();
+  const dispatch = useAppDispatch();
   const [formError, setFormError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
@@ -76,15 +79,17 @@ export default function RegisterPage() {
   const onSubmit = async (values: FormValues) => {
     setFormError('');
     try {
-      await authRegister({
+      const identity = await authRegister({
         email: values.email,
         password: values.password,
         displayName: values.displayName,
         phone: values.phone,
       });
 
-      // No token comes back from signup — the account has to confirm its email
-      // first, so this goes to the verification screen rather than the app.
+      // The session signup returns is kept, so the verify screen can watch for
+      // the link being opened and carry the owner straight on to company setup
+      // — without it they verified and were sent back here to sign in again.
+      if (identity) dispatch(setIdentity(identity));
       navigate('/verify-email', {
         replace: true,
         state: { email: values.email.trim() },
@@ -206,11 +211,13 @@ export default function RegisterPage() {
           {isSubmitting ? 'Creating account…' : 'Create account'}
         </Button>
 
-        {/* Said before signup, not after. Activation is a bank transfer and a
-            human review; a buyer who learns that at the paywall feels misled. */}
+        {/* Said before signup, not after: every company is reviewed by a
+            person before it goes live, and an owner who learns that only at
+            the end feels misled. */}
         <p className="text-caption text-text-secondary">
-          Next you will set up your company and choose a plan. Plans are paid by
-          bank transfer and activated once we verify your receipt.
+          Next: confirm your email and tell us about your business. Our team
+          reviews every new company before it goes live, and we email you the
+          moment yours is approved.
         </p>
       </form>
     </AuthShell>

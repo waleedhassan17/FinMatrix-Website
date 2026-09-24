@@ -5,6 +5,7 @@ vi.mock('@/networks/network/apiHelpers', () => ({
   clearTokens: vi.fn(),
   setTokens: vi.fn(),
   setStoredCompanyId: vi.fn(),
+  refreshSessionTokens: vi.fn(async () => true),
   extractErrorMessage: vi.fn(() => 'Request failed'),
   toApiError: vi.fn((e: unknown) => e),
   unwrapEnvelope: (r: unknown) =>
@@ -12,7 +13,12 @@ vi.mock('@/networks/network/apiHelpers', () => ({
 }));
 
 import { portalMismatch } from '@/features/auth/portalAccess';
-import { AuthError, authLogin } from '@/networks/auth/authNetwork';
+import {
+  AuthError,
+  authLogin,
+  authRegister,
+  authVerifyEmail,
+} from '@/networks/auth/authNetwork';
 import {
   api,
   clearTokens,
@@ -116,5 +122,78 @@ describe('authLogin portal enforcement', () => {
       authLogin({ identifier: 'root@x.z', password: 'pw', portal: 'admin' }),
     ).rejects.toMatchObject({ code: 'WRONG_PORTAL', accountType: 'super_admin' });
     expect(clearTokens).toHaveBeenCalled();
+  });
+});
+
+// The session signup returns used to be discarded, so an owner who confirmed
+// their email had nothing to continue with and was sent back to sign in.
+describe('authRegister', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('keeps the session and returns the unverified owner', async () => {
+    post.mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: {
+          user: {
+            id: 'u1',
+            email: 'new@x.z',
+            username: null,
+            displayName: 'New Owner',
+            role: 'admin',
+            isEmailVerified: false,
+          },
+          tokens: { accessToken: 'access', refreshToken: 'refresh', expiresIn: 900 },
+          companyId: null,
+          company: null,
+          companyStatus: null,
+          companyType: null,
+          features: null,
+        },
+      },
+    });
+    const identity = await authRegister({
+      email: 'new@x.z',
+      password: 'Secret123',
+      displayName: 'New Owner',
+    });
+    expect(setTokens).toHaveBeenCalledWith('access', 'refresh');
+    expect(identity?.user.isEmailVerified).toBe(false);
+    expect(identity?.companyId).toBeNull();
+  });
+
+  it('returns null, storing nothing, when the server sends no session', async () => {
+    post.mockResolvedValueOnce({ data: { success: true, data: { user: { id: 'u1' } } } });
+    await expect(
+      authRegister({ email: 'new@x.z', password: 'Secret123', displayName: 'New Owner' }),
+    ).resolves.toBeNull();
+    expect(setTokens).not.toHaveBeenCalled();
+  });
+});
+
+describe('authVerifyEmail', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // A link a mail scanner or a second click already spent is still a success.
+  it('reports a link that had already been used for a confirmed address', async () => {
+    post.mockResolvedValueOnce({
+      data: { success: true, data: { verified: true, email: 'a@b.c', alreadyVerified: true } },
+    });
+    await expect(authVerifyEmail('t')).resolves.toEqual({
+      alreadyVerified: true,
+      email: 'a@b.c',
+    });
+  });
+
+  it('treats an older server that says nothing extra as a fresh confirmation', async () => {
+    post.mockResolvedValueOnce({ data: { success: true, data: { verified: true } } });
+    await expect(authVerifyEmail('t')).resolves.toEqual({
+      alreadyVerified: false,
+      email: null,
+    });
   });
 });
