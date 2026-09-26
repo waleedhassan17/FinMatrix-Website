@@ -4,6 +4,7 @@ import {
   matchPreset,
   PERIOD_PRESETS,
   presetRange,
+  type PeriodPreset,
   type PeriodPresetKey,
   type ReportRange,
 } from '@/models/reportPeriod';
@@ -11,6 +12,8 @@ import {
 export interface PeriodPickerProps {
   value: ReportRange;
   onChange: (range: ReportRange) => void;
+  /** The chips on offer. Statements use calendar periods; a trend offers trailing months. */
+  presets?: readonly PeriodPreset[];
   className?: string;
 }
 
@@ -25,8 +28,13 @@ export interface PeriodPickerProps {
  * Typing in a date field moves the selection to Custom by the same derivation,
  * with nothing to keep in step.
  */
-export function PeriodPicker({ value, onChange, className }: PeriodPickerProps) {
-  const active = matchPreset(value);
+export function PeriodPicker({
+  value,
+  onChange,
+  presets = PERIOD_PRESETS,
+  className,
+}: PeriodPickerProps) {
+  const active = matchPreset(value, undefined, presets);
 
   const pick = (key: PeriodPresetKey) => {
     // Custom is not a range of its own — it means "I will set the dates myself",
@@ -38,7 +46,7 @@ export function PeriodPicker({ value, onChange, className }: PeriodPickerProps) 
   return (
     <div className={cn('flex flex-col gap-sm', className)}>
       <div className="flex flex-wrap gap-xs">
-        {PERIOD_PRESETS.map(({ key, label }) => (
+        {presets.map(({ key, label }) => (
           <button
             key={key}
             type="button"

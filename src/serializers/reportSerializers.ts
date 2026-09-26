@@ -841,7 +841,15 @@ export interface InventoryItemHistory {
   sku: string;
   months: number;
   points: ItemHistoryPoint[];
-  coverage: { quantity: string; value: string; message: string };
+  coverage: {
+    quantity: string;
+    /** 'exact' | 'partial' | 'unavailable'. */
+    value: string;
+    /** The first date an item's value can be read for. Null means never. */
+    costHistoryFrom: string | null;
+    /** Why some or all of the value is missing, or why a month is below zero. */
+    message: string;
+  };
 }
 
 /**
@@ -881,6 +889,7 @@ export const inventoryItemHistorySerializer = (
     coverage: {
       quantity: str(coverage.quantity, 'exact'),
       value: str(coverage.value, 'unavailable'),
+      costHistoryFrom: coverage.costHistoryFrom ? str(coverage.costHistoryFrom) : null,
       message: str(coverage.message),
     },
   };
@@ -900,10 +909,34 @@ export interface ItemPerformancePoint {
   costKnown: boolean;
 }
 
+/** The item as it stands today — stock figures are AS OF NOW. */
+export interface ItemFacts {
+  category: string;
+  unitOfMeasure: string;
+  sellingPrice: number;
+  unitCost: number;
+  qtyOnHand: number;
+  stockValue: number;
+  reorderPoint: number;
+  isActive: boolean;
+  /** The last sale of any date, not only in the range. Null: never sold. */
+  lastSoldDate: string | null;
+}
+
+/** One buyer of the item over the range. */
+export interface ItemCustomer {
+  customerId: string | null;
+  customerName: string;
+  unitsSold: number;
+  revenue: number;
+  grossProfit: number;
+}
+
 export interface ItemPerformance {
   itemId: string;
   itemName: string;
   sku: string;
+  range: { startDate: string; endDate: string };
   points: ItemPerformancePoint[];
   totals: {
     unitsSold: number;
@@ -917,15 +950,36 @@ export interface ItemPerformance {
   /** 0..1 — how much of the cost is an apportioned estimate. Each invoice's
    *  total is exact; the split between items on one invoice is not. */
   estimatedCogsShare: number;
+  /** Null from a server that predates it — the explorer then shows less. */
+  item: ItemFacts | null;
+  /** The top buyers over the range, largest first. */
+  customers: ItemCustomer[];
+  /** Everyone after the top few, folded. */
+  otherCustomers: { count: number; unitsSold: number; revenue: number; grossProfit: number };
 }
+
+const itemCustomerSerializer = (raw: unknown): ItemCustomer => {
+  const c = asRaw(raw);
+  return {
+    customerId: c.customerId ? str(c.customerId) : null,
+    customerName: str(c.customerName) || '(no customer)',
+    unitsSold: toNumber(c.unitsSold as never),
+    revenue: toNumber(c.revenue as never),
+    grossProfit: toNumber(c.grossProfit as never),
+  };
+};
 
 export const itemPerformanceSerializer = (payload: unknown): ItemPerformance => {
   const r = asRaw(payload);
   const t = asRaw(r.totals);
+  const range = asRaw(r.range);
+  const item = r.item ? asRaw(r.item) : null;
+  const others = asRaw(r.otherCustomers);
   return {
     itemId: str(r.itemId),
     itemName: str(r.itemName),
     sku: str(r.sku),
+    range: { startDate: str(range.startDate), endDate: str(range.endDate) },
     points: lines(r.points).map((raw) => {
       const p = asRaw(raw);
       return {
@@ -948,6 +1002,100 @@ export const itemPerformanceSerializer = (payload: unknown): ItemPerformance => 
     },
     costHistoryFrom: r.costHistoryFrom ? str(r.costHistoryFrom) : null,
     estimatedCogsShare: toNumber(r.estimatedCogsShare as never),
+    item: item
+      ? {
+          category: str(item.category, 'Uncategorized'),
+          unitOfMeasure: str(item.unitOfMeasure, 'unit'),
+          sellingPrice: toNumber(item.sellingPrice as never),
+          unitCost: toNumber(item.unitCost as never),
+          qtyOnHand: toNumber(item.qtyOnHand as never),
+          stockValue: toNumber(item.stockValue as never),
+          reorderPoint: toNumber(item.reorderPoint as never),
+          isActive: item.isActive !== false,
+          lastSoldDate: item.lastSoldDate ? str(item.lastSoldDate) : null,
+        }
+      : null,
+    customers: lines(r.customers).map(itemCustomerSerializer),
+    otherCustomers: {
+      count: toNumber(others.count as never),
+      unitsSold: toNumber(others.unitsSold as never),
+      revenue: toNumber(others.revenue as never),
+      grossProfit: toNumber(others.grossProfit as never),
+    },
+  };
+};
+
+/** One document line behind an item's figures. */
+export interface ItemSalesEntry {
+  date: string;
+  /** A delivery opens the invoice it raised, so it links like an invoice. */
+  docType: 'invoice' | 'delivery' | 'credit_memo';
+  docId: string;
+  docNumber: string;
+  customerId: string | null;
+  customerName: string;
+  /** Negative on a return. */
+  units: number;
+  /** Net of tax and the invoice discount. */
+  unitPrice: number;
+  revenue: number;
+  cogs: number;
+  grossProfit: number;
+  marginPct: number | null;
+  costBasis: string;
+  costKnown: boolean;
+}
+
+export interface ItemSalesEntries {
+  itemId: string;
+  range: { startDate: string; endDate: string };
+  entries: ItemSalesEntry[];
+  /** Lines in the whole range, not just this page. */
+  total: number;
+  page: number;
+  limit: number;
+  /** Over the whole range — equal to the matching months on item-performance. */
+  totals: { unitsSold: number; revenue: number; cogs: number; grossProfit: number };
+}
+
+const DOC_TYPES = ['invoice', 'delivery', 'credit_memo'] as const;
+
+export const itemSalesEntriesSerializer = (payload: unknown): ItemSalesEntries => {
+  const r = asRaw(payload);
+  const range = asRaw(r.range);
+  const t = asRaw(r.totals);
+  return {
+    itemId: str(r.itemId),
+    range: { startDate: str(range.startDate), endDate: str(range.endDate) },
+    entries: lines(r.entries).map((raw) => {
+      const e = asRaw(raw);
+      const docType = str(e.docType) as ItemSalesEntry['docType'];
+      return {
+        date: str(e.date),
+        docType: DOC_TYPES.includes(docType) ? docType : 'invoice',
+        docId: str(e.docId),
+        docNumber: str(e.docNumber),
+        customerId: e.customerId ? str(e.customerId) : null,
+        customerName: str(e.customerName) || '(no customer)',
+        units: toNumber(e.units as never),
+        unitPrice: toNumber(e.unitPrice as never),
+        revenue: toNumber(e.revenue as never),
+        cogs: toNumber(e.cogs as never),
+        grossProfit: toNumber(e.grossProfit as never),
+        marginPct: numberOrNull(e.marginPct),
+        costBasis: str(e.costBasis, 'unknown'),
+        costKnown: e.costKnown !== false,
+      };
+    }),
+    total: toNumber(r.total as never),
+    page: toNumber(r.page as never) || 1,
+    limit: toNumber(r.limit as never) || 25,
+    totals: {
+      unitsSold: toNumber(t.unitsSold as never),
+      revenue: toNumber(t.revenue as never),
+      cogs: toNumber(t.cogs as never),
+      grossProfit: toNumber(t.grossProfit as never),
+    },
   };
 };
 
@@ -974,6 +1122,8 @@ export interface InventoryPerformanceRow {
   unitCost: number;
   stockValue: number;
   costBasis: string;
+  /** The last sale of any date. Null: never sold, or a server that predates it. */
+  lastSoldDate: string | null;
 }
 
 export interface ReconcilingItem {
@@ -994,6 +1144,8 @@ export interface InventoryPerformance {
     grossProfit: number;
     marginPct: number | null;
     stockValue: number;
+    /** GL 1200, all time — what `stockValue` should equal. Null from an older server. */
+    ledgerValue: number | null;
   };
   /**
    * Why this report does not equal the Profit & Loss, itemised — and it foots:
@@ -1042,6 +1194,7 @@ export const inventoryPerformanceSerializer = (
         unitCost: toNumber(x.unitCost as never),
         stockValue: toNumber(x.stockValue as never),
         costBasis: str(x.costBasis, 'posted'),
+        lastSoldDate: x.lastSoldDate ? str(x.lastSoldDate) : null,
       };
     }),
     totals: {
@@ -1051,6 +1204,7 @@ export const inventoryPerformanceSerializer = (
       grossProfit: toNumber(t.grossProfit as never),
       marginPct: numberOrNull(t.marginPct),
       stockValue: toNumber(t.stockValue as never),
+      ledgerValue: numberOrNull(t.ledgerValue),
     },
     reconciliation: {
       glRevenue: toNumber(rc.glRevenue as never),

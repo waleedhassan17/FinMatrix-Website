@@ -45,9 +45,17 @@ export type PeriodPresetKey =
   | 'thisQuarter'
   | 'ytd'
   | 'lastYear'
+  | 'last6m'
+  | 'last12m'
+  | 'last24m'
   | 'custom';
 
-export const PERIOD_PRESETS: { key: PeriodPresetKey; label: string }[] = [
+export interface PeriodPreset {
+  key: PeriodPresetKey;
+  label: string;
+}
+
+export const PERIOD_PRESETS: PeriodPreset[] = [
   { key: 'thisMonth', label: 'This month' },
   { key: 'lastMonth', label: 'Last month' },
   { key: 'thisQuarter', label: 'This quarter' },
@@ -55,6 +63,29 @@ export const PERIOD_PRESETS: { key: PeriodPresetKey; label: string }[] = [
   { key: 'lastYear', label: 'Last year' },
   { key: 'custom', label: 'Custom' },
 ];
+
+/**
+ * The windows a monthly TREND is read over — the item explorer's choices.
+ *
+ * Trailing months rather than calendar periods: a chart of "this month" is one
+ * bar, and "year to date" in January is barely more. Each trailing window
+ * starts on the first of a month and ends today, so every bar but the last is
+ * a whole month and the last is the month so far.
+ */
+export const TREND_PRESETS: PeriodPreset[] = [
+  { key: 'last6m', label: '6 months' },
+  { key: 'last12m', label: '12 months' },
+  { key: 'last24m', label: '24 months' },
+  { key: 'ytd', label: 'Year to date' },
+  { key: 'lastYear', label: 'Last year' },
+  { key: 'custom', label: 'Custom' },
+];
+
+/** The last `months` calendar months, this one included, ending today. */
+export const trailingMonths = (months: number, today: Date = new Date()): ReportRange => ({
+  startDate: isoDate(new Date(today.getFullYear(), today.getMonth() - (months - 1), 1)),
+  endDate: isoDate(today),
+});
 
 /**
  * The range a preset means, resolved against a reference date (today, normally —
@@ -100,6 +131,12 @@ export const presetRange = (
         endDate: isoDate(endOfYear(prior)),
       };
     }
+    case 'last6m':
+      return trailingMonths(6, today);
+    case 'last12m':
+      return trailingMonths(12, today);
+    case 'last24m':
+      return trailingMonths(24, today);
     case 'custom':
     default:
       return {
@@ -130,8 +167,9 @@ export const defaultReportRange = (): ReportRange => presetRange('ytd');
 export const matchPreset = (
   range: ReportRange,
   today: Date = new Date(),
+  presets: readonly PeriodPreset[] = PERIOD_PRESETS,
 ): PeriodPresetKey => {
-  for (const { key } of PERIOD_PRESETS) {
+  for (const { key } of presets) {
     if (key === 'custom') continue;
     const candidate = presetRange(key, today);
     if (
@@ -207,6 +245,43 @@ export const comparisonRange = (range: ReportRange): ReportRange => {
 
   const priorEnd = addDays(range.startDate, -1);
   return { startDate: addDays(priorEnd, -(days - 1)), endDate: priorEnd };
+};
+
+/** Whole calendar months a range touches, both ends included. */
+export const monthsSpanned = (range: ReportRange): number => {
+  const [sy, sm] = range.startDate.slice(0, 7).split('-').map(Number);
+  const [ey, em] = range.endDate.slice(0, 7).split('-').map(Number);
+  return Math.max(1, (ey - sy) * 12 + (em - sm) + 1);
+};
+
+/**
+ * The window a monthly trend is compared against: the same number of months,
+ * immediately before.
+ *
+ * A range that opens on the first of a month — every trailing window, year to
+ * date, a whole year — shifts back by the months it spans, keeping its day of
+ * month at the end ("12 months to Sep 26" against "12 months to Sep 26 a year
+ * earlier"), and a range that ends on a month end stays on one. Anything else
+ * falls back to `comparisonRange`, the preceding window of equal length.
+ */
+export const priorWindow = (range: ReportRange): ReportRange => {
+  const start = parseIso(range.startDate);
+  if (start.getDate() !== 1) return comparisonRange(range);
+  const n = monthsSpanned(range);
+  const end = parseIso(range.endDate);
+  const endMonth = new Date(end.getFullYear(), end.getMonth() - n, 1);
+  const lastDay = endOfMonth(endMonth).getDate();
+  const endsOnMonthEnd = end.getDate() === endOfMonth(end).getDate();
+  return {
+    startDate: isoDate(new Date(start.getFullYear(), start.getMonth() - n, 1)),
+    endDate: isoDate(
+      new Date(
+        endMonth.getFullYear(),
+        endMonth.getMonth(),
+        endsOnMonthEnd ? lastDay : Math.min(end.getDate(), lastDay),
+      ),
+    ),
+  };
 };
 
 // ═══════════════════════════════════════════════════════

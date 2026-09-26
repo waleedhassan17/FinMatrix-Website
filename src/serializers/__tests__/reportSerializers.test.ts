@@ -7,7 +7,12 @@ import {
   balanceSheetSerializer,
   cashFlowSerializer,
   generalLedgerSerializer,
+  inventoryItemHistorySerializer,
+  inventoryPerformanceSerializer,
   inventoryValuationSerializer,
+  inventoryValuationTrendSerializer,
+  itemPerformanceSerializer,
+  itemSalesEntriesSerializer,
   ledgerAccountsSerializer,
   legacyAgingTotals,
   notYetDueTotal,
@@ -683,5 +688,112 @@ describe('analyticsSerializer', () => {
     expect(report.cashFlowTrend).toEqual([]);
     expect(report.topCustomers).toEqual([]);
     expect(report.arAgingTrend).toEqual([]);
+  });
+});
+
+describe('inventoryValuationTrendSerializer', () => {
+  it('reads month-end values', () => {
+    const t = inventoryValuationTrendSerializer({
+      months: 2,
+      points: [{ period: '2026-08', label: 'Aug 26', asOfDate: '2026-08-31', value: '582755.95' }],
+    });
+    expect(t.points[0]).toEqual({ period: '2026-08', label: 'Aug 26', asOfDate: '2026-08-31', value: 582755.95 });
+  });
+});
+
+describe('inventoryItemHistorySerializer', () => {
+  it('keeps a missing reading null, never zero', () => {
+    const h = inventoryItemHistorySerializer({
+      itemId: 'i1',
+      points: [
+        { period: '2026-03', closingQty: null, qtyIn: 0, qtyOut: 0, closingValue: null, valueKnown: false },
+        { period: '2026-04', closingQty: '-16', qtyIn: '0', qtyOut: '16', closingValue: '-28800', valueKnown: true },
+      ],
+      coverage: { quantity: 'exact', value: 'partial', costHistoryFrom: '2026-04-08', message: 'Below zero' },
+    });
+    expect(h.points[0].closingQty).toBeNull();
+    expect(h.points[1]).toMatchObject({ closingQty: -16, closingValue: -28800, valueKnown: true });
+    expect(h.coverage).toEqual({ quantity: 'exact', value: 'partial', costHistoryFrom: '2026-04-08', message: 'Below zero' });
+  });
+
+  it('reads an older server that says nothing about the horizon', () => {
+    const h = inventoryItemHistorySerializer({ points: [], coverage: { value: 'unavailable', message: 'x' } });
+    expect(h.coverage.costHistoryFrom).toBeNull();
+  });
+});
+
+describe('itemPerformanceSerializer', () => {
+  const payload = {
+    itemId: 'i1',
+    itemName: 'Oil',
+    sku: 'O',
+    range: { startDate: '2026-01-01', endDate: '2026-09-26' },
+    points: [{ period: '2026-09', label: 'Sep 26', unitsSold: '3', revenue: '7050', cogs: '5400', grossProfit: '1650', marginPct: '23.4', costKnown: true }],
+    totals: { unitsSold: 3, revenue: 7050, cogs: 5400, grossProfit: 1650, marginPct: 23.4 },
+    costHistoryFrom: '2026-04-08',
+    estimatedCogsShare: 0,
+    item: { category: 'FMCG', unitOfMeasure: 'unit', sellingPrice: '2350', unitCost: '1800', qtyOnHand: '45', stockValue: '81000', reorderPoint: '20', isActive: true, lastSoldDate: '2026-07-24' },
+    customers: [{ customerId: 'k1', customerName: 'Karim Store', unitsSold: 3, revenue: 7050, grossProfit: 1650 }],
+    otherCustomers: { count: 2, unitsSold: 1, revenue: 100, grossProfit: 10 },
+  };
+
+  it('reads the item facts and its customers', () => {
+    const p = itemPerformanceSerializer(payload);
+    expect(p.range).toEqual({ startDate: '2026-01-01', endDate: '2026-09-26' });
+    expect(p.item).toMatchObject({ qtyOnHand: 45, stockValue: 81000, lastSoldDate: '2026-07-24' });
+    expect(p.customers[0]).toEqual({ customerId: 'k1', customerName: 'Karim Store', unitsSold: 3, revenue: 7050, grossProfit: 1650 });
+    expect(p.otherCustomers.count).toBe(2);
+    expect(p.points[0].marginPct).toBe(23.4);
+  });
+
+  it('reads a server from before the explorer, with no facts or customers', () => {
+    const { item: _i, customers: _c, otherCustomers: _o, ...old } = payload;
+    const p = itemPerformanceSerializer(old);
+    expect(p.item).toBeNull();
+    expect(p.customers).toEqual([]);
+    expect(p.otherCustomers).toEqual({ count: 0, unitsSold: 0, revenue: 0, grossProfit: 0 });
+  });
+});
+
+describe('itemSalesEntriesSerializer', () => {
+  it('reads the page and the whole range totals', () => {
+    const e = itemSalesEntriesSerializer({
+      itemId: 'i1',
+      range: { startDate: '2026-07-01', endDate: '2026-07-31' },
+      entries: [
+        { date: '2026-07-24', docType: 'delivery', docId: 'inv1', docNumber: 'INV-2026-0009', customerId: 'k1', customerName: 'Karim Store', units: 3, unitPrice: 2350, revenue: 7050, cogs: 5400, grossProfit: 1650, marginPct: 23.4, costBasis: 'delivery', costKnown: true },
+        { date: '2026-07-20', docType: 'credit_memo', docId: 'cm1', docNumber: 'CM-1', customerId: null, customerName: '', units: -1, unitPrice: 2350, revenue: -2350, cogs: -1800, grossProfit: -550, marginPct: null, costBasis: 'exact', costKnown: true },
+      ],
+      total: 7,
+      page: 1,
+      limit: 25,
+      totals: { unitsSold: 19, revenue: 44650, cogs: 34200, grossProfit: 10450 },
+    });
+    expect(e.entries[0]).toMatchObject({ docType: 'delivery', docNumber: 'INV-2026-0009', units: 3 });
+    expect(e.entries[1]).toMatchObject({ docType: 'credit_memo', customerId: null, customerName: '(no customer)', marginPct: null });
+    expect(e.total).toBe(7);
+    expect(e.totals.revenue).toBe(44650);
+  });
+
+  it('treats an unknown document type as an invoice', () => {
+    const e = itemSalesEntriesSerializer({ entries: [{ docType: 'mystery', docId: 'x' }] });
+    expect(e.entries[0].docType).toBe('invoice');
+  });
+});
+
+describe('inventoryPerformanceSerializer', () => {
+  it('reads the ledger value and each item\'s last sale', () => {
+    const p = inventoryPerformanceSerializer({
+      rows: [{ itemId: 'a', itemName: 'A', qtyOnHand: '2', unitCost: '5', stockValue: '10', lastSoldDate: '2026-03-14', marginPct: null }],
+      totals: { stockValue: 10, ledgerValue: '9.5' },
+    });
+    expect(p.totals.ledgerValue).toBe(9.5);
+    expect(p.rows[0].lastSoldDate).toBe('2026-03-14');
+    expect(p.rows[0].marginPct).toBeNull();
+  });
+
+  it('has no ledger value from an older server', () => {
+    const p = inventoryPerformanceSerializer({ rows: [], totals: { stockValue: 10 } });
+    expect(p.totals.ledgerValue).toBeNull();
   });
 });

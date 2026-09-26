@@ -7,8 +7,12 @@ import {
   endOfQuarter,
   formatReportDate,
   matchPreset,
+  monthsSpanned,
   presetRange,
+  priorWindow,
   rangeLabel,
+  TREND_PRESETS,
+  trailingMonths,
   startOfMonth,
   startOfQuarter,
   startOfYear,
@@ -210,5 +214,54 @@ describe('labels', () => {
 
   it('labels an as-of date', () => {
     expect(asOfLabel('2026-03-31')).toBe('As of March 31, 2026');
+  });
+});
+
+describe('trend windows', () => {
+  it('trails whole months to today', () => {
+    expect(trailingMonths(12, TODAY)).toEqual({ startDate: '2025-06-01', endDate: '2026-05-20' });
+    expect(presetRange('last6m', TODAY)).toEqual({ startDate: '2025-12-01', endDate: '2026-05-20' });
+  });
+
+  it('recognises a trailing window among the trend presets only', () => {
+    const range = presetRange('last24m', TODAY);
+    expect(matchPreset(range, TODAY, TREND_PRESETS)).toBe('last24m');
+    // The statements' chips never offer it, so there it reads as custom.
+    expect(matchPreset(range, TODAY)).toBe('custom');
+  });
+
+  it('counts the calendar months a range touches', () => {
+    expect(monthsSpanned({ startDate: '2025-06-01', endDate: '2026-05-20' })).toBe(12);
+    expect(monthsSpanned({ startDate: '2026-05-20', endDate: '2026-05-20' })).toBe(1);
+  });
+});
+
+describe('priorWindow', () => {
+  it('compares a trailing window with the same months a year before', () => {
+    expect(priorWindow({ startDate: '2025-06-01', endDate: '2026-05-20' })).toEqual({
+      startDate: '2024-06-01',
+      endDate: '2025-05-20',
+    });
+  });
+
+  it('keeps a month end on a month end', () => {
+    expect(priorWindow({ startDate: '2026-03-01', endDate: '2026-03-31' })).toEqual({
+      startDate: '2026-02-01',
+      endDate: '2026-02-28',
+    });
+  });
+
+  it('shifts year to date back by its own months', () => {
+    expect(priorWindow({ startDate: '2026-01-01', endDate: '2026-05-20' })).toEqual({
+      startDate: '2025-08-01',
+      endDate: '2025-12-20',
+    });
+  });
+
+  it('falls back to the preceding equal window mid-month', () => {
+    expect(priorWindow({ startDate: '2026-05-11', endDate: '2026-05-20' })).toEqual({
+      startDate: '2026-05-01',
+      endDate: '2026-05-10',
+    });
   });
 });

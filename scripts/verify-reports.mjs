@@ -385,6 +385,74 @@ const main = async () => {
     { rows: rowsWithMargin.length },
   );
 
+  // ── The item explorer agrees with the report it opens from ─────────
+  //
+  // Three endpoints feed one item's page and each has to agree with the row
+  // it was opened from: the item's sales for a window equal that row's, its
+  // stock history ends on the quantity and value the row shows, and a month's
+  // documents add up to that month. Over the last twelve months rather than
+  // all time, because the monthly series stops at sixty months.
+  console.log('\nItem explorer');
+  const now = new Date();
+  const windowStart = iso(new Date(now.getFullYear(), now.getMonth() - 11, 1));
+  const window = `startDate=${windowStart}&endDate=${today}`;
+  const recent = await get(`/reports/inventory-performance?${window}`);
+  const top = [...(recent.rows ?? [])].sort((a, b) => n(b.revenue) - n(a.revenue))[0];
+  if (!top || n(top.revenue) === 0) {
+    console.log('  – nothing sold in the last twelve months; skipped');
+  } else {
+    const id = encodeURIComponent(top.itemId);
+    const itemPerf = await get(`/reports/item-performance/${id}?${window}`);
+    check(`${top.itemName}: the explorer's revenue is the report's`, ties(itemPerf.totals?.revenue, top.revenue), {
+      explorer: itemPerf.totals?.revenue,
+      report: top.revenue,
+    });
+    check(`${top.itemName}: …and so is its gross profit`, ties(itemPerf.totals?.grossProfit, top.grossProfit), {
+      explorer: itemPerf.totals?.grossProfit,
+      report: top.grossProfit,
+    });
+
+    const history = await get(`/reports/inventory-valuation/items/${id}/history?${window}`);
+    const last = (history.points ?? [])[(history.points ?? []).length - 1] ?? {};
+    check(`${top.itemName}: stock history ends on the quantity on hand`, ties(last.closingQty, top.qtyOnHand), {
+      history: last.closingQty,
+      onHand: top.qtyOnHand,
+    });
+    if (last.valueKnown) {
+      check(`${top.itemName}: …at the value the report carries it at`, ties(last.closingValue, top.stockValue), {
+        history: last.closingValue,
+        report: top.stockValue,
+      });
+    }
+
+    // The busiest month, and the documents behind it.
+    const busiest = [...(itemPerf.points ?? [])].sort((a, b) => n(b.revenue) - n(a.revenue))[0];
+    const [y, m] = busiest.period.split('-').map(Number);
+    const monthEnd = iso(new Date(y, m, 0));
+    let entries = null;
+    try {
+      entries = await get(
+        `/reports/item-performance/${id}/entries?startDate=${busiest.period}-01&endDate=${monthEnd < today ? monthEnd : today}&limit=100`,
+      );
+    } catch (e) {
+      console.log(`  – documents behind a month: ${e.message} (a server without the endpoint)`);
+    }
+    if (entries) {
+      check('the documents arrive as an object, not a bare array', !Array.isArray(entries) && Array.isArray(entries.entries));
+      check(`${busiest.label}'s documents add up to the month`, ties(entries.totals?.revenue, busiest.revenue), {
+        documents: entries.totals?.revenue,
+        month: busiest.revenue,
+      });
+      if ((entries.entries ?? []).length >= n(entries.total)) {
+        const listed = entries.entries.reduce((t, e) => t + n(e.revenue), 0);
+        check(`${busiest.label}'s listed lines add up too`, ties(listed, busiest.revenue), {
+          listed: Math.round(listed * 100) / 100,
+          month: busiest.revenue,
+        });
+      }
+    }
+  }
+
   // ── The P&L drill-down survives the response envelope ───────────────
   //
   // It shipped returning its rows under a key named `data`, which the envelope

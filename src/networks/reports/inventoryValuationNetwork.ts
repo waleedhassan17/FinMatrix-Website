@@ -10,6 +10,8 @@ import {
   type InventoryItemHistory,
   type InventoryValuationReport,
   itemPerformanceSerializer,
+  itemSalesEntriesSerializer,
+  type ItemSalesEntries,
   type InventoryValuationTrend,
   inventoryPerformanceSerializer,
   type InventoryPerformance,
@@ -59,22 +61,25 @@ export const getInventoryValuationTrend = async (
 };
 
 /**
- * One item's stock level month by month, from its movement history.
+ * One item's stock level and value month by month, from its movement history.
  *
- * Quantity is EXACT — every movement carries a server-snapshotted running
- * balance. Month-end VALUE is not returned: there is no cost on a stock
- * movement, and pricing a past quantity at the item's current weighted-average
- * cost would be retroactively wrong in a way that looks entirely plausible on a
- * chart. The response says so in `coverage` rather than returning a zero.
+ * Both walk back from today's quantity and value through the dated movements,
+ * so the latest month is what the valuation table shows. Value is only
+ * claimed from the company's cost-history date; `coverage` says where it
+ * stops and why, rather than returning a zero.
+ *
+ * Given a range, the months match the ones item-performance returns for it —
+ * the explorer puts the two side by side. Without one, the last `months`.
  */
 export const getInventoryItemHistory = async (
   itemId: string,
   months = 12,
+  range?: { startDate: string; endDate: string },
 ): Promise<InventoryItemHistory> => {
   try {
     const response = await api.get(
       `/reports/inventory-valuation/items/${encodeURIComponent(itemId)}/history`,
-      { params: { months } },
+      { params: range ? { months, startDate: range.startDate, endDate: range.endDate } : { months } },
     );
     return inventoryItemHistorySerializer(unwrapEnvelope(response.data));
   } catch (e) {
@@ -100,6 +105,28 @@ export const getItemPerformance = async (
       { params: { startDate: range.startDate, endDate: range.endDate } },
     );
     return itemPerformanceSerializer(unwrapEnvelope(response.data));
+  } catch (e) {
+    throw toApiError(e);
+  }
+};
+
+/**
+ * The document lines behind one item's figures — invoices, deliveries and
+ * returns — newest first, a page at a time. A month's lines add up to that
+ * month on `getItemPerformance`, because the server reads the same rows.
+ */
+export const getItemSalesEntries = async (
+  itemId: string,
+  range: { startDate: string; endDate: string },
+  page = 1,
+  limit = 25,
+): Promise<ItemSalesEntries> => {
+  try {
+    const response = await api.get(
+      `/reports/item-performance/${encodeURIComponent(itemId)}/entries`,
+      { params: { startDate: range.startDate, endDate: range.endDate, page, limit } },
+    );
+    return itemSalesEntriesSerializer(unwrapEnvelope(response.data));
   } catch (e) {
     throw toApiError(e);
   }

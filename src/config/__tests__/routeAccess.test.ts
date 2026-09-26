@@ -92,6 +92,8 @@ const ALLOWED = [
   '/reports/ar-aging',
   '/reports/ap-aging',
   '/reports/inventory-valuation',
+  // An item's explorer inherits the report's access.
+  '/reports/inventory-valuation/6a155feb-b0b6-476b-9d88-ec5b6fd468a8',
   '/reports/analytics',
   '/account',
 ];

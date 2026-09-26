@@ -762,10 +762,24 @@ re-averaged the item.
 - [ ] **Inventory Valuation** → "Stock value over time". Its last point must
       equal Total value, and both must equal the Balance Sheet Inventory (1200)
       line.
-- [ ] Click an item row → stock on hand and stock value by month, then Revenue,
-      Gross profit and Margin as headline figures.
-- [ ] On an item sold on multi-item invoices, confirm the estimate notice
-      appears once more than a third of its cost was apportioned.
+- [ ] Click an item (a table row or a bar in "Top items") → the item explorer
+      opens on the same period. Headline Revenue, Gross profit, Margin and Units
+      sold must equal that item's row on Inventory Valuation.
+- [ ] In the explorer, chart every metric as Bar and as Line. A negative month
+      is red below a zero line; a month with no reading is a gap, never a zero.
+- [ ] ⭐ Click a month (a bar, or a month heading in "Monthly figures") →
+      "What's behind" lists invoices, deliveries and returns whose total equals
+      that month's figure; each document number opens its record.
+- [ ] Stock on hand and Stock value in the latest month equal the item's On hand
+      and Stock value in "Stock position" and on the valuation table.
+- [ ] On an item sold on multi-item invoices, "About these figures" states the
+      share of its cost that was apportioned.
+- [ ] Inventory Valuation filters: "Selling below cost", "Not sold in period" and
+      "Out of stock" match their counts; a category bar filters the table and the
+      footer totals only the rows showing.
+- [ ] The app: Reports → Inventory → Valuation → tap an item → the same explorer
+      on a phone (window chips, metric chips, Bar/Line, tap a month, tap a
+      document → the invoice opens under Transactions).
 
 ## Known gaps, by design
 
@@ -774,9 +788,20 @@ re-averaged the item.
   document's balance rebuilt from payment history and `invoices.balance` only
   holds the current one.
 - **Month-end item VALUE is blank before the cost horizon.** Stock movements
-  carried no cost before this change, and pricing a past quantity at today's
-  average would be wrong in a way that looks entirely plausible. The API says
-  so in words; the page shows them.
+  carried no cost before it, and pricing a past quantity at today's average
+  would be wrong in a way that looks entirely plausible. The API says so in
+  words; the page shows them.
+- **An item's history walks back from today, by document date.** Quantity and
+  value are today's figures less everything dated after each month end, so the
+  latest month always equals the valuation table. A back-dated invoice (dated
+  before the receipt that supplied it) therefore shows stock below zero for the
+  months in between — that is what the dated record says, and the explorer's
+  notes say it in words. Summed over every item, month-end values can differ
+  from the GL 1200 trend by postings the stock record and the ledger date
+  differently (a void is dated on its invoice in one and on the void day in the
+  other); the latest month ties within I13's drift.
+- **Item revenue is net of the invoice discount**, shared across the invoice's
+  lines by their pre-tax amount — the same split the ledger's revenue implies.
 - **Multi-item invoice cost is apportioned.** Each invoice's total is exact —
   I22 enforces it — but the split between two different items on one invoice is
   an estimate. `estimatedCogsShare` reports how much of a margin rests on it.
