@@ -1,26 +1,30 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { ExternalLink, Info } from 'lucide-react';
+import { ExternalLink, Info, MousePointerClick } from 'lucide-react';
 import { useMemo, type ReactNode } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import { DetailLayout, RailSection } from '@/components/layout/DetailLayout';
 import { PageMessage } from '@/components/layout/PageState';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { Combobox } from '@/components/ui/Combobox';
 import { KeyValueList } from '@/components/ui/KeyValueList';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { isPathAllowedForRole } from '@/config/routeAccess';
 import { PanelHeader } from '@/features/dashboard/PanelHeader';
-import { ChartTypeToggle, MetricPicker } from '@/features/reports/ExplorerControls';
-import { Change, Figure, FigureStrip } from '@/features/reports/FigureStrip';
-import { ItemSalesEntries } from '@/features/reports/ItemSalesEntries';
+import { ChartTypeToggle, MoreMetricsMenu } from '@/features/reports/ExplorerControls';
+import { Change } from '@/features/reports/FigureStrip';
+import { ItemMonthPanel } from '@/features/reports/ItemSalesEntries';
 import { MetricChart, type ChartType } from '@/features/reports/MetricChart';
 import { MetricTable } from '@/features/reports/MetricTable';
-import { PeriodPicker } from '@/features/reports/PeriodPicker';
+import { MetricTabs } from '@/features/reports/MetricTabs';
+import { PeriodMenu } from '@/features/reports/PeriodMenu';
 import { RankedBars } from '@/features/reports/RankedBars';
 import { ReportShell } from '@/features/reports/ReportShell';
 import { useFeature } from '@/hooks/useCapability';
+import { cn } from '@/lib/cn';
 import { STOCK_STATUS_DISPLAY, formatQty } from '@/models/inventory';
+import { itemExplorerHref } from '@/models/inventoryValuation';
 import {
   EXPLORER_METRICS,
   buildExplorerMonths,
@@ -53,6 +57,7 @@ import { isoDate } from '@/models/document';
 import { ApiError } from '@/networks/network/apiHelpers';
 import {
   getInventoryItemHistory,
+  getInventoryValuation,
   getItemPerformance,
 } from '@/networks/reports/inventoryValuationNetwork';
 import { selectRole } from '@/store/authSlice';
@@ -63,14 +68,21 @@ const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const PERIOD_START = /^\d{4}-\d{2}-01$/;
 const PERIOD = /^\d{4}-\d{2}$/;
 
+/** The figures across the top — the four a reader asks about first. */
+const HEADLINE: readonly ExplorerMetricKey[] = ['revenue', 'grossProfit', 'marginPct', 'unitsSold'];
+/** Everything else, one menu away. */
+const MORE: readonly ExplorerMetricKey[] = EXPLORER_METRICS.map((m) => m.key).filter(
+  (k) => !HEADLINE.includes(k),
+);
+
+const WINDOW_LABELS = { last6m: '6M', last12m: '12M', last24m: '24M', ytd: 'YTD', lastYear: 'Last year' } as const;
+
 /** A missing item or a malformed id is an answer, not something to retry. */
 const retryUnlessFinal = (count: number, error: unknown) =>
   !(error instanceof ApiError && (error.status === 404 || error.status === 400)) && count < 1;
 
 /** "45 units", "1 unit", "12 kg" — only the generic word takes a plural. */
 const unitWord = (uom: string, qty: number) => (uom === 'unit' && qty !== 1 ? 'units' : uom);
-
-const shortRange = (r: ReportRange) => `${formatShortDate(r.startDate)} – ${formatShortDate(r.endDate)}`;
 
 /** One month, clipped to the window — the first and last months may be partial. */
 const monthRange = (period: string, window: ReportRange): ReportRange => {
@@ -83,25 +95,24 @@ const monthRange = (period: string, window: ReportRange): ReportRange => {
 };
 
 /**
- * One item, explored: every figure it has, month by month.
+ * One item, explored.
  *
- * Laid out the way a financial data terminal lays out a company. The headline
- * figures for the window sit on top, each against the window before it. Below
- * them, one metric is charted — any of ten, as columns or a line — and under
- * the chart every metric sits in a table of months. Choosing a row charts it;
- * choosing a month opens the documents behind it, so any bar can be traced to
- * the invoices that made it.
+ * Built as one chart card, the way a dashboard reads: the four headline
+ * figures ARE the chart's tabs — choose one and the chart below draws it month
+ * by month — with the other six metrics a menu away. Under it, every metric by
+ * month in one table; choosing a row charts it, choosing a month opens the
+ * documents behind it in a side panel, so the page itself never moves.
  *
- * Sales and stock come from two endpoints over the same window and are joined
- * by month. Each fails on its own: an older server without stock values, or a
- * failed request, leaves the other half of the page working.
+ * The rail says where the stock stands today and who buys it. "Switch item"
+ * moves to another item without going back, keeping the window.
  *
- * Everything the reader chooses — window, metric, chart type, month — lives in
- * the URL, so the view can be shared and Back retraces it.
+ * Everything chosen — window, metric, chart type, month — lives in the URL,
+ * so the view can be shared and Back retraces it.
  */
 export default function InventoryItemReportPage() {
   const { itemId = '' } = useParams<{ itemId: string }>();
   const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
   const role = useAppSelector(selectRole);
   const inventoryOn = useFeature('inventory');
 
@@ -137,8 +148,7 @@ export default function InventoryItemReportPage() {
     placeholderData: keepPreviousData,
     retry: retryUnlessFinal,
   });
-  // The window before, for the headline changes. Optional: without it the
-  // figures stand alone.
+  // The window before, for the changes under each figure. Optional.
   const priorQuery = useQuery({
     queryKey: ['reports', 'item-performance', itemId, prior],
     queryFn: () => getItemPerformance(itemId, prior),
@@ -152,6 +162,12 @@ export default function InventoryItemReportPage() {
     enabled: !!itemId,
     placeholderData: keepPreviousData,
     retry: retryUnlessFinal,
+  });
+  // For "Switch item". Usually already cached by the page this was opened from.
+  const itemsQuery = useQuery({
+    queryKey: ['reports', 'inventory-valuation'],
+    queryFn: getInventoryValuation,
+    staleTime: 60_000,
   });
 
   const perf = perfQuery.data;
@@ -170,6 +186,14 @@ export default function InventoryItemReportPage() {
   const def = explorerMetric(metric);
   const summary = summarizeMetric(months, metric);
   const selectedMonth = months.find((m) => m.period === selectedPeriod) ?? null;
+
+  const itemOptions = useMemo(
+    () =>
+      [...(itemsQuery.data?.rows ?? [])]
+        .sort((a, b) => a.itemName.localeCompare(b.itemName))
+        .map((r) => ({ value: r.itemId, label: r.sku ? `${r.itemName} · ${r.sku}` : r.itemName })),
+    [itemsQuery.data],
+  );
 
   const notFound = [perfQuery.error, historyQuery.error].some(
     (e) => e instanceof ApiError && e.status === 404 && e.code === 'ITEM_NOT_FOUND',
@@ -194,6 +218,11 @@ export default function InventoryItemReportPage() {
   const showOpenItem = inventoryOn && isPathAllowedForRole(`/inventory/${itemId}`, role);
   const customersAllowed = isPathAllowedForRole('/customers/x', role);
 
+  const onHand =
+    facts?.qtyOnHand ??
+    [...months].reverse().find((m) => m.values.closingQty !== null)?.values.closingQty ??
+    null;
+
   const exportCsv = () => {
     const out: CsvRow[] = [
       [`${itemName}${sku ? ` (${sku})` : ''}`],
@@ -202,42 +231,53 @@ export default function InventoryItemReportPage() {
       [],
       ...explorerCsvRows(months),
     ];
-    downloadCsv(csvFilename(`item-${(sku || itemName).toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, range), toCsv(out));
+    downloadCsv(
+      csvFilename(`item-${(sku || itemName).toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, range),
+      toCsv(out),
+    );
   };
 
-  // ── Headline figures, each against the window before ───────────────────
-  // The header names the comparison window in full; the captions say it
-  // short, so four figures do not repeat one long date range.
+  // ── The figure tabs, each against the window before ─────────────────────
   const priorWords = PERIOD_START.test(range.startDate)
-    ? `the ${monthsSpanned(range)} month${monthsSpanned(range) === 1 ? '' : 's'} before`
-    : 'the period before';
+    ? `prior ${monthsSpanned(range)} month${monthsSpanned(range) === 1 ? '' : 's'}`
+    : 'prior period';
   const priorEmpty =
     !!priorPerf && priorPerf.totals.revenue === 0 && priorPerf.totals.unitsSold === 0;
-  const headline = (
+  const t = perf?.totals;
+  const p = priorPerf?.totals;
+  const caption = (
     key: ExplorerMetricKey,
     current: number | null,
     before: number | null | undefined,
   ): ReactNode => {
     if (current === null) return 'No sales in this window';
     if (before === undefined) return undefined;
-    // Nothing sold in the window before: "+Rs 82K" against it is true and says
-    // nothing, and a margin has nothing to move from. Said once, on revenue.
-    if (priorEmpty) return key === 'revenue' ? `Nothing sold in ${priorWords}` : undefined;
+    // Nothing sold before: "+Rs 82K" against it says nothing. Said once.
+    if (priorEmpty) return key === 'revenue' ? `No sales in the ${priorWords}` : ' ';
     const change = metricChange(key, current, before);
     const text = formatChange(key, change);
-    if (!text) return before === null ? undefined : `Unchanged on ${priorWords}`;
+    if (!text) return before === null ? ' ' : `Unchanged on the ${priorWords}`;
     const tone = changeTone(key, change);
     return (
       <>
         {tone ? <Change text={text} good={tone === 'good'} /> : <span className="tabular">{text}</span>}{' '}
-        on {priorWords}
+        vs {priorWords}
       </>
     );
   };
-  const t = perf?.totals;
-  const p = priorPerf?.totals;
+  const tabs = HEADLINE.map((key) => {
+    const current = t ? (key === 'marginPct' ? t.marginPct : t[key as 'revenue' | 'grossProfit' | 'unitsSold']) : null;
+    const before = p === undefined ? undefined : key === 'marginPct' ? p.marginPct : p[key as 'revenue' | 'grossProfit' | 'unitsSold'];
+    return {
+      key,
+      label: explorerMetric(key).label,
+      value: formatMetric(key, current),
+      tone: current !== null && current < 0 ? ('danger' as const) : ('default' as const),
+      caption: t ? caption(key, current, before) : 'Not available',
+    };
+  });
 
-  const onHand = facts?.qtyOnHand ?? [...months].reverse().find((m) => m.values.closingQty !== null)?.values.closingQty ?? null;
+  // ── Stock position ─────────────────────────────────────────────────────
   const cover = facts && t ? daysOfCover(facts.qtyOnHand, t.unitsSold, range) : null;
   const sinceSold = daysSince(facts?.lastSoldDate ?? null);
   const belowReorder = !!facts && facts.reorderPoint > 0 && facts.qtyOnHand <= facts.reorderPoint;
@@ -249,45 +289,58 @@ export default function InventoryItemReportPage() {
   const notes: string[] = [];
   if (perf && perf.estimatedCogsShare > 0) {
     notes.push(
-      `${Math.round(perf.estimatedCogsShare * 100)}% of this item's cost of sales was split across items that shared an invoice. Each invoice's total cost is exact; how it divides between the items on it is an estimate.`,
+      `${Math.round(perf.estimatedCogsShare * 100)}% of the cost of sales was split across items sharing an invoice; each invoice's total is exact.`,
     );
   }
   if (perf?.points.some((pt) => !pt.costKnown)) {
-    notes.push('Some sales carry no recorded cost, so their margin reads higher than it was.');
+    notes.push('Some sales carry no recorded cost, so their margin reads high.');
   }
   if (history?.coverage.message) notes.push(history.coverage.message);
 
-  const summaryParts: string[] = [];
-  if (summary.value !== null) {
-    summaryParts.push(
-      `${def.kind === 'flow' ? 'Total' : def.kind === 'level' ? 'Latest' : 'Over the window'} ${formatMetric(metric, summary.value)}`,
-    );
-  }
+  // One line under the chart: the dashed average, and the best month.
+  const legend: string[] = [];
   if (summary.average !== null && summary.readings > 1 && def.kind !== 'ratio') {
-    summaryParts.push(`${formatMetric(metric, summary.average)} a month on average (dashed)`);
+    legend.push(`Average ${formatMetric(metric, summary.average)} a month`);
   }
-  if (summary.best) summaryParts.push(`best ${summary.best.label} (${formatMetric(metric, summary.best.value)})`);
-  if (summary.worst) summaryParts.push(`lowest ${summary.worst.label} (${formatMetric(metric, summary.worst.value)})`);
+  if (summary.best) legend.push(`Best ${summary.best.label} · ${formatMetric(metric, summary.best.value)}`);
+
+  const subtitle = [
+    sku,
+    facts?.category,
+    onHand !== null ? `${formatMetric('closingQty', onHand)} ${facts ? unitWord(facts.unitOfMeasure, onHand) : 'on hand'}${facts ? ' on hand' : ''}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <ReportShell
       title={itemName}
-      subtitle={[sku && `SKU ${sku}`, facts?.category].filter(Boolean).join(' · ') || undefined}
+      subtitle={subtitle || undefined}
       back={{ to: '/reports/inventory-valuation', label: 'Inventory Valuation' }}
-      meta={[
-        rangeLabel(range.startDate, range.endDate),
-        `Compared with ${shortRange(prior)}`,
-        'Revenue net of tax and discounts',
-      ]}
       actions={
-        showOpenItem ? (
-          <Button asChild variant="secondary" size="sm">
-            <Link to={`/inventory/${itemId}`}>
-              <ExternalLink className="size-4" aria-hidden="true" />
-              Open item
-            </Link>
-          </Button>
-        ) : undefined
+        <>
+          {itemOptions.length > 1 && (
+            <Combobox
+              compact
+              value={itemId}
+              onChange={(id) => {
+                if (id !== itemId) navigate(itemExplorerHref(id, range));
+              }}
+              options={itemOptions}
+              placeholder="Switch item"
+              searchPlaceholder="Find an item…"
+              containerClassName="hidden w-60 sm:flex"
+            />
+          )}
+          {showOpenItem && (
+            <Button asChild variant="secondary" size="sm">
+              <Link to={`/inventory/${itemId}`}>
+                <ExternalLink className="size-4" aria-hidden="true" />
+                Open item
+              </Link>
+            </Button>
+          )}
+        </>
       }
       onExportCsv={exportCsv}
       pdf={{
@@ -354,9 +407,11 @@ export default function InventoryItemReportPage() {
         ],
       }}
       controls={
-        <PeriodPicker
-          value={range}
+        <PeriodMenu
+          layout="segments"
           presets={TREND_PRESETS}
+          shortLabels={WINDOW_LABELS}
+          value={range}
           onChange={(r) => update({ from: r.startDate, to: r.endDate, month: null })}
         />
       }
@@ -382,7 +437,11 @@ export default function InventoryItemReportPage() {
           <>
             <RailSection
               title="Stock position"
-              action={belowReorder ? <StatusBadge status={STOCK_STATUS_DISPLAY.low.badge} label="Below reorder point" /> : undefined}
+              action={
+                belowReorder ? (
+                  <StatusBadge status={STOCK_STATUS_DISPLAY.low.badge} label="Below reorder point" />
+                ) : undefined
+              }
             >
               <KeyValueList
                 items={[
@@ -394,8 +453,8 @@ export default function InventoryItemReportPage() {
                         : `${formatMetric('closingQty', onHand)}${facts ? ` ${unitWord(facts.unitOfMeasure, onHand)}` : ''}`,
                     emphasis: true,
                   },
-                  { label: 'Average cost', value: facts ? formatMoney(facts.unitCost) : '—', hidden: !facts },
                   { label: 'Stock value', value: facts ? formatMoney(facts.stockValue) : '—', hidden: !facts },
+                  { label: 'Average cost', value: facts ? formatMoney(facts.unitCost) : '—', hidden: !facts },
                   {
                     label: 'Selling price',
                     value: facts ? (
@@ -403,15 +462,14 @@ export default function InventoryItemReportPage() {
                         {formatMoney(facts.sellingPrice)}
                         {listMargin !== null && (
                           <span
-                            className={
-                              listMargin < 0
-                                ? 'block text-caption text-danger'
-                                : 'block text-caption text-text-tertiary'
-                            }
+                            className={cn(
+                              'block text-caption',
+                              listMargin < 0 ? 'text-danger' : 'text-text-tertiary',
+                            )}
                           >
                             {listMargin < 0
-                              ? `${Math.abs(listMargin).toFixed(1)}% below average cost`
-                              : `${listMargin.toFixed(1)}% margin at average cost`}
+                              ? `${Math.abs(listMargin).toFixed(1)}% below cost`
+                              : `${listMargin.toFixed(1)}% margin`}
                           </span>
                         )}
                       </>
@@ -429,9 +487,9 @@ export default function InventoryItemReportPage() {
                     label: 'Days of cover',
                     value:
                       cover === null ? (
-                        <span className="text-text-tertiary">No sales to measure by</span>
+                        <span className="text-text-tertiary">No recent sales</span>
                       ) : (
-                        <span className={cover <= 14 && (facts?.qtyOnHand ?? 0) > 0 ? 'text-warning' : undefined}>
+                        <span className={cover > 0 && cover <= 14 ? 'text-warning' : undefined}>
                           {cover === 0
                             ? 'Out of stock'
                             : cover > 365
@@ -459,7 +517,6 @@ export default function InventoryItemReportPage() {
                   },
                 ]}
               />
-              <p className="mt-sm text-caption text-text-tertiary">As of today, at weighted-average cost.</p>
             </RailSection>
 
             {perf && (
@@ -488,11 +545,11 @@ export default function InventoryItemReportPage() {
             )}
 
             {notes.length > 0 && (
-              <RailSection title="About these figures">
+              <RailSection title="Notes">
                 <ul className="flex flex-col gap-sm">
                   {notes.map((n) => (
                     <li key={n} className="flex items-start gap-xs text-caption text-text-secondary">
-                      <Info className="mt-[2px] size-3.5 shrink-0" aria-hidden="true" />
+                      <Info className="mt-[2px] size-3.5 shrink-0 text-text-tertiary" aria-hidden="true" />
                       {n}
                     </li>
                   ))}
@@ -502,82 +559,66 @@ export default function InventoryItemReportPage() {
           </>
         }
       >
-        <FigureStrip>
-          <Figure
-            label="Revenue"
-            value={t ? t.revenue : '—'}
-            caption={t ? headline('revenue', t.revenue, p?.revenue) : 'Not available'}
-          />
-          <Figure
-            label="Gross profit"
-            value={t ? t.grossProfit : '—'}
-            tone={t && t.grossProfit < 0 ? 'danger' : 'default'}
-            caption={t ? headline('grossProfit', t.grossProfit, p?.grossProfit) : 'Not available'}
-          />
-          <Figure
-            label="Margin"
-            value={formatMetric('marginPct', t?.marginPct ?? null)}
-            tone={t?.marginPct !== null && t?.marginPct !== undefined && t.marginPct < 0 ? 'danger' : 'default'}
-            caption={t ? headline('marginPct', t.marginPct, p ? p.marginPct : undefined) : 'Not available'}
-          />
-          <Figure
-            label="Units sold"
-            value={formatMetric('unitsSold', t?.unitsSold ?? null)}
-            caption={t ? headline('unitsSold', t.unitsSold, p?.unitsSold) : 'Not available'}
-          />
-        </FigureStrip>
-
+        {/* ── One chart card: the figures choose what the chart draws ─── */}
         <Card className="overflow-hidden">
-          <PanelHeader
-            title={def.label}
-            description={def.description}
-            action={<ChartTypeToggle value={chart} onChange={(c) => update({ chart: c === 'bar' ? null : c })} />}
+          <MetricTabs
+            items={tabs}
+            selected={HEADLINE.includes(metric) ? metric : null}
+            onSelect={(k) => update({ metric: k })}
+            label="Metric to chart"
           />
-          <div className="flex flex-col gap-md px-lg py-md">
-            <MetricPicker
-              value={metric}
-              onChange={(k) => update({ metric: k })}
-              disabled={empty}
-            />
+          <div className="border-t border-border-light px-lg pt-md pb-sm">
+            <div className="flex flex-wrap items-start justify-between gap-sm">
+              <div className="min-w-0">
+                <h2 className="text-h5 text-text-primary">{def.label} by month</h2>
+                <p className="mt-[2px] text-caption text-text-tertiary">{def.description}</p>
+              </div>
+              <div className="flex items-center gap-xs">
+                <MoreMetricsMenu
+                  metrics={MORE}
+                  value={metric}
+                  onChange={(k) => update({ metric: k })}
+                  disabled={empty}
+                />
+                <ChartTypeToggle value={chart} onChange={(c) => update({ chart: c === 'bar' ? null : c })} />
+              </div>
+            </div>
+
             {summary.readings === 0 ? (
-              <p className="py-xl text-center text-body-sm text-text-tertiary">
+              <p className="py-xxl text-center text-body-sm text-text-tertiary">
                 Nothing recorded for {def.label.toLowerCase()} in this window.
               </p>
             ) : (
               <MetricChart
+                className="mt-md"
                 metric={metric}
                 type={chart}
                 points={months.map((m) => ({ period: m.period, label: m.label, value: m.values[metric] }))}
                 selected={selectedPeriod}
                 onSelect={(period) => update({ month: period }, true)}
-                average={summary.readings > 1 ? summary.average : null}
+                average={summary.readings > 1 && def.kind !== 'ratio' ? summary.average : null}
               />
             )}
-            <div className="flex flex-col gap-xxs border-t border-border-light pt-sm sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-caption text-text-secondary">
-                {summaryParts.length > 0 ? summaryParts.join(' · ') : 'No readings in this window.'}
+
+            <div className="mt-xs flex flex-col gap-xxs border-t border-border-light pt-sm sm:flex-row sm:items-center sm:justify-between">
+              <p className="flex items-center gap-xs text-caption text-text-secondary">
+                {legend.length > 0 && def.kind !== 'ratio' && summary.readings > 1 && (
+                  <span aria-hidden="true" className="inline-block w-4 border-t border-dashed border-neutral-400" />
+                )}
+                <span className="truncate">{legend.join(' · ') || ' '}</span>
               </p>
-              <p className="text-caption text-text-tertiary print:hidden">
-                Choose a month to see the documents behind it.
+              <p className="flex items-center gap-xs text-caption text-text-tertiary print:hidden">
+                <MousePointerClick className="size-4 shrink-0 text-primary" aria-hidden="true" />
+                Click a month to see its documents
               </p>
             </div>
           </div>
         </Card>
 
-        {selectedMonth && (
-          <ItemSalesEntries
-            key={selectedMonth.period}
-            itemId={itemId}
-            label={selectedMonth.label}
-            range={monthRange(selectedMonth.period, range)}
-            onClose={() => update({ month: null })}
-          />
-        )}
-
         <Card className="overflow-hidden">
           <PanelHeader
-            title="Monthly figures"
-            description="Choose a metric to chart it, or a month to see its documents"
+            title="Monthly breakdown"
+            description="Every figure by month · choose a row to chart it"
           />
           <MetricTable
             months={months}
@@ -589,6 +630,14 @@ export default function InventoryItemReportPage() {
           />
         </Card>
       </DetailLayout>
+
+      <ItemMonthPanel
+        itemId={itemId}
+        itemName={itemName}
+        period={selectedMonth ? selectedMonth.period : null}
+        range={selectedMonth ? monthRange(selectedMonth.period, range) : null}
+        onClose={() => update({ month: null })}
+      />
     </ReportShell>
   );
 }

@@ -325,3 +325,48 @@ export const formatShare = (share: number): string => {
 /** The item explorer, opened on the period the report is showing. */
 export const itemExplorerHref = (itemId: string, range: ReportRange): string =>
   `/reports/inventory-valuation/${encodeURIComponent(itemId)}?from=${range.startDate}&to=${range.endDate}`;
+
+// ─── Paging and the URL ─────────────────────────────────────────────────────
+
+/** Rows to a table page: enough to scan, few enough to see the total. */
+export const PAGE_SIZE = 25;
+
+export const pageCount = (total: number, size = PAGE_SIZE): number =>
+  Math.max(1, Math.ceil(total / size));
+
+/** A page number that exists — a filter can shrink the table under the reader. */
+export const clampPage = (page: number, total: number, size = PAGE_SIZE): number =>
+  Math.min(Math.max(1, Math.trunc(page) || 1), pageCount(total, size));
+
+export const pageRows = <T>(rows: readonly T[], page: number, size = PAGE_SIZE): T[] => {
+  const p = clampPage(page, rows.length, size);
+  return rows.slice((p - 1) * size, p * size);
+};
+
+/** "26–50 of 109", or "No items". */
+export const pageRangeLabel = (page: number, total: number, size = PAGE_SIZE): string => {
+  if (total === 0) return 'No items';
+  const p = clampPage(page, total, size);
+  return `${(p - 1) * size + 1}–${Math.min(p * size, total)} of ${total}`;
+};
+
+const SORT_KEYS: readonly SortKey[] = [
+  'itemName',
+  'category',
+  'qty',
+  'unitCost',
+  'value',
+  'share',
+  'unitsSold',
+  'revenue',
+  'grossProfit',
+  'marginPct',
+];
+
+export const isSortKey = (v: unknown): v is SortKey => SORT_KEYS.includes(v as SortKey);
+
+export const isStockFilter = (v: unknown): v is StockFilter =>
+  STOCK_FILTERS.some((f) => f.key === v);
+
+/** The sort a ranking implies — "See all" from a ranking opens the table in its order. */
+export const sortForRank = (rank: RankKey): SortKey => (rank === 'stockValue' ? 'value' : rank);

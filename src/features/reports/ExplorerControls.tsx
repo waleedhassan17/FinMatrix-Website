@@ -1,20 +1,18 @@
-import { ChartColumn, ChartLine } from 'lucide-react';
-import { useId } from 'react';
+import { Check, ChartColumn, ChartLine, ChevronDown } from 'lucide-react';
 
-import { Select } from '@/components/ui/Select';
-import { cn } from '@/lib/cn';
 import {
-  EXPLORER_METRICS,
-  METRIC_GROUPS,
-  type ExplorerMetricKey,
-} from '@/models/itemExplorer';
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/DropdownMenu';
+import { cn } from '@/lib/cn';
+import { explorerMetric, type ExplorerMetricKey } from '@/models/itemExplorer';
 import type { ChartType } from '@/features/reports/MetricChart';
 
 /**
- * Columns or a line — the reader's choice, for every metric.
- *
- * A segmented pair in the same bordered, 40px style as the aging report's
- * "Age by" control, so a toolbar of them reads as one row of controls.
+ * Columns or a line — two icons in one bordered pair. Icon-only to keep the
+ * chart's header quiet; the names are there for a screen reader and on hover.
  */
 export function ChartTypeToggle({
   value,
@@ -26,8 +24,8 @@ export function ChartTypeToggle({
   className?: string;
 }) {
   const options: { key: ChartType; label: string; Icon: typeof ChartColumn }[] = [
-    { key: 'bar', label: 'Bar', Icon: ChartColumn },
-    { key: 'line', label: 'Line', Icon: ChartLine },
+    { key: 'bar', label: 'Bar chart', Icon: ChartColumn },
+    { key: 'line', label: 'Line chart', Icon: ChartLine },
   ];
   return (
     <div
@@ -40,17 +38,18 @@ export function ChartTypeToggle({
           key={key}
           type="button"
           aria-pressed={value === key}
+          aria-label={label}
+          title={label}
           onClick={() => onChange(key)}
           className={cn(
-            'inline-flex items-center gap-xxs px-sm text-label-md transition-colors',
+            'inline-flex w-9 items-center justify-center transition-colors',
             i > 0 && 'border-l border-border',
             value === key
               ? 'bg-primary-tint text-primary'
-              : 'text-text-secondary hover:bg-surface-2 hover:text-text-primary',
+              : 'text-text-tertiary hover:bg-surface-2 hover:text-text-primary',
           )}
         >
           <Icon className="size-4" aria-hidden="true" />
-          {label}
         </button>
       ))}
     </div>
@@ -58,70 +57,62 @@ export function ChartTypeToggle({
 }
 
 /**
- * Which metric the chart draws, grouped as the table below it is.
+ * The metrics that are not headline figures, one menu away.
  *
- * Every choice is visible on a wide screen — the point of an explorer is that
- * the alternatives are in view. On a phone ten pills wrap into a wall, so the
- * same choices become one select.
+ * Names the chosen one when it came from here, so the chart's header always
+ * says what is drawn; otherwise it reads "More metrics".
  */
-export function MetricPicker({
+export function MoreMetricsMenu({
+  metrics,
   value,
   onChange,
   disabled = [],
-  className,
 }: {
+  metrics: readonly ExplorerMetricKey[];
   value: ExplorerMetricKey;
   onChange: (key: ExplorerMetricKey) => void;
-  /** Metrics with nothing to draw — shown, but not choosable. */
+  /** Metrics with nothing to draw — listed, not choosable. */
   disabled?: readonly ExplorerMetricKey[];
-  className?: string;
 }) {
-  const id = useId();
+  const current = metrics.includes(value) ? explorerMetric(value).label : null;
   return (
-    <div className={className}>
-      <Select<ExplorerMetricKey>
-        compact
-        label={<span className="sr-only">Metric</span>}
-        value={value}
-        onChange={onChange}
-        options={EXPLORER_METRICS.filter((m) => !disabled.includes(m.key)).map((m) => ({
-          value: m.key,
-          label: `${METRIC_GROUPS.find((g) => g.key === m.group)?.label} · ${m.label}`,
-        }))}
-        containerClassName="sm:hidden"
-      />
-
-      <div className="hidden flex-col gap-xs sm:flex">
-        {METRIC_GROUPS.map((g) => (
-          <div key={g.key} className="flex flex-wrap items-center gap-xs" role="group" aria-labelledby={`${id}-${g.key}`}>
-            <span id={`${id}-${g.key}`} className="w-12 shrink-0 text-overline text-text-tertiary">
-              {g.label}
-            </span>
-            {EXPLORER_METRICS.filter((m) => m.group === g.key).map((m) => {
-              const off = disabled.includes(m.key);
-              return (
-                <button
-                  key={m.key}
-                  type="button"
-                  aria-pressed={value === m.key}
-                  disabled={off}
-                  title={off ? 'Nothing recorded for this item in the period' : undefined}
-                  onClick={() => onChange(m.key)}
-                  className={cn(
-                    'rounded-full border px-md py-xxs text-label-md transition-colors',
-                    value === m.key
-                      ? 'border-primary bg-primary text-text-inverse'
-                      : 'border-border bg-surface text-text-secondary hover:border-primary hover:text-primary',
-                    off && 'cursor-not-allowed opacity-50 hover:border-border hover:text-text-secondary',
-                  )}
-                >
-                  {m.label}
-                </button>
-              );
-            })}
-          </div>
-        ))}
-      </div>
-    </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            'inline-flex h-9 items-center gap-xs rounded-md border px-sm text-label-md transition-colors',
+            current
+              ? 'border-primary bg-primary-tint text-primary'
+              : 'border-border bg-surface text-text-secondary hover:bg-surface-2 hover:text-text-primary',
+          )}
+        >
+          {current ?? 'More metrics'}
+          <ChevronDown className="size-4" aria-hidden="true" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {metrics.map((key) => {
+          const m = explorerMetric(key);
+          const on = key === value;
+          return (
+            <DropdownMenuItem
+              key={key}
+              disabled={disabled.includes(key)}
+              onSelect={() => onChange(key)}
+              className={on ? 'text-primary' : undefined}
+            >
+              <span className="flex-1">
+                {m.label}
+                <span className="block text-caption text-text-tertiary">
+                  {m.group === 'stock' ? 'Stock' : 'Sales'}
+                </span>
+              </span>
+              {on && <Check className="text-primary" aria-hidden="true" />}
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

@@ -89,7 +89,7 @@ export function MetricTable({
           <tr className="border-b border-border bg-surface-2">
             <th
               scope="col"
-              className="sticky left-0 z-10 min-w-[8rem] bg-surface-2 sm:min-w-[10.5rem] px-md py-sm text-left text-overline text-text-secondary shadow-[inset_-1px_0_0_var(--color-border)]"
+              className="sticky left-0 z-10 min-w-[8rem] bg-surface-2 sm:min-w-[10.5rem] px-md py-sm text-left text-overline text-text-secondary shadow-[inset_-1px_0_0_var(--color-border),6px_0_8px_-6px_color-mix(in_srgb,var(--color-neutral-900)_16%,transparent)]"
             >
               Metric
             </th>
@@ -124,7 +124,7 @@ export function MetricTable({
             <th
               scope="col"
               title="Sums for flows; margin and price recomputed from the period's totals; the latest month for stock levels."
-              className="sticky right-0 z-10 border-l border-border bg-surface-2 px-md py-sm text-right text-overline whitespace-nowrap text-text-secondary"
+              className="sticky right-0 z-10 border-l border-border bg-surface-2 px-md py-sm text-right text-overline whitespace-nowrap text-text-secondary shadow-[-6px_0_8px_-6px_color-mix(in_srgb,var(--color-neutral-900)_16%,transparent)]"
             >
               Period
             </th>
@@ -140,7 +140,7 @@ export function MetricTable({
               <tr key={`group-${g.key}`} className="border-b border-border-light">
                 <th
                   scope="rowgroup"
-                  className="sticky left-0 z-10 bg-surface px-md pt-md pb-xxs text-left text-overline text-text-tertiary shadow-[inset_-1px_0_0_var(--color-border)]"
+                  className="sticky left-0 z-10 bg-surface px-md pt-md pb-xxs text-left text-overline text-text-tertiary shadow-[inset_-1px_0_0_var(--color-border),6px_0_8px_-6px_color-mix(in_srgb,var(--color-neutral-900)_16%,transparent)]"
                 >
                   {g.label}
                 </th>
@@ -161,7 +161,7 @@ export function MetricTable({
                     <th
                       scope="row"
                       className={cn(
-                        'sticky left-0 z-10 p-0 text-left shadow-[inset_-1px_0_0_var(--color-border)]',
+                        'sticky left-0 z-10 p-0 text-left shadow-[inset_-1px_0_0_var(--color-border),6px_0_8px_-6px_color-mix(in_srgb,var(--color-neutral-900)_16%,transparent)]',
                         on ? 'bg-primary-tint' : 'bg-surface',
                       )}
                     >
@@ -197,7 +197,7 @@ export function MetricTable({
                     })}
                     <td
                       className={cn(
-                        'sticky right-0 border-l border-border px-md py-sm text-right tabular text-label-md whitespace-nowrap',
+                        'sticky right-0 border-l border-border px-md py-sm text-right tabular text-label-md whitespace-nowrap shadow-[-6px_0_8px_-6px_color-mix(in_srgb,var(--color-neutral-900)_16%,transparent)]',
                         on ? 'bg-primary-tint' : 'bg-surface',
                         cellTone(total),
                       )}

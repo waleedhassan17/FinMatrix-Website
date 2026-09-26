@@ -2,6 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import {
   categoryShares,
+  clampPage,
+  isSortKey,
+  isStockFilter,
+  pageCount,
+  pageRangeLabel,
+  pageRows,
+  sortForRank,
   filterRows,
   formatShare,
   itemExplorerHref,
@@ -135,5 +142,32 @@ describe('itemExplorerHref', () => {
     expect(itemExplorerHref('a b', { startDate: '2026-01-01', endDate: '2026-09-26' })).toBe(
       '/reports/inventory-valuation/a%20b?from=2026-01-01&to=2026-09-26',
     );
+  });
+});
+
+describe('paging', () => {
+  const many = Array.from({ length: 107 }, (_, i) => i + 1);
+
+  it('cuts a page and says where it is', () => {
+    expect(pageCount(107)).toBe(5);
+    expect(pageRows(many, 2)).toEqual(many.slice(25, 50));
+    expect(pageRangeLabel(2, 107)).toBe('26–50 of 107');
+    expect(pageRangeLabel(5, 107)).toBe('101–107 of 107');
+  });
+
+  it('keeps the reader on a page that exists when a filter shrinks the list', () => {
+    expect(clampPage(5, 30)).toBe(2);
+    expect(clampPage(0, 30)).toBe(1);
+    expect(pageRows(many.slice(0, 30), 9)).toEqual(many.slice(25, 30));
+    expect(pageRangeLabel(1, 0)).toBe('No items');
+  });
+
+  it('reads the URL defensively', () => {
+    expect(isSortKey('grossProfit')).toBe(true);
+    expect(isSortKey('drop table')).toBe(false);
+    expect(isStockFilter('unsold')).toBe(true);
+    expect(isStockFilter('everything')).toBe(false);
+    expect(sortForRank('stockValue')).toBe('value');
+    expect(sortForRank('marginPct')).toBe('marginPct');
   });
 });

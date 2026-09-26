@@ -762,24 +762,29 @@ re-averaged the item.
 - [ ] **Inventory Valuation** → "Stock value over time". Its last point must
       equal Total value, and both must equal the Balance Sheet Inventory (1200)
       line.
-- [ ] Click an item (a table row or a bar in "Top items") → the item explorer
-      opens on the same period. Headline Revenue, Gross profit, Margin and Units
-      sold must equal that item's row on Inventory Valuation.
-- [ ] In the explorer, chart every metric as Bar and as Line. A negative month
-      is red below a zero line; a month with no reading is a gap, never a zero.
-- [ ] ⭐ Click a month (a bar, or a month heading in "Monthly figures") →
-      "What's behind" lists invoices, deliveries and returns whose total equals
-      that month's figure; each document number opens its record.
-- [ ] Stock on hand and Stock value in the latest month equal the item's On hand
-      and Stock value in "Stock position" and on the valuation table.
-- [ ] On an item sold on multi-item invoices, "About these figures" states the
-      share of its cost that was apportioned.
-- [ ] Inventory Valuation filters: "Selling below cost", "Not sold in period" and
-      "Out of stock" match their counts; a category bar filters the table and the
-      footer totals only the rows showing.
-- [ ] The app: Reports → Inventory → Valuation → tap an item → the same explorer
-      on a phone (window chips, metric chips, Bar/Line, tap a month, tap a
-      document → the invoice opens under Transactions).
+- [ ] **Inventory Valuation** opens on the **Items** tab: 25 items a page, the
+      hint "Select any item to explore…" above the table, and "Explore ›" on
+      every row. Page, search, category, filter and sort survive Back from an
+      item.
+- [ ] Click any row (or a bar under **Insights → Top 8**) → the item explorer
+      opens on the same period. Its four headline figures must equal that item's
+      row.
+- [ ] In the explorer, the four figures are the chart's tabs; "More metrics"
+      holds the other six. Chart each as Bar and Line — a negative month is red
+      below a zero line; a month with no reading is a gap, never a zero.
+- [ ] ⭐ Click a month (a bar, or a month heading in "Monthly breakdown") → a
+      panel slides in from the right listing the invoices, deliveries and
+      returns behind it; its total equals the month; each document opens its
+      record; Escape or ✕ closes it and the page has not moved.
+- [ ] "Switch item" (desktop) moves to another item keeping the window.
+- [ ] Stock on hand and Stock value in the latest month equal "Stock position"
+      and the valuation table.
+- [ ] **Reconciliation** tab: the P&L tie-out foots, and "Stock against the
+      ledger" shows the difference the Stock value figure warns about.
+- [ ] The app: Reports → Inventory → Valuation → Items / Insights / Tie-out;
+      tap an item → the same explorer (window chips, figure tiles that choose
+      the chart, Bar/Line, tap a month → a sheet of documents → the invoice opens
+      under Transactions).
 
 ## Known gaps, by design
 

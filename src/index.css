@@ -342,6 +342,50 @@
       transform: translateY(-10px);
     }
   }
+
+  /* The side panel a report drills into (an item's month, its documents). It
+     slides in from the right over a fading scrim; both need an exit frame or
+     Radix removes the node instantly on close. */
+  --animate-panel-in: panel-in 240ms cubic-bezier(0.22, 0.8, 0.28, 1);
+  --animate-panel-out: panel-out 180ms ease-in;
+  --animate-scrim-in: scrim-in 200ms ease-out;
+  --animate-scrim-out: scrim-out 180ms ease-in;
+
+  @keyframes panel-in {
+    from {
+      transform: translateX(100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes panel-out {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(100%);
+    }
+  }
+
+  @keyframes scrim-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes scrim-out {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
 }
 
 /* `overline` is uppercase by role; Tailwind's type scale cannot express

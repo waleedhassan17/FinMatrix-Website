@@ -125,7 +125,7 @@ export function RankedBars({
               />
             </div>
             {r.hint && (
-              <p className="mt-xxs text-overline text-text-tertiary">{r.hint}</p>
+              <p className="mt-xxs text-caption text-text-tertiary">{r.hint}</p>
             )}
           </>
         );
