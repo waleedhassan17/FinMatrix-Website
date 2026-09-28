@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery } from '@tanstack/react-query';
 import { createColumnHelper } from '@tanstack/react-table';
 import { Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -12,10 +12,9 @@ import { SearchInput } from '@/components/ui/SearchInput';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { cn } from '@/lib/cn';
 import type { Bill, BillStatus } from '@/models/bill';
-import { getBills } from '@/networks/purchases/billNetwork';
+import { LIST_PAGE_SIZE, statusCountsOf } from '@/models/documentList';
+import { getBillPage } from '@/networks/purchases/billNetwork';
 import { formatMoney } from '@/utils/money';
-
-const PAGE_LIMIT = 50;
 
 type Tab = 'all' | 'draft' | 'open' | 'overdue' | 'partial' | 'paid';
 
@@ -42,51 +41,53 @@ export default function BillListPage() {
   }, [searchInput]);
 
   /**
-   * One unfiltered fetch, tabbed client-side.
+   * Searched, filtered by tab and paged BY THE SERVER; "Load more" fetches the
+   * next page.
    *
-   * Not an optimisation — a necessity. `overdue` is derived on read and never
-   * stored, so `GET /bills?status=overdue` can only ever return an empty list.
-   * Filtering some tabs on the server and one in the browser would make the
-   * Overdue tab quietly different from the rest; all six filter locally instead,
-   * against the status the serializer derives.
+   * The tabs used to filter one unpaged fetch in the browser, because overdue
+   * is derived from the due date and the server could not filter by it. It
+   * now filters by the status each bill displays, and sends counts and totals
+   * over every bill the search matches — so each tab can show all of its
+   * bills, and the counts stay true for the tabs not shown.
    */
-  const { data = [], isLoading, isError, error } = useQuery({
-    queryKey: ['bills', 'list', { search }],
-    queryFn: () => getBills({ search: search || undefined, limit: PAGE_LIMIT }),
+  const list = useInfiniteQuery({
+    queryKey: ['bills', 'list', { search, tab }],
+    queryFn: ({ pageParam }) =>
+      getBillPage({
+        search: search || undefined,
+        status: tab === 'all' ? undefined : (tab as BillStatus),
+        page: pageParam,
+        limit: LIST_PAGE_SIZE,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (last) => (last.page < last.totalPages ? last.page + 1 : undefined),
     placeholderData: keepPreviousData,
   });
+  const { isLoading, isError, error } = list;
+  const data = useMemo(() => list.data?.pages.flatMap((p) => p.rows) ?? [], [list.data]);
+  const serverSummary = list.data?.pages[0]?.summary ?? null;
+  const matching = list.data?.pages[0]?.total ?? data.length;
 
-  const counts = useMemo(() => {
-    const c: Record<Tab, number> = {
-      all: data.length,
-      draft: 0,
-      open: 0,
-      overdue: 0,
-      partial: 0,
-      paid: 0,
-    };
-    for (const b of data) {
-      if (b.status in c) c[b.status as Tab] += 1;
-    }
-    return c;
-  }, [data]);
+  const counts = useMemo(() => statusCountsOf(serverSummary, data), [serverSummary, data]);
 
+  // Already filtered by the server; applied here too only so a tab switch
+  // shows at once, before its answer lands.
   const rows = useMemo(
     () => (tab === 'all' ? data : data.filter((b) => b.status === (tab as BillStatus))),
     [data, tab],
   );
 
-  const totalOwed = useMemo(
-    () => data.reduce((sum, b) => sum + b.balance, 0),
-    [data],
-  );
-  const overdueOwed = useMemo(
-    () =>
-      data
-        .filter((b) => b.status === 'overdue')
-        .reduce((sum, b) => sum + b.balance, 0),
-    [data],
-  );
+  // What the open bills owe — drafts are not owed until posted.
+  const { totalOwed, overdueOwed } = useMemo(() => {
+    if (serverSummary) return { totalOwed: serverSummary.outstanding, overdueOwed: serverSummary.overdue };
+    let owed = 0;
+    let overdue = 0;
+    for (const b of data) {
+      if (b.status === 'open' || b.status === 'partial' || b.status === 'overdue') owed += b.balance;
+      if (b.status === 'overdue') overdue += b.balance;
+    }
+    return { totalOwed: owed, overdueOwed: overdue };
+  }, [serverSummary, data]);
 
   const columns = useMemo(
     () => [
@@ -233,7 +234,7 @@ export default function BillListPage() {
                   )}
                 >
                   {label}
-                  <span className="ml-xxs tabular opacity-70">{counts[t]}</span>
+                  <span className="ml-xxs tabular opacity-70">{counts[t] ?? 0}</span>
                 </button>
               ))}
             </div>
@@ -241,13 +242,20 @@ export default function BillListPage() {
         }
       />
 
-      {/* Same caveat as invoices: GET /bills is flat, so the envelope drops the
-          pagination block and there is no page count to page against. */}
-      {data.length >= PAGE_LIMIT && (
-        <p className="text-caption text-text-tertiary">
-          Showing the {PAGE_LIMIT} most recent bills. Narrow the search to find
-          older ones.
-        </p>
+      {list.hasNextPage && (
+        <div className="flex flex-col items-center gap-xs">
+          <p className="text-caption text-text-tertiary tabular">
+            Showing {data.length} of {matching}
+          </p>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => void list.fetchNextPage()}
+            disabled={list.isFetchingNextPage}
+          >
+            {list.isFetchingNextPage ? 'Loading…' : 'Load more'}
+          </Button>
+        </div>
       )}
     </div>
   );

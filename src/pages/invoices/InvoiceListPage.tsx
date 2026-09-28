@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { createColumnHelper } from '@tanstack/react-table';
 import { Clock, Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -13,12 +13,11 @@ import { SearchInput } from '@/components/ui/SearchInput';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useCapability } from '@/hooks/useCapability';
 import { cn } from '@/lib/cn';
+import { LIST_PAGE_SIZE, statusCountsOf } from '@/models/documentList';
 import type { Invoice } from '@/models/invoice';
 import { fetchApprovals } from '@/networks/approvals/approvalsNetwork';
-import { getInvoices } from '@/networks/sales/invoiceNetwork';
+import { getInvoicePage } from '@/networks/sales/invoiceNetwork';
 import { formatMoney } from '@/utils/money';
-
-const PAGE_SIZE = 50;
 
 type Tab = 'all' | 'draft' | 'sent' | 'overdue' | 'paid';
 
@@ -47,17 +46,29 @@ export default function InvoiceListPage() {
     return () => clearTimeout(t);
   }, [searchInput]);
 
-  const { data: invoices = [], isLoading, isError, error } = useQuery({
-    queryKey: ['invoices', 'list', { search, fromDate, toDate }],
-    queryFn: () =>
-      getInvoices({
+  // Searched, filtered by tab and paged BY THE SERVER; "Load more" fetches the
+  // next page. The tab goes to the server because the counts below are the
+  // server's — over every invoice the search matches — so a tab has to show
+  // all of its invoices, not just those among the rows already loaded.
+  const list = useInfiniteQuery({
+    queryKey: ['invoices', 'list', { search, fromDate, toDate, tab }],
+    queryFn: ({ pageParam }) =>
+      getInvoicePage({
         search: search || undefined,
         fromDate: fromDate || undefined,
         toDate: toDate || undefined,
-        limit: PAGE_SIZE,
+        status: tab === 'all' ? undefined : tab,
+        page: pageParam,
+        limit: LIST_PAGE_SIZE,
       }),
+    initialPageParam: 1,
+    getNextPageParam: (last) => (last.page < last.totalPages ? last.page + 1 : undefined),
     placeholderData: keepPreviousData,
   });
+  const { isLoading, isError, error } = list;
+  const invoices = useMemo(() => list.data?.pages.flatMap((p) => p.rows) ?? [], [list.data]);
+  const serverSummary = list.data?.pages[0]?.summary ?? null;
+  const matching = list.data?.pages[0]?.total ?? invoices.length;
 
   // Staff see their own submitted requests above the table — they are not
   // invoices yet and would otherwise be invisible until an owner acted.
@@ -67,18 +78,12 @@ export default function InvoiceListPage() {
     enabled: cap.needsApproval,
   });
 
-  // Counts and the summary bar are computed over LOADED rows, not from the
-  // server: GET /invoices returns a bare array — its `summary` and
-  // `pagination` are discarded by the response envelope before they reach us.
-  const counts = useMemo(() => {
-    const c: Record<Tab, number> = { all: invoices.length, draft: 0, sent: 0, overdue: 0, paid: 0 };
-    for (const inv of invoices) {
-      if (inv.status in c) c[inv.status as Tab] += 1;
-    }
-    return c;
-  }, [invoices]);
+  // The server's counts and totals — over every invoice the search matches —
+  // or, from an older server, over the rows loaded.
+  const counts = useMemo(() => statusCountsOf(serverSummary, invoices), [serverSummary, invoices]);
 
   const summary = useMemo(() => {
+    if (serverSummary) return { outstanding: serverSummary.outstanding, overdue: serverSummary.overdue };
     let outstanding = 0;
     let overdue = 0;
     for (const inv of invoices) {
@@ -88,8 +93,10 @@ export default function InvoiceListPage() {
       if (inv.status === 'overdue') overdue += inv.balance;
     }
     return { outstanding, overdue };
-  }, [invoices]);
+  }, [serverSummary, invoices]);
 
+  // Already filtered by the server; applied here too only so a tab switch
+  // shows at once, before its answer lands.
   const rows = useMemo(
     () => (tab === 'all' ? invoices : invoices.filter((i) => i.status === tab)),
     [invoices, tab],
@@ -177,13 +184,17 @@ export default function InvoiceListPage() {
 
       <div className="grid gap-md sm:grid-cols-2">
         <Card className="p-lg">
-          <p className="text-caption text-text-secondary">Outstanding (loaded)</p>
+          <p className="text-caption text-text-secondary">
+            {serverSummary ? 'Outstanding' : 'Outstanding (loaded)'}
+          </p>
           <p className="mt-xxs text-h3 text-text-primary tabular">
             {formatMoney(summary.outstanding)}
           </p>
         </Card>
         <Card className="p-lg">
-          <p className="text-caption text-text-secondary">Overdue (loaded)</p>
+          <p className="text-caption text-text-secondary">
+            {serverSummary ? 'Overdue' : 'Overdue (loaded)'}
+          </p>
           <p className="mt-xxs text-h3 text-danger tabular">
             {formatMoney(summary.overdue)}
           </p>
@@ -202,7 +213,7 @@ export default function InvoiceListPage() {
             </span>
           ) : (
             <span className="text-body-sm text-text-tertiary">
-              {invoices.length === 0
+              {!search && !fromDate && !toDate && tab === 'all'
                 ? 'No invoices yet. Create your first to bill a customer.'
                 : 'No invoices match these filters.'}
             </span>
@@ -254,7 +265,7 @@ export default function InvoiceListPage() {
                       value === tab ? 'text-text-inverse/70' : 'text-text-tertiary',
                     )}
                   >
-                    {counts[value]}
+                    {counts[value] ?? 0}
                   </span>
                 </button>
               ))}
@@ -263,11 +274,20 @@ export default function InvoiceListPage() {
         }
       />
 
-      {invoices.length >= PAGE_SIZE && (
-        <p className="text-center text-caption text-text-tertiary">
-          Showing the first {PAGE_SIZE}. Narrow the search or date range to see more —
-          this endpoint does not return a page count.
-        </p>
+      {list.hasNextPage && (
+        <div className="flex flex-col items-center gap-xs">
+          <p className="text-caption text-text-tertiary tabular">
+            Showing {invoices.length} of {matching}
+          </p>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => void list.fetchNextPage()}
+            disabled={list.isFetchingNextPage}
+          >
+            {list.isFetchingNextPage ? 'Loading…' : 'Load more'}
+          </Button>
+        </div>
       )}
     </div>
   );

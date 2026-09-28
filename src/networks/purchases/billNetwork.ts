@@ -23,6 +23,7 @@ import { asRaw, str } from '@/serializers/documentLines';
 import type { Bill, BillStatus } from '@/models/bill';
 import type { AllocationRow } from '@/models/allocation';
 import { toNumber } from '@/utils/money';
+import { documentListSummaryOf, listPaginationOf, type DocumentPage } from '@/models/documentList';
 
 export interface BillQueryParams {
   search?: string;
@@ -44,16 +45,33 @@ const idempotencyKey = (): Record<string, string> => ({
 });
 
 /**
- * List bills.
- *
- * Never pass `status: 'overdue'` — the column never holds that value, so the
- * server can only answer with an empty list. The Overdue tab filters the
- * loaded rows against the derived status instead.
+ * One page of the bill list, with the server's summary and pagination.
+ * `status` is the DISPLAYED status — the server now filters "overdue" by the
+ * due date too, so every tab can go to it.
+ */
+export const getBillPage = async (
+  params: Omit<BillQueryParams, 'fromDate' | 'toDate'> = {},
+): Promise<DocumentPage<Bill>> => {
+  try {
+    const response = await api.get('/bills', { params });
+    const rows = billListSerializer(unwrapEnvelope(response.data));
+    return {
+      rows,
+      summary: documentListSummaryOf(response.data),
+      ...listPaginationOf(response.data, rows.length),
+    };
+  } catch (e) {
+    throw toApiError(e);
+  }
+};
+
+/**
+ * List bills — the rows alone. `status` filters by the status each bill
+ * displays, overdue included: the server derives it from the due date.
  */
 export const getBills = async (params: BillQueryParams = {}): Promise<Bill[]> => {
-  const { fromDate, toDate, status, ...rest } = params;
+  const { fromDate, toDate, ...rest } = params;
   const query: Record<string, unknown> = { ...rest };
-  if (status && status !== 'overdue') query.status = status;
   if (fromDate && toDate) {
     query.startDate = fromDate;
     query.endDate = toDate;

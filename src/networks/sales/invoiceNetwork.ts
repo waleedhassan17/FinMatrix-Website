@@ -17,6 +17,7 @@ import {
   type InvoiceWritePayload,
 } from '@/serializers/invoiceSerializer';
 import type { Invoice, InvoiceStatus } from '@/models/invoice';
+import { documentListSummaryOf, listPaginationOf, type DocumentPage } from '@/models/documentList';
 
 export interface InvoiceQueryParams {
   search?: string;
@@ -54,6 +55,33 @@ export const getInvoices = async (
   try {
     const response = await api.get('/invoices', { params: query });
     return invoiceListSerializer(unwrapEnvelope(response.data));
+  } catch (e) {
+    throw toApiError(e);
+  }
+};
+
+/**
+ * One page of the invoice list, with the server's summary (every status, every
+ * page the search matches) and pagination. `status` is the DISPLAYED status:
+ * "overdue" takes every invoice past due and still owing.
+ */
+export const getInvoicePage = async (
+  params: InvoiceQueryParams = {},
+): Promise<DocumentPage<Invoice>> => {
+  const { fromDate, toDate, ...rest } = params;
+  const query: Record<string, unknown> = { ...rest };
+  if (fromDate && toDate) {
+    query.startDate = fromDate;
+    query.endDate = toDate;
+  }
+  try {
+    const response = await api.get('/invoices', { params: query });
+    const rows = invoiceListSerializer(unwrapEnvelope(response.data));
+    return {
+      rows,
+      summary: documentListSummaryOf(response.data),
+      ...listPaginationOf(response.data, rows.length),
+    };
   } catch (e) {
     throw toApiError(e);
   }
