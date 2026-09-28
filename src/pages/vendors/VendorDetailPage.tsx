@@ -28,6 +28,7 @@ import {
   getVendorStatement,
   toggleVendorActive,
 } from '@/networks/purchases/vendorNetwork';
+import { VENDOR_STATEMENT_KIND_LABELS } from '@/serializers/vendorSerializer';
 import { formatMoney } from '@/utils/money';
 
 const iso = (d: Date) =>
@@ -504,7 +505,7 @@ function StatementTab({ vendor }: { vendor: Vendor }) {
                       <td className="py-sm text-body-sm text-text-primary">
                         {l.reference}
                         <span className="ml-xs text-caption text-text-tertiary">
-                          {l.kind === 'bill' ? 'Bill' : 'Payment'}
+                          {VENDOR_STATEMENT_KIND_LABELS[l.kind]}
                         </span>
                       </td>
                       {/* A payment reduces what we owe, so it is the good
@@ -531,6 +532,9 @@ function StatementTab({ vendor }: { vendor: Vendor }) {
           <div className="mt-md flex flex-col gap-xxs border-t border-border pt-md">
             <SummaryLine label="Billed" value={formatMoney(data.totals.billed)} />
             <SummaryLine label="Paid" value={formatMoney(data.totals.paid)} />
+            {data.totals.credited !== 0 && (
+              <SummaryLine label="Credited" value={formatMoney(data.totals.credited)} />
+            )}
             <SummaryLine
               label="Closing balance"
               value={formatMoney(data.closingBalance)}

@@ -25,6 +25,7 @@ import {
   getCustomerStatement,
   toggleCustomerActive,
 } from '@/networks/sales/customerNetwork';
+import { STATEMENT_KIND_LABELS } from '@/serializers/customerSerializer';
 import { colors } from '@/theme/tokens';
 import { formatMoney } from '@/utils/money';
 
@@ -477,7 +478,7 @@ function StatementTab({ customer }: { customer: Customer }) {
                       <td className="py-sm text-body-sm text-text-primary">
                         {l.reference}
                         <span className="ml-xs text-caption text-text-tertiary">
-                          {l.kind === 'invoice' ? 'Invoice' : 'Payment'}
+                          {STATEMENT_KIND_LABELS[l.kind]}
                         </span>
                       </td>
                       <td
@@ -501,6 +502,12 @@ function StatementTab({ customer }: { customer: Customer }) {
           <div className="mt-md flex flex-col gap-xxs border-t border-border pt-md">
             <SummaryLine label="Invoiced" value={formatMoney(data.totals.invoiced)} />
             <SummaryLine label="Received" value={formatMoney(data.totals.received)} />
+            {data.totals.credited !== 0 && (
+              <SummaryLine label="Credited" value={formatMoney(data.totals.credited)} />
+            )}
+            {data.totals.refunded !== 0 && (
+              <SummaryLine label="Refunded" value={formatMoney(data.totals.refunded)} />
+            )}
             <SummaryLine
               label="Closing balance"
               value={formatMoney(data.closingBalance)}

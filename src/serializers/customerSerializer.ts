@@ -239,10 +239,20 @@ export const customerPaymentsSerializer = (
 
 // ─── Statement ───────────────────────────────────────
 
+export type StatementLineKind = 'invoice' | 'payment' | 'credit_memo' | 'refund';
+
+/** What each line is, as the statement names it. */
+export const STATEMENT_KIND_LABELS: Record<StatementLineKind, string> = {
+  invoice: 'Invoice',
+  payment: 'Payment',
+  credit_memo: 'Credit memo',
+  refund: 'Refund',
+};
+
 export interface StatementLine {
   id: string;
   date: string;
-  kind: 'invoice' | 'payment';
+  kind: StatementLineKind;
   reference: string;
   /** Positive increases what they owe, negative reduces it. */
   amount: number;
@@ -254,13 +264,14 @@ export interface CustomerStatement {
   period: { startDate: string; endDate: string };
   openingBalance: number;
   lines: StatementLine[];
-  totals: { invoiced: number; received: number };
+  /** `credited` and `refunded` are 0 from a server that predates them. */
+  totals: { invoiced: number; received: number; credited: number; refunded: number };
   closingBalance: number;
 }
 
 /**
- * `GET /customers/:id/statement` returns invoices and payments as two separate
- * arrays. A statement is read as one chronological ledger, so they are merged
+ * `GET /customers/:id/statement` returns invoices, payments, credit memos and
+ * credit-memo refunds as separate arrays. A statement is read as one chronological ledger, so they are merged
  * and a running balance is accumulated here — the server sends opening and
  * closing balances but nothing per row.
  */
@@ -273,6 +284,9 @@ export const customerStatementSerializer = (payload: unknown): CustomerStatement
 
   const invoices = (Array.isArray(d.invoices) ? d.invoices : []) as Raw[];
   const payments = (Array.isArray(d.payments) ? d.payments : []) as Raw[];
+  // Credit memos bring the balance down; a cash refund of one puts it back.
+  const creditMemos = (Array.isArray(d.creditMemos) ? d.creditMemos : []) as Raw[];
+  const refunds = (Array.isArray(d.refunds) ? d.refunds : []) as Raw[];
 
   const merged: Omit<StatementLine, 'runningBalance'>[] = [
     ...invoices.map((raw) => ({
@@ -288,6 +302,20 @@ export const customerStatementSerializer = (payload: unknown): CustomerStatement
       kind: 'payment' as const,
       reference: str(raw.paymentNumber ?? raw.reference) || '—',
       amount: -toNumber(raw.amount as never),
+    })),
+    ...creditMemos.map((raw) => ({
+      id: str(raw.id),
+      date: str(raw.date),
+      kind: 'credit_memo' as const,
+      reference: str(raw.creditMemoNumber) || '—',
+      amount: -toNumber(raw.total as never),
+    })),
+    ...refunds.map((raw) => ({
+      id: str(raw.id),
+      date: str(raw.date),
+      kind: 'refund' as const,
+      reference: str(raw.creditMemoNumber) || '—',
+      amount: toNumber(raw.amount as never),
     })),
   ].sort((a, b) => a.date.localeCompare(b.date));
 
@@ -305,6 +333,8 @@ export const customerStatementSerializer = (payload: unknown): CustomerStatement
     totals: {
       invoiced: toNumber(totals.invoiced as never),
       received: toNumber(totals.received as never),
+      credited: toNumber(totals.credited as never),
+      refunded: toNumber(totals.refunded as never),
     },
     closingBalance: toNumber(d.closingBalance as never),
   };

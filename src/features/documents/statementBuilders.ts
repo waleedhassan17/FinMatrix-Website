@@ -32,9 +32,9 @@ import {
   summaryMessageBody,
 } from '@/models/partySummary';
 import type { Vendor } from '@/models/vendor';
-import type { CustomerStatement } from '@/serializers/customerSerializer';
+import { STATEMENT_KIND_LABELS, type CustomerStatement } from '@/serializers/customerSerializer';
 import type { PartySummary } from '@/serializers/reportSerializers';
-import type { VendorStatement } from '@/serializers/vendorSerializer';
+import { VENDOR_STATEMENT_KIND_LABELS, type VendorStatement } from '@/serializers/vendorSerializer';
 import { formatMoney, sumMoney } from '@/utils/money';
 
 export interface StatementDocument {
@@ -121,13 +121,16 @@ export function customerStatementDocument(
     lines: statement.lines.map((l) => ({
       date: l.date,
       reference: l.reference,
-      kind: l.kind === 'invoice' ? 'Invoice' : 'Payment',
+      kind: STATEMENT_KIND_LABELS[l.kind],
       amount: l.amount,
       runningBalance: l.runningBalance,
     })),
     totals: [
       { label: 'Invoiced', value: statement.totals.invoiced },
       { label: 'Received', value: statement.totals.received },
+      // Only when there were any: a line of zeros is noise on a customer's copy.
+      ...(statement.totals.credited ? [{ label: 'Credited', value: statement.totals.credited }] : []),
+      ...(statement.totals.refunded ? [{ label: 'Refunded', value: statement.totals.refunded }] : []),
     ],
   });
 }
@@ -151,13 +154,14 @@ export function vendorStatementDocument(
     lines: statement.lines.map((l) => ({
       date: l.date,
       reference: l.reference,
-      kind: l.kind === 'bill' ? 'Bill' : 'Payment',
+      kind: VENDOR_STATEMENT_KIND_LABELS[l.kind],
       amount: l.amount,
       runningBalance: l.runningBalance,
     })),
     totals: [
       { label: 'Billed', value: statement.totals.billed },
       { label: 'Paid', value: statement.totals.paid },
+      ...(statement.totals.credited ? [{ label: 'Credited', value: statement.totals.credited }] : []),
     ],
   });
 }

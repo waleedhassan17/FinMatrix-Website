@@ -189,10 +189,18 @@ export const vendorPaymentsSerializer = (
 
 // ─── Statement ───────────────────────────────────────
 
+export type VendorStatementLineKind = 'bill' | 'payment' | 'vendor_credit';
+
+export const VENDOR_STATEMENT_KIND_LABELS: Record<VendorStatementLineKind, string> = {
+  bill: 'Bill',
+  payment: 'Payment',
+  vendor_credit: 'Vendor credit',
+};
+
 export interface VendorStatementLine {
   id: string;
   date: string;
-  kind: 'bill' | 'payment';
+  kind: VendorStatementLineKind;
   reference: string;
   /** Positive increases what we owe; negative reduces it. */
   amount: number;
@@ -204,7 +212,8 @@ export interface VendorStatement {
   period: { startDate: string; endDate: string };
   openingBalance: number;
   lines: VendorStatementLine[];
-  totals: { billed: number; paid: number };
+  /** `credited` is 0 from a server that predates it. */
+  totals: { billed: number; paid: number; credited: number };
   closingBalance: number;
 }
 
@@ -226,6 +235,11 @@ export const vendorStatementSerializer = (payload: unknown): VendorStatement => 
     string,
     unknown
   >[];
+  // Vendor credits bring what we owe down.
+  const vendorCredits = (Array.isArray(d.vendorCredits) ? d.vendorCredits : []) as Record<
+    string,
+    unknown
+  >[];
 
   const merged: Omit<VendorStatementLine, 'runningBalance'>[] = [
     ...bills.map((raw) => ({
@@ -241,6 +255,13 @@ export const vendorStatementSerializer = (payload: unknown): VendorStatement => 
       kind: 'payment' as const,
       reference: str(raw.reference) || '—',
       amount: -toNumber((raw.totalAmount ?? raw.amount) as never),
+    })),
+    ...vendorCredits.map((raw) => ({
+      id: str(raw.id),
+      date: str(raw.date),
+      kind: 'vendor_credit' as const,
+      reference: str(raw.vendorCreditNumber) || '—',
+      amount: -toNumber(raw.total as never),
     })),
   ].sort((a, b) => a.date.localeCompare(b.date));
 
@@ -259,6 +280,7 @@ export const vendorStatementSerializer = (payload: unknown): VendorStatement => 
     totals: {
       billed: toNumber(totals.billed as never),
       paid: toNumber(totals.paid as never),
+      credited: toNumber(totals.credited as never),
     },
     closingBalance: toNumber(d.closingBalance as never),
   };

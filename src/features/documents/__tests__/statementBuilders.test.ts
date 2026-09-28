@@ -27,7 +27,7 @@ describe('customerStatementDocument', () => {
       { id: 'i1', date: '2026-02-01', kind: 'invoice', reference: 'INV-1', amount: 1200, runningBalance: 1700 },
       { id: 'p1', date: '2026-02-10', kind: 'payment', reference: 'PAY-1', amount: -700, runningBalance: 1000 },
     ],
-    totals: { invoiced: 1200, received: 700 },
+    totals: { invoiced: 1200, received: 700, credited: 0, refunded: 0 },
     closingBalance: 1000,
   };
   const doc = customerStatementDocument(statement, company, null, range);
@@ -66,7 +66,7 @@ describe('vendorStatementDocument', () => {
       period: { startDate: '2026-03-01', endDate: '2026-03-31' },
       openingBalance: 0,
       lines: [{ id: 'b1', date: '2026-03-02', kind: 'bill', reference: 'B-9', amount: 5000, runningBalance: 5000 }],
-      totals: { billed: 5000, paid: 0 },
+      totals: { billed: 5000, paid: 0, credited: 0 },
       closingBalance: 5000,
     };
     const doc = vendorStatementDocument(statement, company, null, range);
@@ -74,6 +74,48 @@ describe('vendorStatementDocument', () => {
     expect(doc.pdf.sections[0].rows[1].cells[2]).toBe('Bill');
     expect(doc.share.amountLabel).toBe('Balance owed');
     expect(doc.pdf.meta?.map((m) => m.label)).toContain('Billed');
+    // Nothing credited: no line for it on the vendor's copy.
+    expect(doc.pdf.meta?.map((m) => m.label)).not.toContain('Credited');
+  });
+
+  it('names a vendor credit, and totals it', () => {
+    const statement: VendorStatement = {
+      vendor: { id: 'v1', name: 'Habib Oil Mills', email: '' },
+      period: { startDate: '2026-03-01', endDate: '2026-03-31' },
+      openingBalance: 0,
+      lines: [
+        { id: 'b1', date: '2026-03-02', kind: 'bill', reference: 'B-9', amount: 5000, runningBalance: 5000 },
+        { id: 'c1', date: '2026-03-09', kind: 'vendor_credit', reference: 'VC-3', amount: -800, runningBalance: 4200 },
+      ],
+      totals: { billed: 5000, paid: 0, credited: 800 },
+      closingBalance: 4200,
+    };
+    const doc = vendorStatementDocument(statement, company, null, range);
+    expect(doc.pdf.sections[0].rows[2].cells).toEqual([docDate('2026-03-09'), 'VC-3', 'Vendor credit', -800, 4200]);
+    expect(doc.pdf.meta).toContainEqual({ label: 'Credited', value: formatMoney(800) });
+  });
+});
+
+describe('customerStatementDocument — credits and refunds', () => {
+  it('names credit memos and their refunds, and totals both', () => {
+    const statement: CustomerStatement = {
+      customer: { id: 'c1', name: 'Madina Wholesale', email: '' },
+      period: { startDate: '2026-02-01', endDate: '2026-02-28' },
+      openingBalance: 0,
+      lines: [
+        { id: 'i1', date: '2026-02-01', kind: 'invoice', reference: 'INV-1', amount: 1200, runningBalance: 1200 },
+        { id: 'm1', date: '2026-02-05', kind: 'credit_memo', reference: 'CM-1', amount: -200, runningBalance: 1000 },
+        { id: 'r1', date: '2026-02-06', kind: 'refund', reference: 'CM-1', amount: 50, runningBalance: 1050 },
+      ],
+      totals: { invoiced: 1200, received: 0, credited: 200, refunded: 50 },
+      closingBalance: 1050,
+    };
+    const doc = customerStatementDocument(statement, company, null, range);
+    const kinds = doc.pdf.sections[0].rows.slice(1, -1).map((r) => r.cells[2]);
+    expect(kinds).toEqual(['Invoice', 'Credit memo', 'Refund']);
+    expect(doc.pdf.meta?.map((m) => m.label)).toEqual([
+      'Period', 'Opening balance', 'Invoiced', 'Received', 'Credited', 'Refunded', 'Balance due',
+    ]);
   });
 });
 
