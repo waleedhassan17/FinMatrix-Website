@@ -182,7 +182,9 @@ const sum = (values: unknown[]): number =>
  *   purchase order          computeTotals over orderedQty × unitCost + tax
  *   vendor credit           computeBillTotals over net amount + tax
  *   customer payment        the amount received
+ *   customer settlement     Σ credit used + the amount received
  *   bill payment            Σ applications — the DTO has no top-level amount
+ *   bill settlement         Σ credit used + Σ cash applications
  *   journal entry           Σ debits (= Σ credits on a balanced entry)
  *   apply actions           the amount being applied
  *
@@ -232,9 +234,26 @@ export const approvalAmount = (request: Pick<ApprovalRequest, 'type' | 'payload'
         lines.map((l) => ({ amount: l.amount as never, taxRate: (l.taxRate ?? 0) as never })),
       ).total;
     }
-    case 'invoice_payment':
+    case 'invoice_payment': {
+      // Credit on account and new money together: everything it settles.
+      if (action === 'settle') {
+        const cash = asRaw(p.cash);
+        return sum([...rows(p.credits).map((c) => c.amount), cash.amount ?? 0]);
+      }
+      // An advance a receipt already holds, applied: no new money, only credit.
+      if (action === 'apply') {
+        const apps = rows(p.applications);
+        return apps.length === 0 ? null : sum(apps.map((a) => a.amount));
+      }
       return p.amount === undefined ? null : toDecimal(p.amount as never).toNumber();
+    }
     case 'bill_payment': {
+      if (action === 'settle') {
+        return sum([
+          ...rows(p.credits).map((c) => c.amount),
+          ...rows(asRaw(p.cash).applications).map((a) => a.amount),
+        ]);
+      }
       const apps = rows(p.applications);
       return apps.length === 0 ? null : sum(apps.map((a) => a.amount));
     }

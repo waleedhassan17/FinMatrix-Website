@@ -63,8 +63,11 @@ export function ApprovalPreview({ request }: { request: ApprovalRequest }) {
       if (action === 'apply') return <ApplyPreview request={request} kind="vendor_credit" />;
       return <VendorCreditPreview request={request} />;
     case 'invoice_payment':
+      if (action === 'settle') return <CustomerSettlementPreview request={request} />;
+      if (action === 'apply') return <AdvanceApplyPreview request={request} />;
       return <CustomerPaymentPreview request={request} />;
     case 'bill_payment':
+      if (action === 'settle') return <BillSettlementPreview request={request} />;
       return <BillPaymentPreview request={request} />;
     case 'journal':
       return <JournalPreview request={request} />;
@@ -456,6 +459,189 @@ function BillPaymentPreview({ request }: { request: ApprovalRequest }) {
           <ProofLink proofId={proofId} />
         </div>
       )}
+    </PreviewCard>
+  );
+}
+
+/**
+ * Credit on account and new money, settled together — all or nothing. What the
+ * owner approves is both halves: which credits land on which invoices, and the
+ * receipt that follows, exactly as the staff member set them out.
+ */
+function CustomerSettlementPreview({ request }: { request: ApprovalRequest }) {
+  const p = request.payload;
+  const { byId: customers } = useCustomerOptions();
+  const { data: accounts = [] } = useQuery({
+    queryKey: ['accounts', 'deposit'],
+    queryFn: getDepositAccounts,
+  });
+  const credits = rows(p.credits);
+  const cash = rows([p.cash])[0];
+  const hasCash = p.cash !== undefined && p.cash !== null;
+  const creditTotal = credits.reduce((s, c) => s.plus(toDecimal(c.amount as never)), toDecimal(0));
+  const cashApps = rows(cash.applications);
+  const bankAccountId = text(cash.bankAccountId);
+  const bank = accounts.find((a) => a.id === bankAccountId);
+
+  return (
+    <PreviewCard title="Customer settlement">
+      <Facts
+        items={[
+          ['Customer', customers.get(text(p.customerId))?.name ?? '—'],
+          ['Date', date(p.paymentDate)],
+          ['Credit on account used', formatMoney(creditTotal.toNumber())],
+          ['New money received', hasCash ? formatMoney(num(cash.amount)) : 'None — credit settles it'],
+          ...(hasCash
+            ? ([
+                ['Method', humanize(cash.paymentMethod)],
+                [
+                  'Deposited to',
+                  !bankAccountId
+                    ? 'Automatic — Cash for cash payments, otherwise Business Checking'
+                    : bank
+                      ? `${bank.accountNumber} · ${bank.name}`
+                      : '—',
+                ],
+                ['Reference', text(cash.reference) || '—'],
+              ] as [string, ReactNode][])
+            : []),
+        ]}
+      />
+      <AllocationTable
+        heading="Credit applied to"
+        items={credits.map((c, i) => ({
+          key: `${text(c.id)}-${text(c.invoiceId)}-${i}`,
+          link: (
+            <span>
+              {text(c.kind) === 'credit_memo' ? 'Credit memo' : 'Advance'} →{' '}
+              <DocLink to={`/invoices/${text(c.invoiceId)}`}>Invoice {i + 1}</DocLink>
+            </span>
+          ),
+          amount: num(c.amount),
+        }))}
+      />
+      {hasCash &&
+        (cashApps.length > 0 ? (
+          <AllocationTable
+            heading="New money applied to"
+            items={cashApps.map((a, i) => ({
+              key: `${text(a.invoiceId)}-${i}`,
+              link: <DocLink to={`/invoices/${text(a.invoiceId)}`}>Invoice {i + 1}</DocLink>,
+              amount: num(a.amount),
+            }))}
+          />
+        ) : (
+          <p className="mt-lg text-body-sm text-text-secondary">
+            {cash.holdAsAdvance === true
+              ? 'The new money is held as a customer advance.'
+              : 'No invoices named for the new money — it is applied to what the credit leaves, oldest first.'}
+          </p>
+        ))}
+      <p className="mt-md text-caption text-text-tertiary">
+        All or nothing: if any part no longer fits — an invoice paid or a credit spent since this was
+        requested — approving fails, nothing moves, and the reason is recorded on the request.
+      </p>
+    </PreviewCard>
+  );
+}
+
+/** An advance a receipt already holds, applied to invoices — no new money. */
+function AdvanceApplyPreview({ request }: { request: ApprovalRequest }) {
+  const p = request.payload;
+  const { byId: customers } = useCustomerOptions();
+  const apps = rows(p.applications);
+  const total = apps.reduce((s, a) => s.plus(toDecimal(a.amount as never)), toDecimal(0));
+  const paymentId = text(p.paymentId);
+
+  return (
+    <PreviewCard title="Apply a customer advance">
+      <Facts
+        items={[
+          ['Customer', customers.get(text(p.customerId))?.name ?? '—'],
+          ['Date', date(p.date)],
+          ['Receipt holding it', paymentId ? <DocLink key="rct" to={`/payments/${paymentId}`}>Open receipt</DocLink> : '—'],
+          ['Amount applied', formatMoney(total.toNumber())],
+        ]}
+      />
+      <AllocationTable
+        heading="Applied to"
+        items={apps.map((a, i) => ({
+          key: `${text(a.invoiceId)}-${i}`,
+          link: <DocLink to={`/invoices/${text(a.invoiceId)}`}>Invoice {i + 1}</DocLink>,
+          amount: num(a.amount),
+        }))}
+      />
+    </PreviewCard>
+  );
+}
+
+/** Vendor credit and cash, settled together — all or nothing. */
+function BillSettlementPreview({ request }: { request: ApprovalRequest }) {
+  const p = request.payload;
+  const { byId: vendors } = useVendorOptions();
+  const { data: accounts = [] } = useQuery({
+    queryKey: ['accounts', 'deposit'],
+    queryFn: getDepositAccounts,
+  });
+  const credits = rows(p.credits);
+  const cash = rows([p.cash])[0];
+  const hasCash = p.cash !== undefined && p.cash !== null;
+  const cashApps = rows(cash.applications);
+  const creditTotal = credits.reduce((s, c) => s.plus(toDecimal(c.amount as never)), toDecimal(0));
+  const cashTotal = cashApps.reduce((s, a) => s.plus(toDecimal(a.amount as never)), toDecimal(0));
+  const bank = accounts.find((a) => a.id === text(cash.bankAccountId));
+  const proofId = text(cash.proofId);
+
+  return (
+    <PreviewCard title="Bill settlement">
+      <Facts
+        items={[
+          ['Supplier', vendors.get(text(p.vendorId))?.name ?? '—'],
+          ['Date', date(p.paymentDate)],
+          ['Vendor credit used', formatMoney(creditTotal.toNumber())],
+          ['Cash paid', hasCash ? formatMoney(cashTotal.toNumber()) : 'None — credit settles it'],
+          ...(hasCash
+            ? ([
+                ['Method', humanize(cash.paymentMethod)],
+                ['From account', bank ? `${bank.accountNumber} · ${bank.name}` : '—'],
+                ['Reference', text(cash.reference) || '—'],
+              ] as [string, ReactNode][])
+            : []),
+        ]}
+      />
+      <AllocationTable
+        heading="Credit applied to"
+        items={credits.map((c, i) => ({
+          key: `${text(c.vendorCreditId)}-${text(c.billId)}-${i}`,
+          link: (
+            <span>
+              <DocLink to={`/vendor-credits/${text(c.vendorCreditId)}`}>Credit {i + 1}</DocLink> →{' '}
+              <DocLink to={`/bills/${text(c.billId)}`}>Bill</DocLink>
+            </span>
+          ),
+          amount: num(c.amount),
+        }))}
+      />
+      {hasCash && (
+        <AllocationTable
+          heading="Cash paid on"
+          items={cashApps.map((a, i) => ({
+            key: `${text(a.billId)}-${i}`,
+            link: <DocLink to={`/bills/${text(a.billId)}`}>Bill {i + 1}</DocLink>,
+            amount: num(a.amount),
+          }))}
+        />
+      )}
+      {proofId && (
+        <div className="mt-lg">
+          <p className="mb-xs text-caption text-text-secondary">Proof of payment</p>
+          <ProofLink proofId={proofId} />
+        </div>
+      )}
+      <p className="mt-md text-caption text-text-tertiary">
+        All or nothing: if any part no longer fits, approving fails, nothing moves, and the reason is
+        recorded on the request.
+      </p>
     </PreviewCard>
   );
 }

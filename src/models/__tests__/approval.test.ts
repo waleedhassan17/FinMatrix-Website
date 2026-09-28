@@ -84,6 +84,44 @@ describe('approvalAmount', () => {
     ).toBe(1000);
   });
 
+  it('a customer settlement is the credit used plus the new money', () => {
+    const settle = {
+      action: 'settle',
+      customerId: 'c1',
+      credits: [
+        { kind: 'advance', id: 'r1', invoiceId: 'i1', amount: '300' },
+        { kind: 'credit_memo', id: 'm1', invoiceId: 'i1', amount: '200' },
+      ],
+      cash: { amount: '500', paymentMethod: 'cash' },
+    };
+    expect(approvalAmount(req('invoice_payment', settle))).toBe(1000);
+    // Credit alone: no cash leg at all.
+    const { cash: _cash, ...creditOnly } = settle;
+    expect(approvalAmount(req('invoice_payment', creditOnly))).toBe(500);
+  });
+
+  it('an advance being applied is the sum applied, not "no amount"', () => {
+    expect(
+      approvalAmount(req('invoice_payment', { action: 'apply', paymentId: 'r1', applications: [{ amount: '40' }, { amount: '35' }] })),
+    ).toBe(75);
+  });
+
+  it('a bill settlement is the vendor credit used plus the cash paid', () => {
+    expect(
+      approvalAmount(
+        req('bill_payment', {
+          action: 'settle',
+          vendorId: 'v1',
+          credits: [{ vendorCreditId: 'vc1', billId: 'b1', amount: '150' }],
+          cash: { proofId: 'p1', applications: [{ billId: 'b1', amount: '550' }] },
+        }),
+      ),
+    ).toBe(700);
+    expect(
+      approvalAmount(req('bill_payment', { action: 'settle', credits: [{ vendorCreditId: 'vc1', billId: 'b1', amount: '120' }] })),
+    ).toBe(120);
+  });
+
   it('reads the amount applied on apply actions', () => {
     expect(approvalAmount(req('credit_memo', { action: 'apply', amount: '75' }))).toBe(75);
     expect(approvalAmount(req('vendor_credit', { action: 'apply', amount: '120' }))).toBe(120);
