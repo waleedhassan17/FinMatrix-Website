@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Banknote, FilePlus2, Pencil } from 'lucide-react';
+import { Banknote, FileClock, FilePlus2, Pencil } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -11,6 +11,7 @@ import { Card, SectionHeader } from '@/components/ui/Card';
 import { DateField, Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Field';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { reportPdfBlob } from '@/features/documents/documentPdf';
+import { PartySummaryPanel } from '@/features/documents/PartySummaryPanel';
 import { customerStatementDocument } from '@/features/documents/statementBuilders';
 import { useDocumentCompany } from '@/features/documents/useDocumentContext';
 import { DocumentActions } from '@/features/share/DocumentActions';
@@ -36,6 +37,7 @@ export default function CustomerDetailPage() {
   const { customerId = '' } = useParams<{ customerId: string }>();
   const queryClient = useQueryClient();
   const canToggle = useAdminOnly('customer.toggleActive');
+  const [summaryOpen, setSummaryOpen] = useState(false);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['customers', customerId],
@@ -106,6 +108,10 @@ export default function CustomerDetailPage() {
                 Receive payment
               </Link>
             </Button>
+            <Button variant="secondary" size="sm" onClick={() => setSummaryOpen(true)}>
+              <FileClock className="size-4" />
+              Outstanding summary
+            </Button>
             <Button asChild size="sm">
               <Link to={`/invoices/new?customerId=${customer.id}`}>
                 <FilePlus2 className="size-4" />
@@ -114,6 +120,12 @@ export default function CustomerDetailPage() {
             </Button>
           </>
         }
+      />
+
+      <PartySummaryPanel
+        open={summaryOpen}
+        onOpenChange={setSummaryOpen}
+        party={{ type: 'customer', record: customer }}
       />
 
       <Card className="p-lg">

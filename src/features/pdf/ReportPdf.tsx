@@ -7,6 +7,7 @@ import {
   PdfSheet,
   PdfSignatures,
   PdfTable,
+  PdfTotals,
 } from '@/features/pdf/components';
 import { pdfStyles } from '@/features/pdf/pdfTheme';
 import { reportCellText, type ReportPdfData } from '@/features/reports/reportPdfTable';
@@ -14,6 +15,8 @@ import { reportCellText, type ReportPdfData } from '@/features/reports/reportPdf
 /** Any report or statement on company letterhead: title, period, basis, then its tables. */
 export function ReportPdf({ data, generatedAt }: { data: ReportPdfData; generatedAt: string }) {
   const subtitle = [data.periodLabel, data.basis].filter(Boolean).join(' · ');
+  const totals = data.totals && data.totals.length > 0 ? <PdfTotals totals={data.totals} /> : null;
+  const totalsAfter = Math.min(data.totalsAfter ?? data.sections.length - 1, data.sections.length - 1);
 
   return (
     <PdfFile title={`${data.title} — ${data.periodLabel}`} author={data.company.name}>
@@ -33,8 +36,10 @@ export function ReportPdf({ data, generatedAt }: { data: ReportPdfData; generate
               columns={section.columns.map((c) => ({ header: c.header, align: c.align, flex: c.flex ?? 1 }))}
               rows={section.rows.map((r) => ({ ...r, cells: r.cells.map(reportCellText) }))}
             />
+            {i === totalsAfter ? totals : null}
           </View>
         ))}
+        {data.sections.length === 0 ? totals : null}
 
         {data.notes ? <PdfNotes notes={data.notes} /> : null}
         {data.signatures ? <PdfSignatures labels={data.signatures} /> : null}

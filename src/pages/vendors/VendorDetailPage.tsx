@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Banknote, FilePlus2, Pencil } from 'lucide-react';
+import { Banknote, FileClock, FilePlus2, Pencil } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -12,6 +12,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { DateField, Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Field';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { reportPdfBlob } from '@/features/documents/documentPdf';
+import { PartySummaryPanel } from '@/features/documents/PartySummaryPanel';
 import { vendorStatementDocument } from '@/features/documents/statementBuilders';
 import { useDocumentCompany } from '@/features/documents/useDocumentContext';
 import { DocumentActions } from '@/features/share/DocumentActions';
@@ -41,6 +42,7 @@ export default function VendorDetailPage() {
   const canToggle = useAdminOnly('vendor.toggleActive');
   const canDelete = useAdminOnly('vendor.delete');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [summaryOpen, setSummaryOpen] = useState(false);
 
   const { data: vendor, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['vendors', vendorId],
@@ -118,6 +120,10 @@ export default function VendorDetailPage() {
                 </Link>
               </Button>
             )}
+            <Button variant="secondary" size="sm" onClick={() => setSummaryOpen(true)}>
+              <FileClock className="size-4" />
+              Payables summary
+            </Button>
             <Button asChild size="sm">
               <Link to={`/bills/new?vendorId=${vendor.id}`}>
                 <FilePlus2 className="size-4" />
@@ -126,6 +132,12 @@ export default function VendorDetailPage() {
             </Button>
           </>
         }
+      />
+
+      <PartySummaryPanel
+        open={summaryOpen}
+        onOpenChange={setSummaryOpen}
+        party={{ type: 'vendor', record: vendor }}
       />
 
       <Card className="p-lg">

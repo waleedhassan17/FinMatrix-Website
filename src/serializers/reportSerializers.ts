@@ -609,6 +609,39 @@ export interface AgingPartyDocuments {
   limit: number;
 }
 
+/** One open invoice or bill, as both the drill-down and the party summary send it. */
+const agingDocumentSerializer = (raw: unknown): AgingPartyDocument => {
+  const d = asRaw(raw);
+  return {
+    documentId: str(d.documentId),
+    documentType: str(d.documentType) === 'bill' ? 'bill' : 'invoice',
+    documentNumber: str(d.documentNumber),
+    issueDate: str(d.issueDate),
+    dueDate: str(d.dueDate),
+    // 0 is a real answer here (due today) and so is a negative one (not yet
+    // due), so this must not be coerced through a falsy fallback.
+    daysOverdue: toNumber(d.daysOverdue as never),
+    bucketKey: str(d.bucketKey),
+    bucketLabel: str(d.bucketLabel),
+    // Postgres `numeric` arrives as a string, which formats fine and fails
+    // on arithmetic.
+    total: toNumber(d.total as never),
+    amountPaid: toNumber(d.amountPaid as never),
+    balance: toNumber(d.balance as never),
+    status: str(d.status),
+  };
+};
+
+const agingBucketSerializer = (raw: unknown): AgingBucketDef => {
+  const d = asRaw(raw);
+  return {
+    key: str(d.key),
+    label: str(d.label),
+    minDays: toNumber(d.minDays as never),
+    maxDays: d.maxDays === null || d.maxDays === undefined ? null : toNumber(d.maxDays as never),
+  };
+};
+
 export const agingPartyDocumentsSerializer = (
   payload: unknown,
 ): AgingPartyDocuments => {
@@ -629,44 +662,142 @@ export const agingPartyDocumentsSerializer = (
     partyName: str(r.partyName, 'Unknown'),
     asOfDate: str(r.asOfDate),
     preset: str(r.preset, 'monthly') as AgingPresetKey,
-    buckets: lines(r.buckets).map((b) => {
-      const d = asRaw(b);
-      return {
-        key: str(d.key),
-        label: str(d.label),
-        minDays: toNumber(d.minDays as never),
-        maxDays:
-          d.maxDays === null || d.maxDays === undefined
-            ? null
-            : toNumber(d.maxDays as never),
-      };
-    }),
+    buckets: lines(r.buckets).map(agingBucketSerializer),
     bucket: r.bucket === null || r.bucket === undefined ? null : str(r.bucket),
     outstandingTotal: toNumber(r.outstandingTotal as never),
-    documents: rows.map((raw) => {
-      const d = asRaw(raw);
-      return {
-        documentId: str(d.documentId),
-        documentType: str(d.documentType) === 'bill' ? 'bill' : 'invoice',
-        documentNumber: str(d.documentNumber),
-        issueDate: str(d.issueDate),
-        dueDate: str(d.dueDate),
-        // 0 is a real answer here (due today) and so is a negative one (not yet
-        // due), so this must not be coerced through a falsy fallback.
-        daysOverdue: toNumber(d.daysOverdue as never),
-        bucketKey: str(d.bucketKey),
-        bucketLabel: str(d.bucketLabel),
-        // Postgres `numeric` arrives as a string, which formats fine and fails
-        // on arithmetic.
-        total: toNumber(d.total as never),
-        amountPaid: toNumber(d.amountPaid as never),
-        balance: toNumber(d.balance as never),
-        status: str(d.status),
-      };
-    }),
+    documents: rows.map(agingDocumentSerializer),
     total: toNumber(r.total as never),
     page: toNumber(r.page as never) || 1,
     limit: toNumber(r.limit as never) || 50,
+  };
+};
+
+// ═══════════════════════════════════════════════════════
+// Party summary — everything one customer or vendor has open
+// ═══════════════════════════════════════════════════════
+
+/** An aging bucket with what this party has in it. */
+export interface PartySummaryBucket extends AgingBucketDef {
+  amount: number;
+  count: number;
+}
+
+/**
+ * Money on the party's account that no document has used yet. It comes off
+ * what is due: a customer's unapplied receipt or open credit memo, or an open
+ * vendor credit.
+ */
+export interface PartySummaryCredit {
+  kind: 'payment' | 'credit_memo' | 'vendor_credit';
+  id: string;
+  reference: string;
+  date: string;
+  amount: number;
+  /** What is left to apply — the part that reduces what is due. */
+  available: number;
+}
+
+/**
+ * What GET /reports/ar-aging/customers/:id/summary (and its A/P twin) returns:
+ * the outstanding-invoices or payables summary a business sends.
+ *
+ * `totals.outstanding` is the party's aging row; `netDue` is that less the
+ * credits, and can be zero or negative when credits cover everything.
+ */
+export interface PartySummary {
+  partyType: 'customer' | 'vendor';
+  party: {
+    id: string;
+    name: string;
+    contactPerson: string;
+    email: string;
+    phone: string;
+    /** One line, already joined by the server. */
+    address: string;
+    /** The API's dialect (`net30`); map with `paymentTermsFromApi`. */
+    paymentTerms: string;
+    taxId: string;
+  };
+  asOfDate: string;
+  preset: AgingPresetKey;
+  buckets: PartySummaryBucket[];
+  /** Soonest due first. */
+  documents: AgingPartyDocument[];
+  totals: {
+    count: number;
+    outstanding: number;
+    overdue: number;
+    overdueCount: number;
+    notYetDue: number;
+  };
+  credits: { total: number; items: PartySummaryCredit[] };
+  netDue: number;
+  lastPayment: { date: string; amount: number; reference: string } | null;
+}
+
+const CREDIT_KINDS: PartySummaryCredit['kind'][] = ['payment', 'credit_memo', 'vendor_credit'];
+
+export const partySummarySerializer = (payload: unknown): PartySummary => {
+  const r = asRaw(payload);
+  const party = asRaw(r.party);
+  const totals = asRaw(r.totals);
+  const credits = asRaw(r.credits);
+  const documents = lines(r.documents).map(agingDocumentSerializer);
+  const outstanding = toNumber(totals.outstanding as never);
+  const creditTotal = toNumber(credits.total as never);
+  const last = r.lastPayment ? asRaw(r.lastPayment) : null;
+
+  return {
+    partyType: str(r.partyType) === 'vendor' ? 'vendor' : 'customer',
+    party: {
+      id: str(party.id),
+      name: str(party.name, 'Unknown'),
+      contactPerson: str(party.contactPerson),
+      email: str(party.email),
+      phone: str(party.phone),
+      address: str(party.address),
+      paymentTerms: str(party.paymentTerms),
+      taxId: str(party.taxId),
+    },
+    asOfDate: str(r.asOfDate),
+    preset: str(r.preset, 'monthly') as AgingPresetKey,
+    buckets: lines(r.buckets).map((b) => ({
+      ...agingBucketSerializer(b),
+      amount: toNumber(asRaw(b).amount as never),
+      count: toNumber(asRaw(b).count as never),
+    })),
+    documents,
+    totals: {
+      count: toNumber(totals.count as never) || documents.length,
+      outstanding,
+      overdue: toNumber(totals.overdue as never),
+      overdueCount: toNumber(totals.overdueCount as never),
+      notYetDue: toNumber(totals.notYetDue as never),
+    },
+    credits: {
+      total: creditTotal,
+      items: lines(credits.items).map((raw) => {
+        const c = asRaw(raw);
+        const kind = str(c.kind) as PartySummaryCredit['kind'];
+        return {
+          kind: CREDIT_KINDS.includes(kind) ? kind : 'payment',
+          id: str(c.id),
+          reference: str(c.reference),
+          date: str(c.date),
+          amount: toNumber(c.amount as never),
+          available: toNumber(c.available as never),
+        };
+      }),
+    },
+    // Derived when absent rather than read as zero: "nothing due" is the one
+    // wrong answer a summary sent to a customer must never give by accident.
+    netDue:
+      r.netDue === undefined || r.netDue === null
+        ? Math.round((outstanding - creditTotal) * 100) / 100
+        : toNumber(r.netDue as never),
+    lastPayment: last
+      ? { date: str(last.date), amount: toNumber(last.amount as never), reference: str(last.reference) }
+      : null,
   };
 };
 

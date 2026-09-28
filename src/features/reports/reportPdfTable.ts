@@ -5,7 +5,7 @@
 // writes to CSV. These types carry them to the PDF, so a printed statement and
 // the one on screen are built from one list and cannot disagree.
 
-import type { DocCompany, DocParty } from '@/features/documents/documentModel';
+import type { DocCompany, DocParty, DocTotal } from '@/features/documents/documentModel';
 import type { StatementRowData } from '@/models/reportStatement';
 import { parenNegative } from '@/utils/money';
 
@@ -45,6 +45,13 @@ export interface ReportPdfData {
   party?: DocParty | null;
   meta?: { label: string; value: string }[];
   sections: ReportSection[];
+  /**
+   * A totals block, right-aligned like a document's — "Net amount due" on a
+   * summary. Drawn after the section at `totalsAfter` (by index), or after the
+   * last section when that is not given.
+   */
+  totals?: DocTotal[];
+  totalsAfter?: number;
   notes?: { title: string; text: string }[];
   /** Sign-off lines under the tables — "Received by" on a delivery note. */
   signatures?: string[];

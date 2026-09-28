@@ -10,6 +10,8 @@ import { renderToBuffer } from '@react-pdf/renderer';
 import { companyForDocument } from '@/features/documents/documentModel';
 import { ReportPdf } from '@/features/pdf/ReportPdf';
 import { statementSection } from '@/features/reports/reportPdfTable';
+import { customerSummaryDocument } from '@/features/documents/statementBuilders';
+import { summaryFixture } from '@/test/partySummaryFixture';
 
 describe('ReportPdf', () => {
   it('renders a statement and a table report to a real PDF', async () => {
@@ -60,6 +62,19 @@ describe('ReportPdf', () => {
         }}
       />,
     );
+    expect(buffer.subarray(0, 5).toString()).toBe('%PDF-');
+  });
+
+  it('renders an outstanding-invoices summary with its totals block', async () => {
+    const withCredits = summaryFixture({
+      credits: {
+        total: 400,
+        items: [{ kind: 'payment', id: 'p1', reference: 'RCT-9', date: '2026-09-01', amount: 400, available: 400 }],
+      },
+      netDue: 900,
+    });
+    const { pdf } = customerSummaryDocument(withCredits, companyForDocument(null, 'Warehouse Co'), null);
+    const buffer = await renderToBuffer(<ReportPdf generatedAt="Sep 28, 2026" data={pdf} />);
     expect(buffer.subarray(0, 5).toString()).toBe('%PDF-');
   });
 });

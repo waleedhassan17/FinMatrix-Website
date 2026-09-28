@@ -9,9 +9,11 @@ import { api, toApiError, unwrapEnvelope } from '@/networks/network/apiHelpers';
 import {
   agingPartyDocumentsSerializer,
   agingSerializer,
+  partySummarySerializer,
   type AgingPartyDocuments,
   type AgingPresetKey,
   type AgingReport,
+  type PartySummary,
 } from '@/serializers/reportSerializers';
 
 /**
@@ -116,6 +118,37 @@ export const getApAgingPartyDocuments = async (
       { params: agingDetailQuery(params) },
     );
     return agingPartyDocumentsSerializer(unwrapEnvelope(response.data));
+  } catch (e) {
+    throw toApiError(e);
+  }
+};
+
+/**
+ * Everything one customer still owes, as of today — what the "Outstanding
+ * invoices" summary is built from.
+ *
+ * Takes no bucket spec: a document sent to a customer is cut the way the
+ * company's aging report opens, which the server resolves from its saved
+ * preference. Its total is that customer's aging row.
+ */
+export const getArPartySummary = async (customerId: string): Promise<PartySummary> => {
+  try {
+    const response = await api.get(
+      `/reports/ar-aging/customers/${encodeURIComponent(customerId)}/summary`,
+    );
+    return partySummarySerializer(unwrapEnvelope(response.data));
+  } catch (e) {
+    throw toApiError(e);
+  }
+};
+
+/** Everything owed to one vendor, as of today — the payables summary. */
+export const getApPartySummary = async (vendorId: string): Promise<PartySummary> => {
+  try {
+    const response = await api.get(
+      `/reports/ap-aging/vendors/${encodeURIComponent(vendorId)}/summary`,
+    );
+    return partySummarySerializer(unwrapEnvelope(response.data));
   } catch (e) {
     throw toApiError(e);
   }

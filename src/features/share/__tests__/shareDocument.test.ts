@@ -62,6 +62,38 @@ describe('message', () => {
   it('uses "a" before a consonant', () => {
     expect(shareText({ kind: 'Purchase order', number: 'PO-1' })).toContain('a purchase order PO-1');
   });
+
+  it('carries a document\'s own message between the greeting and the sign-off', () => {
+    const text = shareText({
+      kind: 'Outstanding invoices',
+      partyName: 'Acme Traders',
+      amount: 900,
+      amountLabel: 'Total due',
+      companyName: 'Warehouse Co',
+      body: ['Here is a summary of your unpaid invoices:', '', 'INV-1 · Rs 900.00', '', 'Total due: Rs 900.00'],
+    });
+    expect(text).toBe(
+      [
+        'Dear Acme Traders,',
+        '',
+        'Here is a summary of your unpaid invoices:',
+        '',
+        'INV-1 · Rs 900.00',
+        '',
+        'Total due: Rs 900.00',
+        '',
+        'Regards,',
+        'Warehouse Co',
+      ].join('\n'),
+    );
+    // The standard lines are replaced, not doubled.
+    expect(text).not.toContain('Please find');
+    expect(text.match(/Total due/g)).toHaveLength(1);
+  });
+
+  it('keeps the standard message when the body is empty', () => {
+    expect(shareText({ kind: 'Invoice', number: 'INV-2', body: [] })).toContain('Please find an invoice INV-2 attached.');
+  });
 });
 
 describe('WhatsApp', () => {

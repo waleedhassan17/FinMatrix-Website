@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 
 import { Skeleton } from '@/components/ui/Skeleton';
+import { latenessLabel } from '@/models/partySummary';
 import { formatShortDate } from '@/models/reportPeriod';
 import {
   getApAgingPartyDocuments,
@@ -31,19 +32,6 @@ const DOCUMENT_PATHS: Record<string, (id: string) => string> = {
  * on the left tying it to that row.
  */
 const FRAME = 'bg-surface-2 py-sm pl-[2.75rem] pr-md';
-
-/**
- * How late, in words.
- *
- * `daysOverdue` arrives signed, so a document not yet due is negative and one
- * due today is zero. Saying "0 days overdue" for a document due this afternoon
- * is the kind of true-but-wrong that makes a report feel careless.
- */
-const lateness = (days: number): string => {
-  if (days < 0) return `Due in ${-days} day${days === -1 ? '' : 's'}`;
-  if (days === 0) return 'Due today';
-  return `${days} day${days === 1 ? '' : 's'} overdue`;
-};
 
 export interface AgingPartyDocumentsProps {
   partyId: string;
@@ -185,7 +173,7 @@ export function AgingPartyDocuments({
                     d.daysOverdue > 0 ? 'text-danger' : 'text-text-tertiary'
                   }`}
                 >
-                  {lateness(d.daysOverdue)}
+                  {latenessLabel(d.daysOverdue)}
                 </td>
                 <td className="py-xxs text-right tabular text-body-sm whitespace-nowrap text-text-primary">
                   {formatAmount(d.balance)}
