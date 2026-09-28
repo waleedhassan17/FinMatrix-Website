@@ -247,6 +247,63 @@ export type PayBillsResult =
   | { pending: false; payment: Record<string, unknown> }
   | { pending: true; approval: PendingApproval };
 
+/** Vendor credit spent on one bill in a settlement. */
+export interface VendorCreditUsePayload {
+  vendorCreditId: string;
+  billId: string;
+  amount: string;
+}
+
+/** POST /bills/settle — vendor credit first, then cash; all or nothing. */
+export interface SettleBillsPayload {
+  vendorId: string;
+  paymentDate: string;
+  credits?: VendorCreditUsePayload[];
+  /** Only when money leaves the bank; credit alone needs no proof. */
+  cash?: Omit<PayBillsPayload, 'vendorId' | 'paymentDate'>;
+}
+
+export interface BillSettlement {
+  /** Null when vendor credit covered everything — no money moved. */
+  payment: Record<string, unknown> | null;
+  creditTotal: number;
+  cashTotal: number;
+}
+
+export type SettleBillsResult =
+  | { pending: false; settlement: BillSettlement }
+  | { pending: true; approval: PendingApproval };
+
+/**
+ * Settle a vendor's bills from their credits and/or cash, in one request the
+ * server runs as one transaction. Settling from credit used to be a separate
+ * call per credit per bill, made before the cash — a refused payment left the
+ * credits spent behind it.
+ */
+export const settleBills = async (
+  data: SettleBillsPayload,
+  key: string = crypto.randomUUID(),
+): Promise<SettleBillsResult> => {
+  try {
+    const response = await api.post('/bills/settle', data, {
+      headers: { 'Idempotency-Key': key },
+    });
+    const payload = unwrapEnvelope(response.data);
+    if (isPendingApproval(payload)) return { pending: true, approval: payload };
+    const r = asRaw(payload);
+    return {
+      pending: false,
+      settlement: {
+        payment: r.payment ? asRaw(r.payment) : null,
+        creditTotal: toNumber(r.creditTotal as never),
+        cashTotal: toNumber(r.cashTotal as never),
+      },
+    };
+  } catch (e) {
+    throw toApiError(e);
+  }
+};
+
 /**
  * Record a payment against one or more bills.
  *

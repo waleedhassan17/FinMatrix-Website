@@ -123,3 +123,87 @@ export const clampToBalance = (row: AllocationRow, value: string): string => {
   const balance = toDecimal(row.balance);
   return parsed.greaterThan(balance) ? String(money(balance)) : value;
 };
+
+// ─── Credit on account ───────────────────────────────────────────────────
+// Money the party already has with you — a customer's advance or credit memo,
+// a vendor's credit — spent on documents alongside (or instead of) new cash.
+
+/** Credit available to spend, and how much of it the user chose to use. */
+export interface CreditSource {
+  /** The receipt holding an advance, a credit memo, or a vendor credit. */
+  id: string;
+  /** `advance` / `credit_memo` on the customer side; unused on the vendor side. */
+  kind?: string;
+  reference: string;
+  date: string;
+  available: number;
+  /** The part to use, as typed. Capped at `available` when spread. */
+  use: string;
+}
+
+/** One credit, on one document. */
+export interface CreditPiece {
+  creditId: string;
+  kind?: string;
+  documentId: string;
+  amount: number;
+}
+
+export interface CreditSpread {
+  pieces: CreditPiece[];
+  /** Credit landing on each document. */
+  perDocument: Record<string, number>;
+  /** How much of each credit was actually spent. */
+  perCredit: Record<string, number>;
+  used: number;
+}
+
+/**
+ * Spend credits over documents, in the order both are given — credits oldest
+ * first, documents oldest due first — each document taking no more than its
+ * `cap`.
+ *
+ * A credit's `use` beyond what the documents can absorb is simply not spent:
+ * the server refuses a credit larger than the invoice it lands on, so this is
+ * the only place that decides where credit goes, and it can never send one.
+ */
+export const spreadCredits = (
+  targets: { documentId: string; cap: number }[],
+  credits: CreditSource[],
+): CreditSpread => {
+  const capLeft = new Map(targets.map((t) => [t.documentId, toDecimal(Math.max(t.cap, 0))]));
+  const pieces: CreditPiece[] = [];
+  const perDocument: Record<string, number> = {};
+  const perCredit: Record<string, number> = {};
+  let used = new Decimal(0);
+
+  for (const credit of credits) {
+    const wanted = toDecimal(credit.use || 0);
+    let remaining = Decimal.min(
+      wanted.isNegative() ? new Decimal(0) : wanted,
+      toDecimal(Math.max(credit.available, 0)),
+    );
+    let spent = new Decimal(0);
+    for (const t of targets) {
+      if (!remaining.greaterThan(0)) break;
+      const left = capLeft.get(t.documentId) ?? new Decimal(0);
+      if (!left.greaterThan(0)) continue;
+      const take = Decimal.min(remaining, left);
+      capLeft.set(t.documentId, left.minus(take));
+      remaining = remaining.minus(take);
+      spent = spent.plus(take);
+      pieces.push({ creditId: credit.id, kind: credit.kind, documentId: t.documentId, amount: money(take) });
+      perDocument[t.documentId] = money(toDecimal(perDocument[t.documentId] ?? 0).plus(take));
+    }
+    perCredit[credit.id] = money(spent);
+    used = used.plus(spent);
+  }
+  return { pieces, perDocument, perCredit, used: money(used) };
+};
+
+/**
+ * Every credit set to use all it holds — the natural first choice. (Not
+ * `useAll…`: a `use` prefix reads as a React hook to the linter and to people.)
+ */
+export const fillCredits = (credits: CreditSource[]): CreditSource[] =>
+  credits.map((c) => ({ ...c, use: String(money(toDecimal(c.available))) }));

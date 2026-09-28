@@ -26,7 +26,12 @@ interface ReceiptLine {
 export interface PaymentReceiptState {
   vendorName: string;
   paymentDate: string;
+  /** What the bills were settled by in all — credit and cash together. */
   total: number;
+  /** Of `total`, what vendor credit covered. Absent on a cash-only payment. */
+  creditApplied?: number;
+  /** Of `total`, what left the bank. */
+  cashPaid?: number;
   accountName: string;
   balanceAfter: number | null;
   reference: string;
@@ -59,6 +64,8 @@ export default function PaymentReceiptPage() {
 
   const settled = state.lines.filter((l) => l.remaining === 0);
   const partial = state.lines.filter((l) => l.remaining > 0);
+  const credit = state.creditApplied ?? 0;
+  const cash = state.cashPaid ?? state.total - credit;
 
   return (
     <DetailLayout
@@ -69,10 +76,13 @@ export default function PaymentReceiptPage() {
               <CheckCircle2 className="size-6" aria-hidden="true" />
             </span>
             <div className="min-w-0">
-              <h1 className="text-h3 text-text-primary">Payment recorded</h1>
+              <h1 className="text-h3 text-text-primary">
+                {credit > 0 && cash <= 0.004 ? 'Bills settled from credit' : 'Payment recorded'}
+              </h1>
               <p className="text-body-sm text-text-secondary">
-                {formatMoney(state.total)} paid to {state.vendorName || 'the vendor'} on{' '}
+                {formatMoney(state.total)} settled with {state.vendorName || 'the vendor'} on{' '}
                 {docDate(state.paymentDate) || state.paymentDate}
+                {credit > 0 && ` — ${formatMoney(cash)} paid, ${formatMoney(credit)} from vendor credit`}
               </p>
             </div>
           </div>
@@ -94,7 +104,7 @@ export default function PaymentReceiptPage() {
       aside={
         <>
           <AmountSummary
-            label="Paid"
+            label={credit > 0 ? 'Settled' : 'Paid'}
             amount={state.total}
             tone="success"
             note={`${settled.length} settled in full${partial.length > 0 ? `, ${partial.length} part-paid` : ''}`}
@@ -103,7 +113,9 @@ export default function PaymentReceiptPage() {
           <RailSection title="Paid from">
             <KeyValueList
               items={[
-                { label: 'Account', value: state.accountName || '—' },
+                { label: 'Vendor credit', value: formatMoney(credit), hidden: credit <= 0 },
+                { label: 'Cash', value: formatMoney(cash), hidden: credit <= 0 },
+                { label: 'Account', value: state.accountName || '—', hidden: cash <= 0.004 },
                 {
                   label: 'Balance after payment',
                   value: (

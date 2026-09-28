@@ -8,7 +8,6 @@ import { DetailLayout, RailSection } from '@/components/layout/DetailLayout';
 import { MoreActionsMenu, PageHeader } from '@/components/layout/PageHeader';
 import { CreditLimitDialog } from '@/features/customers/CreditLimitDialog';
 import { invalidateAfterPosting } from '@/features/documents/invalidateAfterPosting';
-import { ApplyAdvanceDialog } from '@/features/payments/ApplyAdvanceDialog';
 import { DetailPageSkeleton, PageMessage } from '@/components/layout/PageState';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -37,7 +36,8 @@ import {
   sendInvoice,
   voidInvoice,
 } from '@/networks/sales/invoiceNetwork';
-import { getCustomerAdvances, getPayments } from '@/networks/sales/paymentNetwork';
+import { getArPartySummary } from '@/networks/reports/agingNetwork';
+import { getPayments } from '@/networks/sales/paymentNetwork';
 import { formatMoney } from '@/utils/money';
 
 export default function InvoiceDetailPage() {
@@ -50,7 +50,6 @@ export default function InvoiceDetailPage() {
 
   const [voidOpen, setVoidOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [applyOpen, setApplyOpen] = useState(false);
   const [creditIssue, setCreditIssue] = useState<CreditAssessment | null>(null);
   const applyCap = useCapability('payment.receive');
 
@@ -68,13 +67,16 @@ export default function InvoiceDetailPage() {
     enabled: !!invoice && invoice.amountPaid > 0,
   });
 
-  // Money the customer already paid that no invoice has taken — offered here
-  // so it is applied rather than recorded again as new cash.
-  const advances = useQuery({
-    queryKey: ['payments', 'advances', invoice?.customerId],
-    queryFn: () => getCustomerAdvances(invoice!.customerId),
+  // Credit the customer already has with us — advances and open credit memos —
+  // offered here so it settles this invoice rather than new cash being
+  // recorded for money already received.
+  const summary = useQuery({
+    queryKey: ['reports', 'party-summary', 'customer', invoice?.customerId],
+    queryFn: () => getArPartySummary(invoice!.customerId),
     enabled: !!invoice && invoice.balance > 0 && invoice.status !== 'draft' && invoice.status !== 'void',
+    staleTime: 0,
   });
+  const creditOnAccount = summary.data?.credits.total ?? 0;
 
   const doc = useMemo(
     () => (invoice ? invoiceDocument(invoice, company, customer) : null),
@@ -197,10 +199,15 @@ export default function InvoiceDetailPage() {
                   </Button>
                 </>
               )}
-              {owing && (advances.data?.total ?? 0) > 0 && applyCap.allowed && (
-                <Button size="sm" variant="secondary" onClick={() => setApplyOpen(true)}>
-                  <ReceiptText className="size-4" />
-                  Apply advance ({formatMoney(advances.data!.total)})
+              {owing && creditOnAccount > 0 && applyCap.allowed && (
+                // Receive Payment with credit switched on and this invoice
+                // first in line: advances and credit memos alike, and any new
+                // money alongside, settled in one step.
+                <Button asChild size="sm" variant="secondary">
+                  <Link to={`${paymentUrl}&useCredits=1`}>
+                    <ReceiptText className="size-4" />
+                    Use credit ({formatMoney(creditOnAccount)})
+                  </Link>
                 </Button>
               )}
               {owing && (
@@ -354,13 +361,6 @@ export default function InvoiceDetailPage() {
       }
     >
       <DocumentPaper doc={doc} />
-
-      <ApplyAdvanceDialog
-        open={applyOpen}
-        onOpenChange={setApplyOpen}
-        customerId={invoice.customerId}
-        invoice={{ id: invoice.id, label: invoice.invoiceNumber || 'this invoice', balance: invoice.balance }}
-      />
 
       <CreditLimitDialog
         assessment={creditIssue}

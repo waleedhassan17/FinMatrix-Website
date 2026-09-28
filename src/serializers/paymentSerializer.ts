@@ -12,6 +12,7 @@ import {
   type PaymentApplication,
   type PaymentFormData,
 } from '@/models/payment';
+import type { CreditPiece } from '@/models/allocation';
 import { asRaw, str } from '@/serializers/documentLines';
 import { toNumber } from '@/utils/money';
 import Decimal from 'decimal.js';
@@ -214,3 +215,97 @@ export const advancesSerializer = (
 /** Allocations sum, for the summary panel. */
 export const allocatedOf = (form: PaymentFormData): number =>
   totalAllocated(form.rows);
+
+// ═══════════════════════════════════════════════════════
+// Settling from credit on account
+// ═══════════════════════════════════════════════════════
+
+export interface CustomerCreditUsePayload {
+  kind: 'advance' | 'credit_memo';
+  /** The receipt holding the advance, or the credit memo. */
+  id: string;
+  invoiceId: string;
+  amount: string;
+}
+
+/** POST /payments/settle — credit first, then the receipt, all or nothing. */
+export interface SettleInvoicesPayload {
+  customerId: string;
+  paymentDate: string;
+  credits?: CustomerCreditUsePayload[];
+  cash?: Omit<ReceivePaymentPayload, 'customerId' | 'paymentDate'>;
+}
+
+/**
+ * Build a settlement: the credit pieces, and — when money was received too —
+ * the receipt exactly as `paymentFormToPayload` would send it on its own. The
+ * form's rows then carry the CASH part of each invoice only (the credits have
+ * already taken theirs), and an auto-mode receipt sweeps what the credits left.
+ */
+export const settleInvoicesPayload = (
+  form: PaymentFormData,
+  pieces: CreditPiece[],
+): SettleInvoicesPayload => {
+  const { customerId, paymentDate, ...cash } = paymentFormToPayload(form);
+  const credits = pieces
+    .filter((p) => p.amount > 0)
+    .map((p) => ({
+      kind: (p.kind === 'credit_memo' ? 'credit_memo' : 'advance') as CustomerCreditUsePayload['kind'],
+      id: p.creditId,
+      invoiceId: p.documentId,
+      amount: p.amount.toFixed(2),
+    }));
+  const hasCash = (parseFloat(form.amount) || 0) > 0;
+  return {
+    customerId,
+    paymentDate,
+    ...(credits.length ? { credits } : {}),
+    ...(hasCash ? { cash } : {}),
+  };
+};
+
+/** One credit spent in a settlement, as the server reports it. */
+export interface SettledCredit {
+  kind: 'advance' | 'credit_memo';
+  id: string;
+  reference: string;
+  invoiceId: string;
+  amount: number;
+}
+
+export interface InvoiceSettlement {
+  /** Null when credit covered everything — no new money, no receipt. */
+  payment: Payment | null;
+  credits: SettledCredit[];
+  creditTotal: number;
+  cashTotal: number;
+  invoices: { id: string; invoiceNumber: string; balance: number; status: string }[];
+}
+
+export const settlementSerializer = (payload: unknown): InvoiceSettlement => {
+  const r = asRaw(payload);
+  return {
+    payment: r.payment ? mapPayment(r.payment) : null,
+    credits: (Array.isArray(r.credits) ? r.credits : []).map((raw) => {
+      const c = asRaw(raw);
+      return {
+        kind: str(c.kind) === 'credit_memo' ? 'credit_memo' : 'advance',
+        id: str(c.id),
+        reference: str(c.reference),
+        invoiceId: str(c.invoiceId),
+        amount: toNumber(c.amount as never),
+      };
+    }),
+    creditTotal: toNumber(r.creditTotal as never),
+    cashTotal: toNumber(r.cashTotal as never),
+    invoices: (Array.isArray(r.invoices) ? r.invoices : []).map((raw) => {
+      const i = asRaw(raw);
+      return {
+        id: str(i.id),
+        invoiceNumber: str(i.invoiceNumber),
+        balance: toNumber(i.balance as never),
+        status: str(i.status),
+      };
+    }),
+  };
+};

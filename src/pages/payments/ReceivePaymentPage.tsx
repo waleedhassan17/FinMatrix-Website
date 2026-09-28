@@ -14,9 +14,16 @@ import { Select } from '@/components/ui/Select';
 import { SummaryPanel, SummaryRow } from '@/components/ui/SummaryPanel';
 import { invalidateAfterPosting } from '@/features/documents/invalidateAfterPosting';
 import { AllocationTable } from '@/features/payments/AllocationTable';
+import { CreditsOnAccount } from '@/features/payments/CreditsOnAccount';
 import { useCustomerOptions } from '@/features/documents/useDocumentPickers';
 import { useCapability } from '@/hooks/useCapability';
 import { cn } from '@/lib/cn';
+import {
+  fillCredits,
+  spreadCredits,
+  type AllocationRow,
+  type CreditSource,
+} from '@/models/allocation';
 import { isoToday } from '@/models/document';
 import {
   autoDistribute,
@@ -31,13 +38,40 @@ import {
   type PaymentFormData,
 } from '@/models/payment';
 import { getDepositAccounts } from '@/networks/accounting/accountNetwork';
+import { getArPartySummary } from '@/networks/reports/agingNetwork';
 import {
-  getCustomerAdvances,
   getOutstandingInvoices,
   receivePayment,
+  settleInvoices,
 } from '@/networks/sales/paymentNetwork';
 import { formatMoney } from '@/utils/money';
-import { paymentFormToPayload } from '@/serializers/paymentSerializer';
+import { paymentFormToPayload, settleInvoicesPayload } from '@/serializers/paymentSerializer';
+
+/** What each kind of credit on account is called. */
+const CREDIT_KIND_LABEL: Record<string, string> = {
+  advance: 'Advance',
+  credit_memo: 'Credit memo',
+};
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * The invoices as the CASH part of the payment sees them: each balance less
+ * what credit on account already covers, and those covered in full left out.
+ */
+const cashRowsOf = (rows: AllocationRow[], perDocument: Record<string, number>): AllocationRow[] =>
+  rows
+    .map((r) => ({ ...r, balance: round2(r.balance - (perDocument[r.documentId] ?? 0)) }))
+    .filter((r) => r.balance > 0.004);
+
+/** Put the cash split back onto the full list of invoices. */
+const mergeCash = (rows: AllocationRow[], cashRows: AllocationRow[]): AllocationRow[] => {
+  const byId = new Map(cashRows.map((r) => [r.documentId, r]));
+  return rows.map((r) => {
+    const c = byId.get(r.documentId);
+    return c ? { ...r, checked: c.checked, applied: c.applied } : { ...r, checked: false, applied: '0' };
+  });
+};
 
 const emptyForm = (): PaymentFormData => ({
   customerId: '',
@@ -83,13 +117,56 @@ export default function ReceivePaymentPage() {
     staleTime: 0,
   });
 
-  // Money this customer already paid that no invoice has taken yet.
-  const { data: advances } = useQuery({
-    queryKey: ['payments', 'advances', form.customerId],
-    queryFn: () => getCustomerAdvances(form.customerId),
+  // Money this customer already has with us — advances held by earlier
+  // receipts and open credit memos — from the same figures the outstanding
+  // summary uses. Advances held for a delivery still on the road are not in it.
+  const { data: summary } = useQuery({
+    queryKey: ['reports', 'party-summary', 'customer', form.customerId],
+    queryFn: () => getArPartySummary(form.customerId),
     enabled: Boolean(form.customerId),
     staleTime: 0,
   });
+  const [credits, setCredits] = useState<CreditSource[]>([]);
+  // Off until asked for — "Use credit" from an invoice turns it on — so a plain
+  // receipt never quietly spends an advance the user did not mean to.
+  const [useCredits, setUseCredits] = useState(searchParams.get('useCredits') === '1');
+  useEffect(() => {
+    setCredits(
+      fillCredits(
+        (summary?.credits.items ?? []).map((c) => ({
+          id: c.id,
+          kind: c.kind === 'credit_memo' ? 'credit_memo' : 'advance',
+          reference: c.reference,
+          date: c.date,
+          available: c.available,
+          use: '',
+        })),
+      ),
+    );
+  }, [summary]);
+
+  // Credit is spent on the oldest invoices first — except that "Use credit"
+  // on an invoice puts that invoice first in line. The cash then works on
+  // what the credit left.
+  const priorityId = searchParams.get('useCredits') === '1' ? searchParams.get('invoiceId') : null;
+  const targetsOf = (rows: AllocationRow[]) => {
+    const targets = rows.map((r) => ({ documentId: r.documentId, cap: r.balance }));
+    const first = targets.findIndex((t) => t.documentId === priorityId);
+    return first > 0 ? [targets[first], ...targets.filter((_, i) => i !== first)] : targets;
+  };
+  const spread = useMemo(
+    () => spreadCredits(targetsOf(form.rows), useCredits ? credits : []),
+    // targetsOf depends only on priorityId, which comes from the URL.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [form.rows, credits, useCredits, priorityId],
+  );
+  const cashRows = useMemo(() => cashRowsOf(form.rows, spread.perDocument), [form.rows, spread]);
+
+  /** Re-spread the cash after anything that changes what credit covers. */
+  const redistribute = (rows: AllocationRow[], amount: string, nextCredits: CreditSource[], on: boolean) => {
+    const next = spreadCredits(targetsOf(rows), on ? nextCredits : []);
+    return mergeCash(rows, autoDistribute(cashRowsOf(rows, next.perDocument), amount));
+  };
 
   // Seed the rows whenever the customer's open invoices arrive, honouring an
   // invoiceId handed over from the invoice detail page.
@@ -100,9 +177,11 @@ export default function ReceivePaymentPage() {
       r.documentId === preselect ? { ...r, checked: true } : r,
     );
     // An amount handed over (e.g. "record the advance a credit limit needs").
-    const seedAmount = preselect
-      ? String(rows.find((r) => r.documentId === preselect)?.balance ?? '')
-      : (searchParams.get('amount') ?? '');
+    // Not when credit is to be used: that is what settles the invoice.
+    const seedAmount =
+      preselect && searchParams.get('useCredits') !== '1'
+        ? String(rows.find((r) => r.documentId === preselect)?.balance ?? '')
+        : (searchParams.get('amount') ?? '');
     setForm((f) => ({
       ...f,
       amount: f.amount || seedAmount,
@@ -118,14 +197,25 @@ export default function ReceivePaymentPage() {
     if (c) setForm((f) => ({ ...f, customerId: c.id, customerName: c.name }));
   }, [searchParams, customersById]);
 
-  const allocated = useMemo(() => totalAllocated(form.rows), [form.rows]);
+  // When credit is switched on or its figures change, the cash split follows:
+  // it never overlaps what the credit already covers.
+  useEffect(() => {
+    setForm((f) => ({ ...f, rows: redistribute(f.rows, f.amount, credits, useCredits) }));
+    // redistribute is a pure helper; the credit state is what changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [credits, useCredits]);
+
+  // Everything below is about the CASH part: rows are the balances after credit.
+  const allocated = useMemo(() => totalAllocated(cashRows), [cashRows]);
   const unapplied = useMemo(
     () => unappliedOf(form.amount, allocated),
     [form.amount, allocated],
   );
   const overAllocated = isOverAllocated(form.amount, allocated);
-  const hasOverApplied = overAppliedRows(form.rows).length > 0;
+  const hasOverApplied = overAppliedRows(cashRows).length > 0;
   const amountNumber = parseFloat(form.amount) || 0;
+  const creditUsed = useCredits ? spread.used : 0;
+  const creditOverUse = useCredits && credits.some((c) => (parseFloat(c.use) || 0) > c.available + 0.004);
 
   const accountOptions = useMemo(
     () => [
@@ -140,7 +230,7 @@ export default function ReceivePaymentPage() {
 
   const setAmount = (value: string) => {
     const amount = value.replace(/[^0-9.]/g, '');
-    setForm((f) => ({ ...f, amount, rows: autoDistribute(f.rows, amount) }));
+    setForm((f) => ({ ...f, amount, rows: redistribute(f.rows, amount, credits, useCredits) }));
   };
 
   const setMode = (mode: AllocationMode) =>
@@ -155,7 +245,13 @@ export default function ReceivePaymentPage() {
     const errs: Record<string, string> = {};
     if (!form.customerId) errs.customerId = 'Select a customer';
     if (!form.paymentDate) errs.paymentDate = 'Payment date is required';
-    if (amountNumber <= 0) errs.amount = 'Enter an amount above zero';
+    // Credit alone can settle an invoice; without it, money has to arrive.
+    if (amountNumber <= 0 && creditUsed <= 0) {
+      errs.amount = credits.length
+        ? 'Enter the amount received, or use credit on account'
+        : 'Enter an amount above zero';
+    }
+    if (creditOverUse) errs.credits = 'A credit is set to use more than it holds';
     if (overAllocated) {
       errs.rows = 'Allocations add up to more than the payment';
     } else if (hasOverApplied) {
@@ -166,8 +262,21 @@ export default function ReceivePaymentPage() {
   };
 
   const save = useMutation({
-    mutationFn: () =>
-      receivePayment(paymentFormToPayload(form), idempotencyKey.current),
+    // With credit in use, one settlement: credit first, then the receipt, all
+    // or nothing. Without it, the plain receipt it has always been.
+    mutationFn: async () => {
+      if (creditUsed > 0) {
+        const result = await settleInvoices(
+          settleInvoicesPayload(form, spread.pieces),
+          idempotencyKey.current,
+        );
+        if (result.pending) return result;
+        return { pending: false as const, payment: result.settlement.payment, creditTotal: result.settlement.creditTotal };
+      }
+      const result = await receivePayment(paymentFormToPayload(form), idempotencyKey.current);
+      if (result.pending) return result;
+      return { pending: false as const, payment: result.payment, creditTotal: 0 };
+    },
     onSuccess: (result) => {
       if (result.pending) {
         // Nothing was banked — do NOT invalidate invoices or the dashboard.
@@ -179,13 +288,25 @@ export default function ReceivePaymentPage() {
         return;
       }
       invalidateAfterPosting(queryClient);
-      toast.success('Payment recorded', {
-        description:
-          result.payment.unapplied > 0
-            ? 'The unapplied remainder is held as a customer advance.'
-            : undefined,
+      queryClient.invalidateQueries({ queryKey: ['reports', 'party-summary'] });
+      const { payment, creditTotal } = result;
+      if (!payment) {
+        // Credit covered it all: nothing was banked, so there is no receipt.
+        toast.success('Invoices settled from credit', {
+          description: `${formatMoney(creditTotal)} of credit on account applied — no new money recorded.`,
+        });
+        navigate(`/customers/${form.customerId}`, { replace: true });
+        return;
+      }
+      toast.success(creditTotal > 0 ? 'Payment recorded with credit' : 'Payment recorded', {
+        description: [
+          creditTotal > 0 ? `${formatMoney(creditTotal)} of credit on account applied.` : '',
+          payment.unapplied > 0 ? 'The unapplied remainder is held as a customer advance.' : '',
+        ]
+          .filter(Boolean)
+          .join(' ') || undefined,
       });
-      navigate(`/payments/${result.payment.id}`, { replace: true });
+      navigate(`/payments/${payment.id}`, { replace: true });
     },
     // Server reasons matter: PAYMENT_EXCEEDS_BALANCE usually means someone
     // settled the invoice while this form was open, and PERIOD_LOCKED means
@@ -222,26 +343,20 @@ export default function ReceivePaymentPage() {
         </div>
       )}
 
-      {advances && advances.total > 0 && (
-        <div className="flex items-start gap-sm rounded-md border border-warning-light bg-warning-lighter p-md">
+      {/* Money already on account, not yet in use: the situation behind a
+          receipt recorded twice. Said once, with the way to use it. */}
+      {credits.length > 0 && !useCredits && (
+        <div className="flex flex-wrap items-start gap-sm rounded-md border border-warning-light bg-warning-lighter p-md">
           <Info className="mt-[2px] size-4 shrink-0 text-warning" />
-          <div className="text-body-sm text-text-primary">
-            <p>
-              <strong>{form.customerName || 'This customer'}</strong> already holds{' '}
-              <strong>{formatMoney(advances.total)}</strong> in advances. If this is the money
-              they already paid, apply the advance instead of recording new cash — recording
-              it again would count the same money twice.
-            </p>
-            <ul className="mt-xs flex flex-wrap gap-sm">
-              {advances.advances.map((a) => (
-                <li key={a.paymentId}>
-                  <Link to={`/payments/${a.paymentId}`} className="text-label-md text-primary hover:underline">
-                    {a.paymentNumber || 'Receipt'} · {formatMoney(a.unapplied)} available
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <p className="min-w-0 flex-1 text-body-sm text-text-primary">
+            <strong>{form.customerName || 'This customer'}</strong> already has{' '}
+            <strong>{formatMoney(credits.reduce((t, c) => t + c.available, 0))}</strong> on account. If
+            this is money they already paid, use it instead of recording new cash — recording it again
+            would count the same money twice.
+          </p>
+          <Button size="sm" variant="secondary" onClick={() => setUseCredits(true)} disabled={busy}>
+            Use in this payment
+          </Button>
         </div>
       )}
 
@@ -279,12 +394,13 @@ export default function ReceivePaymentPage() {
           />
 
           <Input
-            label="Amount received *"
+            label={creditUsed > 0 ? 'Amount received' : 'Amount received *'}
             value={form.amount}
             onChange={(e) => setAmount(e.target.value)}
             inputMode="decimal"
             placeholder="0.00"
             error={errors.amount}
+            hint={creditUsed > 0 ? 'Leave empty if credit on account covers what is being settled.' : undefined}
           />
           <Input
             label="Reference"
@@ -311,9 +427,22 @@ export default function ReceivePaymentPage() {
         </div>
       </Card>
 
+      {/* ── Credit on account ───────────────────────────────────────── */}
+      <CreditsOnAccount
+        credits={credits}
+        enabled={useCredits}
+        onToggle={setUseCredits}
+        onChange={setCredits}
+        spread={spread}
+        kindLabel={(c) => CREDIT_KIND_LABEL[c.kind ?? 'advance'] ?? 'Credit'}
+        partyName={form.customerName}
+        disabled={busy}
+      />
+      {errors.credits && <p className="-mt-md text-caption text-danger">{errors.credits}</p>}
+
       {/* ── Allocation ──────────────────────────────────────────────── */}
       <Card className="p-lg">
-        <SectionHeader title="Apply to invoices" />
+        <SectionHeader title={creditUsed > 0 ? 'Apply the money received' : 'Apply to invoices'} />
 
         <div className="mt-md flex flex-wrap gap-xs">
           {(
@@ -355,16 +484,21 @@ export default function ReceivePaymentPage() {
         ) : (
           <div className="mt-md">
             <AllocationTable
-              rows={form.rows}
+              // What is still owed once credit has taken its part.
+              rows={cashRows}
               amount={form.amount}
-              onChange={(rows) => patch({ rows })}
+              onChange={(rows) => patch({ rows: mergeCash(form.rows, rows) })}
               documentLabel="Invoice"
-              fillAllLabel="Pay in full"
+              fillAllLabel={creditUsed > 0 ? 'Pay the rest in full' : 'Pay in full'}
               onFillAll={() => {
-                const filled = payInFull(form.rows);
-                patch({ rows: filled.rows, amount: filled.amount });
+                const filled = payInFull(cashRows);
+                patch({ rows: mergeCash(form.rows, filled.rows), amount: filled.amount });
               }}
-              emptyText="This customer has no open invoices. The whole payment will be held as an advance on their account."
+              emptyText={
+                creditUsed > 0 && form.rows.length > 0
+                  ? 'Credit on account settles every open invoice — no money needs to be received. Anything entered above is held as an advance.'
+                  : 'This customer has no open invoices. The whole payment will be held as an advance on their account.'
+              }
               disabled={busy}
             />
           </div>
@@ -388,14 +522,24 @@ export default function ReceivePaymentPage() {
       </Card>
 
       {/* ── Summary ─────────────────────────────────────────────────── */}
-      {amountNumber > 0 && (
+      {(amountNumber > 0 || creditUsed > 0) && (
         <SummaryPanel
           title="Payment summary"
           icon={<CreditCard className="size-4" />}
-          total={{ label: 'Amount received', value: amountNumber }}
+          total={
+            creditUsed > 0
+              ? { label: 'Credit + money received', value: round2(creditUsed + amountNumber) }
+              : { label: 'Amount received', value: amountNumber }
+          }
         >
+          {creditUsed > 0 && (
+            <>
+              <SummaryRow label="Credit on account used" value={creditUsed} tone="positive" />
+              <SummaryRow label="Money received" value={amountNumber} />
+            </>
+          )}
           <SummaryRow
-            label="Applied to invoices"
+            label={creditUsed > 0 ? 'Money applied to invoices' : 'Applied to invoices'}
             value={allocated}
             tone={allocated > 0 ? 'positive' : 'default'}
           />
@@ -432,7 +576,7 @@ export default function ReceivePaymentPage() {
         description={
           <>
             {formatMoney(unapplied)} of this payment is not applied, while{' '}
-            {form.rows
+            {cashRows
               .filter((r) => r.balance - (r.checked ? parseFloat(r.applied) || 0 : 0) > 0.001)
               .map((r) => r.documentNumber)
               .join(', ')}{' '}
@@ -457,10 +601,10 @@ export default function ReceivePaymentPage() {
           onClick={() => {
             if (!validate()) return;
             // Money left unapplied while invoices still owe: make it a choice.
-            const stillOwed = form.rows.some(
+            const stillOwed = cashRows.some(
               (r) => r.balance - (r.checked ? parseFloat(r.applied) || 0 : 0) > 0.001,
             );
-            if (form.mode === 'manual' && unapplied > 0 && stillOwed) {
+            if (form.mode === 'manual' && amountNumber > 0 && unapplied > 0 && stillOwed) {
               setHoldConfirmOpen(true);
               return;
             }
@@ -468,7 +612,9 @@ export default function ReceivePaymentPage() {
           }}
           disabled={busy}
         >
-          {busy ? 'Recording…' : cap.submitLabel('Record payment')}
+          {busy
+            ? 'Recording…'
+            : cap.submitLabel(creditUsed > 0 && amountNumber <= 0 ? 'Apply credit' : 'Record payment')}
         </Button>
       </div>
     </div>

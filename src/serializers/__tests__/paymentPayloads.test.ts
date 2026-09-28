@@ -8,6 +8,8 @@ import {
   outstandingSerializer,
   paymentFormToPayload,
   paymentListSerializer,
+  settleInvoicesPayload,
+  settlementSerializer,
 } from '@/serializers/paymentSerializer';
 
 const row = (
@@ -93,6 +95,82 @@ describe('paymentFormToPayload — the allocation contract', () => {
 
   it('coerces an unparseable amount to "0.00" rather than "NaN"', () => {
     expect(paymentFormToPayload(form({ amount: 'abc' })).amount).toBe('0.00');
+  });
+});
+
+describe('settleInvoicesPayload — credit on account plus cash', () => {
+  const advance = (documentId: string, amount: number) => ({
+    creditId: 'rct-1',
+    kind: 'advance',
+    documentId,
+    amount,
+  });
+  const memo = (documentId: string, amount: number) => ({
+    creditId: 'cm-1',
+    kind: 'credit_memo',
+    documentId,
+    amount,
+  });
+
+  it('sends each credit piece as a 2-dp string, keeping its kind', () => {
+    const p = settleInvoicesPayload(form(), [advance('a', 300), memo('a', 200)]);
+    expect(p.credits).toEqual([
+      { kind: 'advance', id: 'rct-1', invoiceId: 'a', amount: '300.00' },
+      { kind: 'credit_memo', id: 'cm-1', invoiceId: 'a', amount: '200.00' },
+    ]);
+  });
+
+  it('carries the cash leg exactly as a plain receipt would send it', () => {
+    const p = settleInvoicesPayload(form(), [advance('b', 100)]);
+    expect({ customerId: p.customerId, paymentDate: p.paymentDate, ...p.cash }).toEqual(
+      paymentFormToPayload(form()),
+    );
+  });
+
+  it('in auto mode the cash leg names no invoices — the server sweeps what credit left', () => {
+    const p = settleInvoicesPayload(form({ mode: 'auto' }), [advance('a', 300)]);
+    expect(p.cash).not.toHaveProperty('applications');
+  });
+
+  it('has no cash leg at all when credit covers everything', () => {
+    // No new money means no receipt: sending a zero cash leg would be refused.
+    const p = settleInvoicesPayload(form({ amount: '0' }), [advance('a', 300)]);
+    expect(p).not.toHaveProperty('cash');
+    expect(p.credits).toHaveLength(1);
+  });
+
+  it('drops zero pieces, and the credits key with them', () => {
+    const p = settleInvoicesPayload(form(), [advance('a', 0)]);
+    expect(p).not.toHaveProperty('credits');
+  });
+
+  it('treats an unknown kind as an advance, never inventing a credit memo', () => {
+    const p = settleInvoicesPayload(form(), [{ creditId: 'x', documentId: 'a', amount: 10 }]);
+    expect(p.credits?.[0].kind).toBe('advance');
+  });
+});
+
+describe('settlementSerializer', () => {
+  it('reads a credit-only settlement: no receipt, credits and invoices as numbers', () => {
+    const s = settlementSerializer({
+      payment: null,
+      credits: [{ kind: 'credit_memo', id: 'cm-1', reference: 'CM-0001', invoiceId: 'a', amount: '200.00' }],
+      creditTotal: '200.00',
+      cashTotal: '0.00',
+      invoices: [{ id: 'a', invoiceNumber: 'INV-1', balance: '0.00', status: 'paid' }],
+    });
+    expect(s.payment).toBeNull();
+    expect(s.credits).toEqual([
+      { kind: 'credit_memo', id: 'cm-1', reference: 'CM-0001', invoiceId: 'a', amount: 200 },
+    ]);
+    expect(s.creditTotal).toBe(200);
+    expect(s.cashTotal).toBe(0);
+    expect(s.invoices).toEqual([{ id: 'a', invoiceNumber: 'INV-1', balance: 0, status: 'paid' }]);
+  });
+
+  it('survives a response with nothing in it', () => {
+    const s = settlementSerializer({});
+    expect(s).toEqual({ payment: null, credits: [], creditTotal: 0, cashTotal: 0, invoices: [] });
   });
 });
 

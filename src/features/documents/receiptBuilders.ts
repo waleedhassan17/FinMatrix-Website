@@ -99,14 +99,25 @@ export function paymentReceiptDocument(
 export interface BillPaymentAdviceInput {
   vendorName: string;
   paymentDate: string;
+  /** What the bills were settled by — the vendor's credit and cash together. */
   total: number;
+  /** Of `total`, the vendor's own credit. Absent on a cash-only payment. */
+  creditApplied?: number;
   reference: string;
   lines: { billId: string; billNumber: string; applied: number; remaining: number }[];
 }
 
-/** Money paid to a vendor, as the remittance advice that tells them what it settled. */
+/**
+ * Money paid to a vendor, as the remittance advice that tells them what it settled.
+ *
+ * When their credit covered part of it, the advice says so: the bills settled,
+ * less their credit, and "Total paid" is only the money actually sent — the
+ * figure their bank statement will show.
+ */
 export function billPaymentAdviceDocument(input: BillPaymentAdviceInput, company: DocCompany): DocumentModel {
   const party = partyForDocument('Paid to', input.vendorName, null);
+  const credit = Math.max(input.creditApplied ?? 0, 0);
+  const paid = Math.round((input.total - credit) * 100) / 100;
   return {
     kind: 'Payment advice',
     number: input.reference,
@@ -129,7 +140,14 @@ export function billPaymentAdviceDocument(input: BillPaymentAdviceInput, company
       taxRate: 0,
       amount: l.applied,
     })),
-    totals: [{ label: 'Total paid', value: input.total, grand: true, tone: 'success' }],
+    totals:
+      credit > 0
+        ? [
+            { label: 'Bills settled', value: input.total },
+            { label: 'Your credit applied', value: credit, prefix: '− ' },
+            { label: 'Total paid', value: paid, grand: true, dividerBefore: true, tone: 'success' },
+          ]
+        : [{ label: 'Total paid', value: input.total, grand: true, tone: 'success' }],
     notes: [],
     signatures: ['Authorised signature'],
     stamp: null,
@@ -137,8 +155,9 @@ export function billPaymentAdviceDocument(input: BillPaymentAdviceInput, company
       kind: 'Payment advice',
       number: input.reference || undefined,
       partyName: party.name,
-      amount: input.total,
-      amountLabel: 'Amount paid',
+      ...(credit > 0 && paid <= 0.004
+        ? { amount: input.total, amountLabel: 'Settled from your credit' }
+        : { amount: paid, amountLabel: 'Amount paid' }),
       companyName: company.name,
     },
   };

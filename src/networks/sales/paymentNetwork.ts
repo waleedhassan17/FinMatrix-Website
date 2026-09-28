@@ -15,8 +15,11 @@ import {
   outstandingSerializer,
   paymentListSerializer,
   paymentSingleSerializer,
+  settlementSerializer,
+  type InvoiceSettlement,
   type PaymentApplicationPayload,
   type ReceivePaymentPayload,
+  type SettleInvoicesPayload,
 } from '@/serializers/paymentSerializer';
 import type { AllocationRow, ApiPaymentMethod, CustomerAdvance, Payment } from '@/models/payment';
 
@@ -104,6 +107,32 @@ export const receivePayment = async (
       return { pending: true, approval: payload };
     }
     return { pending: false, payment: mapPayment(payload) };
+  } catch (e) {
+    throw toApiError(e);
+  }
+};
+
+export type SettlementWriteResult =
+  | { pending: false; settlement: InvoiceSettlement }
+  | { pending: true; approval: PendingApproval };
+
+/**
+ * Settle a customer's invoices from credit on account — advances, credit
+ * memos — and/or new money, in one request the server runs as one transaction:
+ * credit first, then the receipt. Staff get a pending approval instead; the
+ * owner's approval replays the same settlement.
+ */
+export const settleInvoices = async (
+  data: SettleInvoicesPayload,
+  idempotencyKey?: string,
+): Promise<SettlementWriteResult> => {
+  try {
+    const response = await api.post('/payments/settle', data, {
+      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+    });
+    const payload = unwrapEnvelope(response.data);
+    if (isPendingApproval(payload)) return { pending: true, approval: payload };
+    return { pending: false, settlement: settlementSerializer(payload) };
   } catch (e) {
     throw toApiError(e);
   }

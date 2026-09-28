@@ -12,7 +12,8 @@ import {
   type BillStatus,
   type PayBillsFormData,
 } from '@/models/bill';
-import type { PayBillsPayload } from '@/networks/purchases/billNetwork';
+import type { CreditPiece } from '@/models/allocation';
+import type { PayBillsPayload, SettleBillsPayload } from '@/networks/purchases/billNetwork';
 import { asRaw, str } from '@/serializers/documentLines';
 import { toNumber } from '@/utils/money';
 
@@ -287,3 +288,46 @@ export const payBillsFormToPayload = (
     })),
   ...(form.reference.trim() ? { reference: form.reference.trim() } : {}),
 });
+
+/**
+ * Pay Bills with vendor credit → `POST /bills/settle`.
+ *
+ * Each row's figure is what that bill is settled by in total; `pieces` say how
+ * much of it credit covers (oldest credit first, oldest bill first), and the
+ * rest of each row is cash. With no cash left, there is no cash leg — so no
+ * proof and no account are needed.
+ */
+export const settleBillsPayload = (
+  form: PayBillsFormData,
+  pieces: CreditPiece[],
+): SettleBillsPayload => {
+  const creditByBill = new Map<string, number>();
+  for (const p of pieces) creditByBill.set(p.documentId, (creditByBill.get(p.documentId) ?? 0) + p.amount);
+  const applications = form.rows
+    .filter((r) => r.checked && (parseFloat(r.applied) || 0) > 0)
+    .map((r) => ({
+      billId: r.documentId,
+      amount: Math.round(((parseFloat(r.applied) || 0) - (creditByBill.get(r.documentId) ?? 0)) * 100) / 100,
+    }))
+    .filter((a) => a.amount > 0.004)
+    .map((a) => ({ billId: a.billId, amount: a.amount.toFixed(2) }));
+  const credits = pieces
+    .filter((p) => p.amount > 0)
+    .map((p) => ({ vendorCreditId: p.creditId, billId: p.documentId, amount: p.amount.toFixed(2) }));
+  return {
+    vendorId: form.vendorId,
+    paymentDate: form.paymentDate,
+    ...(credits.length ? { credits } : {}),
+    ...(applications.length
+      ? {
+          cash: {
+            paymentMethod: form.paymentMethod,
+            bankAccountId: form.bankAccountId,
+            proofId: form.proofId,
+            applications,
+            ...(form.reference.trim() ? { reference: form.reference.trim() } : {}),
+          },
+        }
+      : {}),
+  };
+};

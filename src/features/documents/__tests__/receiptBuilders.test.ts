@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { companyForDocument } from '@/features/documents/documentModel';
-import { paymentReceiptDocument } from '@/features/documents/receiptBuilders';
+import { billPaymentAdviceDocument, paymentReceiptDocument } from '@/features/documents/receiptBuilders';
 import { mapPayment } from '@/serializers/paymentSerializer';
 
 const company = companyForDocument(null, 'Warehouse Co');
@@ -37,5 +37,38 @@ describe('paymentReceiptDocument', () => {
   it('falls back when the server gives no invoice figures', () => {
     const bare = { ...raw, applications: [{ invoiceId: 'inv-52', invoiceNumber: 'INV-2026-0052', amountApplied: '758' }] };
     expect(paymentReceiptDocument(mapPayment(bare), company).lines[0].secondary).toBe('Applied to invoice');
+  });
+});
+
+describe('billPaymentAdviceDocument', () => {
+  const advice = {
+    vendorName: 'Acme Supplies',
+    paymentDate: '2026-09-28',
+    total: 700,
+    reference: 'CHQ-9',
+    lines: [{ billId: 'b1', billNumber: 'BILL-1', applied: 700, remaining: 0 }],
+  };
+
+  it('a cash payment: total paid is the whole of it', () => {
+    const doc = billPaymentAdviceDocument(advice, company);
+    expect(doc.totals).toEqual([{ label: 'Total paid', value: 700, grand: true, tone: 'success' }]);
+    expect(doc.share.amount).toBe(700);
+  });
+
+  it("part from the vendor's credit: the advice says so, and total paid is only the money sent", () => {
+    const doc = billPaymentAdviceDocument({ ...advice, creditApplied: 150 }, company);
+    expect(doc.totals.map((t) => [t.label, t.value])).toEqual([
+      ['Bills settled', 700],
+      ['Your credit applied', 150],
+      ['Total paid', 550],
+    ]);
+    expect(doc.lines[0].amount).toBe(700);
+    expect(doc.share).toMatchObject({ amount: 550, amountLabel: 'Amount paid' });
+  });
+
+  it('credit alone: nothing was sent, and the share says it was settled from their credit', () => {
+    const doc = billPaymentAdviceDocument({ ...advice, total: 120, creditApplied: 120 }, company);
+    expect(doc.totals.at(-1)).toMatchObject({ label: 'Total paid', value: 0 });
+    expect(doc.share).toMatchObject({ amount: 120, amountLabel: 'Settled from your credit' });
   });
 });

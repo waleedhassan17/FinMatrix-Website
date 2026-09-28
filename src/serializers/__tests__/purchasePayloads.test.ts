@@ -10,6 +10,7 @@ import {
   billPaymentsSerializer,
   mapBill,
   payBillsFormToPayload,
+  settleBillsPayload,
 } from '@/serializers/billSerializer';
 import {
   mapPurchaseOrder,
@@ -566,5 +567,66 @@ describe('payBillsFormToPayload — the application contract', () => {
     expect(p.proofId).toBe('proof-1');
     expect(p.bankAccountId).toBe('acct-cash');
     expect(p).not.toHaveProperty('amount');
+  });
+});
+
+describe('settleBillsPayload — vendor credit plus cash', () => {
+  const piece = (creditId: string, documentId: string, amount: number) => ({
+    creditId,
+    documentId,
+    amount,
+  });
+
+  it('pays in cash only what credit did not cover on each bill', () => {
+    // The row says what the bill is settled by in all; the credit's share of it
+    // must not be paid a second time from the bank.
+    const p = settleBillsPayload(
+      payForm({ rows: [payRow('b1', 700, true, '700'), payRow('b2', 300, true, '300')] }),
+      [piece('vc-1', 'b1', 150)],
+    );
+    expect(p.credits).toEqual([{ vendorCreditId: 'vc-1', billId: 'b1', amount: '150.00' }]);
+    expect(p.cash?.applications).toEqual([
+      { billId: 'b1', amount: '550.00' },
+      { billId: 'b2', amount: '300.00' },
+    ]);
+  });
+
+  it('has no cash leg — so needs no proof or account — when credit covers every bill', () => {
+    const p = settleBillsPayload(
+      payForm({ rows: [payRow('b1', 100, true, '100')], proofId: '', bankAccountId: '' }),
+      [piece('vc-1', 'b1', 100)],
+    );
+    expect(p).not.toHaveProperty('cash');
+    expect(p.credits).toHaveLength(1);
+  });
+
+  it('adds the pieces of several credits on one bill before taking cash', () => {
+    const p = settleBillsPayload(payForm({ rows: [payRow('b1', 500, true, '500')] }), [
+      piece('vc-1', 'b1', 120.1),
+      piece('vc-2', 'b1', 79.9),
+    ]);
+    expect(p.cash?.applications).toEqual([{ billId: 'b1', amount: '300.00' }]);
+  });
+
+  it('carries the cash leg as a plain bill payment would, reference trimmed', () => {
+    const p = settleBillsPayload(payForm(), [piece('vc-1', 'b1', 37.44)]);
+    expect(p.cash).toEqual({
+      paymentMethod: 'bank_transfer',
+      bankAccountId: 'acct-cash',
+      proofId: 'proof-1',
+      reference: 'CHQ-1',
+      applications: [{ billId: 'b1', amount: '2400.00' }],
+    });
+    expect(p.vendorId).toBe('v1');
+    expect(p.paymentDate).toBe('2026-09-10');
+  });
+
+  it('drops unticked rows, zero pieces, and the credits key when none are left', () => {
+    const p = settleBillsPayload(
+      payForm({ rows: [payRow('b1', 100, false, '100'), payRow('b2', 80, true, '80')] }),
+      [piece('vc-1', 'b2', 0)],
+    );
+    expect(p).not.toHaveProperty('credits');
+    expect(p.cash?.applications).toEqual([{ billId: 'b2', amount: '80.00' }]);
   });
 });
