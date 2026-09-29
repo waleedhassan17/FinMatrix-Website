@@ -22,6 +22,7 @@ import {
   type SettleInvoicesPayload,
 } from '@/serializers/paymentSerializer';
 import type { AllocationRow, ApiPaymentMethod, CustomerAdvance, Payment } from '@/models/payment';
+import { documentPageOf, fetchAllPages, type DocumentPage } from '@/models/documentList';
 
 export interface PaymentQueryParams {
   customerId?: string;
@@ -37,21 +38,33 @@ export type PaymentWriteResult =
   | { pending: false; payment: Payment }
   | { pending: true; approval: PendingApproval };
 
-export const getPayments = async (
-  params: PaymentQueryParams = {},
-): Promise<Payment[]> => {
+/**
+ * Every payment these filters match, page by page (an invoice's receipts, for
+ * one). A single request stopped at the server's default page.
+ */
+export const getPayments = (
+  params: Omit<PaymentQueryParams, 'page' | 'limit'> = {},
+): Promise<Payment[]> =>
+  fetchAllPages((page, limit) =>
+    getPaymentPage({ ...params, page, limit }).then((p) => ({ rows: p.rows, totalPages: p.totalPages })),
+  );
+
+/**
+ * One page of the list, with the server's summary (every row the filters
+ * match) and pagination — what a list screen pages through with "Load more".
+ */
+export const getPaymentPage = async (
+  params: PaymentQueryParams & { page?: number; limit?: number } = {},
+): Promise<DocumentPage<Payment>> => {
   const { fromDate, toDate, ...rest } = params;
   const query: Record<string, unknown> = { ...rest };
-  // A lone startDate is silently ignored by the server — it only filters when
-  // both bounds are present.
   if (fromDate && toDate) {
     query.startDate = fromDate;
     query.endDate = toDate;
   }
-
   try {
     const response = await api.get('/payments', { params: query });
-    return paymentListSerializer(unwrapEnvelope(response.data));
+    return documentPageOf(response.data, paymentListSerializer(unwrapEnvelope(response.data)));
   } catch (e) {
     throw toApiError(e);
   }

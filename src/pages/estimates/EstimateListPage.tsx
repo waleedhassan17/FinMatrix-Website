@@ -1,4 +1,3 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { createColumnHelper } from '@tanstack/react-table';
 import { Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -8,14 +7,15 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { DataTable } from '@/components/ui/DataTable';
 import { DateField } from '@/components/ui/Field';
+import { LoadMore } from '@/components/ui/LoadMore';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { usePagedList } from '@/hooks/usePagedList';
 import { cn } from '@/lib/cn';
+import { LIST_PAGE_SIZE, statusCountsOf } from '@/models/documentList';
 import { isExpired, type Estimate } from '@/models/estimate';
-import { getEstimates } from '@/networks/sales/estimateNetwork';
+import { getEstimatePage } from '@/networks/sales/estimateNetwork';
 import { formatMoney } from '@/utils/money';
-
-const PAGE_SIZE = 50;
 
 type Tab = 'all' | 'draft' | 'sent' | 'accepted' | 'declined' | 'converted';
 
@@ -43,27 +43,25 @@ export default function EstimateListPage() {
     return () => clearTimeout(t);
   }, [searchInput]);
 
-  const { data: estimates = [], isLoading, isError, error } = useQuery({
-    queryKey: ['estimates', 'list', { search, fromDate, toDate }],
-    queryFn: () =>
-      getEstimates({
-        search: search || undefined,
-        fromDate: fromDate || undefined,
-        toDate: toDate || undefined,
-        limit: PAGE_SIZE,
-      }),
-    placeholderData: keepPreviousData,
-  });
+  // Searched, filtered by tab and paged BY THE SERVER; "Load more" fetches the
+  // next page. The counts are the server's, over every estimate the search
+  // matches — this page used to show and count only the first 50.
+  const list = usePagedList(['estimates', 'list', { search, fromDate, toDate, tab }], (page) =>
+    getEstimatePage({
+      search: search || undefined,
+      fromDate: fromDate || undefined,
+      toDate: toDate || undefined,
+      status: tab === 'all' ? undefined : (tab as Estimate['status']),
+      page,
+      limit: LIST_PAGE_SIZE,
+    }),
+  );
+  const { isLoading, isError, error } = list;
+  const estimates = list.rows;
+  const counts = useMemo(() => statusCountsOf(list.summary, estimates), [list.summary, estimates]);
 
-  // Counts over loaded rows: GET /estimates returns a bare array, its summary
-  // and pagination discarded by the response envelope.
-  const counts = useMemo(() => {
-    const c = { all: estimates.length } as Record<Tab, number>;
-    for (const t of TABS) if (t[0] !== 'all') c[t[0]] = 0;
-    for (const e of estimates) if (e.status in c) c[e.status as Tab] += 1;
-    return c;
-  }, [estimates]);
-
+  // Already filtered by the server; applied here too only so a tab switch
+  // shows at once, before its answer lands.
   const rows = useMemo(
     () => (tab === 'all' ? estimates : estimates.filter((e) => e.status === tab)),
     [estimates, tab],
@@ -140,7 +138,7 @@ export default function EstimateListPage() {
             </span>
           ) : (
             <span className="text-body-sm text-text-tertiary">
-              {estimates.length === 0
+              {!search && !fromDate && !toDate && tab === 'all'
                 ? 'No estimates yet. Create a quote to get started.'
                 : 'No estimates match these filters.'}
             </span>
@@ -200,12 +198,13 @@ export default function EstimateListPage() {
         }
       />
 
-      {estimates.length >= PAGE_SIZE && (
-        <p className="text-center text-caption text-text-tertiary">
-          Showing the first {PAGE_SIZE}. Narrow the search or date range to see more —
-          this endpoint does not return a page count.
-        </p>
-      )}
+      <LoadMore
+        shown={estimates.length}
+        total={list.total}
+        hasMore={list.hasNextPage}
+        loading={list.isFetchingNextPage}
+        onMore={list.fetchNextPage}
+      />
     </div>
   );
 }

@@ -1,4 +1,3 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { createColumnHelper } from '@tanstack/react-table';
 import { Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -7,14 +6,15 @@ import { Link, useNavigate } from 'react-router-dom';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { DataTable } from '@/components/ui/DataTable';
+import { LoadMore } from '@/components/ui/LoadMore';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { usePagedList } from '@/hooks/usePagedList';
 import { cn } from '@/lib/cn';
+import { LIST_PAGE_SIZE, statusCountsOf } from '@/models/documentList';
 import type { VendorCredit } from '@/models/vendorCredit';
-import { getVendorCredits } from '@/networks/purchases/vendorCreditNetwork';
+import { getVendorCreditPage } from '@/networks/purchases/vendorCreditNetwork';
 import { formatMoney } from '@/utils/money';
-
-const PAGE_SIZE = 50;
 
 /** No `draft` and no `refunded` on this side — see the model's header. */
 type Tab = 'all' | 'open' | 'applied' | 'closed' | 'void';
@@ -40,24 +40,21 @@ export default function VendorCreditListPage() {
     return () => clearTimeout(t);
   }, [searchInput]);
 
-  const {
-    data: credits = [],
-    isLoading,
-    isError,
-    error,
-  } = useQuery({
-    queryKey: ['vendor-credits', 'list', { search }],
-    queryFn: () =>
-      getVendorCredits({ search: search || undefined, limit: PAGE_SIZE }),
-    placeholderData: keepPreviousData,
-  });
+  // Searched, filtered by tab and paged BY THE SERVER; "Load more" fetches the
+  // next page. The counts are the server's, over every vendor credit the search
+  // matches — this page used to show and count only the first 50.
+  const list = usePagedList(['vendor-credits', 'list', { search, tab }], (page) =>
+    getVendorCreditPage({
+      search: search || undefined,
+      status: tab === 'all' ? undefined : (tab as VendorCredit['status']),
+      page,
+      limit: LIST_PAGE_SIZE,
+    }),
+  );
+  const { isLoading, isError, error } = list;
+  const credits = list.rows;
 
-  const counts = useMemo(() => {
-    const c = { all: credits.length } as Record<Tab, number>;
-    for (const t of TABS) if (t[0] !== 'all') c[t[0]] = 0;
-    for (const credit of credits) if (credit.status in c) c[credit.status as Tab] += 1;
-    return c;
-  }, [credits]);
+  const counts = useMemo(() => statusCountsOf(list.summary, credits), [list.summary, credits]);
 
   const rows = useMemo(
     () => (tab === 'all' ? credits : credits.filter((c) => c.status === tab)),
@@ -130,7 +127,7 @@ export default function VendorCreditListPage() {
             </span>
           ) : (
             <span className="text-body-sm text-text-tertiary">
-              {credits.length === 0
+              {!search && tab === 'all'
                 ? 'No vendor credits yet.'
                 : 'No vendor credits match these filters.'}
             </span>
@@ -175,12 +172,13 @@ export default function VendorCreditListPage() {
         }
       />
 
-      {credits.length >= PAGE_SIZE && (
-        <p className="text-center text-caption text-text-tertiary">
-          Showing the first {PAGE_SIZE}. Narrow the search to see more — this
-          endpoint does not return a page count.
-        </p>
-      )}
+      <LoadMore
+        shown={credits.length}
+        total={list.total}
+        hasMore={list.hasNextPage}
+        loading={list.isFetchingNextPage}
+        onMore={list.fetchNextPage}
+      />
     </div>
   );
 }

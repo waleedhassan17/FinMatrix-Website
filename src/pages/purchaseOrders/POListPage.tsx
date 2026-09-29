@@ -1,4 +1,3 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { createColumnHelper } from '@tanstack/react-table';
 import { Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -8,18 +7,19 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DataTable } from '@/components/ui/DataTable';
+import { LoadMore } from '@/components/ui/LoadMore';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { usePagedList } from '@/hooks/usePagedList';
 import { cn } from '@/lib/cn';
+import { extraNumber, LIST_PAGE_SIZE, statusCountsOf } from '@/models/documentList';
 import {
   isFullyReceived,
   type PurchaseOrder,
   type PurchaseOrderStatus,
 } from '@/models/purchaseOrder';
-import { getPurchaseOrders } from '@/networks/purchases/purchaseOrderNetwork';
+import { getPurchaseOrderPage } from '@/networks/purchases/purchaseOrderNetwork';
 import { formatMoney } from '@/utils/money';
-
-const PAGE_LIMIT = 50;
 
 type Tab = 'all' | PurchaseOrderStatus;
 
@@ -45,19 +45,20 @@ export default function POListPage() {
     return () => clearTimeout(t);
   }, [searchInput]);
 
-  const { data = [], isLoading, isError, error } = useQuery({
-    queryKey: ['purchase-orders', 'list', { search }],
-    queryFn: () =>
-      getPurchaseOrders({ search: search || undefined, limit: PAGE_LIMIT }),
-    placeholderData: keepPreviousData,
-  });
-
-  const counts = useMemo(() => {
-    const c = { all: data.length } as Record<Tab, number>;
-    for (const [t] of TABS) if (t !== 'all') c[t] = 0;
-    for (const po of data) if (po.status in c) c[po.status] += 1;
-    return c;
-  }, [data]);
+  // Searched, filtered by tab and paged BY THE SERVER; "Load more" fetches the
+  // next page. The counts and the on-order figure are the server's, over every
+  // order the search matches — this page used to see only the latest 50.
+  const list = usePagedList(['purchase-orders', 'list', { search, tab }], (page) =>
+    getPurchaseOrderPage({
+      search: search || undefined,
+      status: tab === 'all' ? undefined : tab,
+      page,
+      limit: LIST_PAGE_SIZE,
+    }),
+  );
+  const { isLoading, isError, error } = list;
+  const data = list.rows;
+  const counts = useMemo(() => statusCountsOf(list.summary, data), [list.summary, data]);
 
   const rows = useMemo(
     () => (tab === 'all' ? data : data.filter((po) => po.status === tab)),
@@ -65,15 +66,18 @@ export default function POListPage() {
   );
 
   // What has been ordered but not yet received — the figure that says how much
-  // is in the pipeline.
+  // is in the pipeline. The server's, over every matching order; from the rows
+  // loaded only with a server too old to send it.
   const onOrder = useMemo(
     () =>
-      data
-        .filter(
-          (po) => po.status !== 'closed' && po.status !== 'draft' && !isFullyReceived(po),
-        )
-        .reduce((sum, po) => sum + po.total, 0),
-    [data],
+      'onOrder' in list.extras
+        ? extraNumber(list.extras, 'onOrder')
+        : data
+            .filter(
+              (po) => po.status !== 'closed' && po.status !== 'draft' && !isFullyReceived(po),
+            )
+            .reduce((sum, po) => sum + po.total, 0),
+    [list.extras, data],
   );
 
   const columns = useMemo(
@@ -205,12 +209,13 @@ export default function POListPage() {
         }
       />
 
-      {data.length >= PAGE_LIMIT && (
-        <p className="text-caption text-text-tertiary">
-          Showing the {PAGE_LIMIT} most recent orders. Narrow the search to find
-          older ones.
-        </p>
-      )}
+      <LoadMore
+        shown={data.length}
+        total={list.total}
+        hasMore={list.hasNextPage}
+        loading={list.isFetchingNextPage}
+        onMore={list.fetchNextPage}
+      />
     </div>
   );
 }

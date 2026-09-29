@@ -11,8 +11,8 @@
 
 import { api, toApiError, unwrapEnvelope } from '@/networks/network/apiHelpers';
 import type { Rider, RiderStatus } from '@/models/delivery';
-import { listRows } from '@/serializers/inventorySerializer';
 import { mapRider } from '@/serializers/deliverySerializer';
+import { getAllRows } from '@/networks/network/allPages';
 
 export interface RiderCredentials {
   username: string;
@@ -29,16 +29,9 @@ const readCredentials = (data: unknown): RiderCredentials | null => {
     : null;
 };
 
-export const getRiders = async (params: { status?: RiderStatus } = {}): Promise<Rider[]> => {
-  try {
-    const response = await api.get('/delivery-personnel', {
-      params: { page: 1, limit: 200, ...params },
-    });
-    return listRows(unwrapEnvelope(response.data)).map(mapRider);
-  } catch (e) {
-    throw toApiError(e);
-  }
-};
+/** Every rider, page by page — this stopped at 200. */
+export const getRiders = async (params: { status?: RiderStatus } = {}): Promise<Rider[]> =>
+  getAllRows('/delivery-personnel', params, mapRider, (r) => r.userId);
 
 export const getRider = async (userId: string): Promise<Rider> => {
   try {

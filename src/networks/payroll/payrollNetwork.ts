@@ -9,19 +9,16 @@ import { api, authedBlob, authedBlobUrl, toApiError, unwrapEnvelope } from '@/ne
 import type { EmployeeStatus, Employee, PayrollRun } from '@/models/payroll';
 import { listRows } from '@/serializers/inventorySerializer';
 import { mapEmployee, mapPayrollRun } from '@/serializers/payrollSerializer';
+import { getAllRows } from '@/networks/network/allPages';
 
 // ─── Employees ──────────────────────────────────────────
 
 export const getEmployees = async (
   params: { status?: EmployeeStatus; search?: string } = {},
-): Promise<Employee[]> => {
-  try {
-    const response = await api.get('/employees', { params: { page: 1, limit: 100, ...params } });
-    return listRows(unwrapEnvelope(response.data)).map(mapEmployee);
-  } catch (e) {
-    throw toApiError(e);
-  }
-};
+): Promise<Employee[]> =>
+  // Every employee, page by page. This stopped at 100 — and a payroll run built
+  // from it would have silently left out everyone past the hundredth.
+  getAllRows('/employees', params, mapEmployee);
 
 export const getEmployee = async (id: string): Promise<Employee> => {
   try {

@@ -17,7 +17,7 @@ import {
   type InvoiceWritePayload,
 } from '@/serializers/invoiceSerializer';
 import type { Invoice, InvoiceStatus } from '@/models/invoice';
-import { documentListSummaryOf, listPaginationOf, type DocumentPage } from '@/models/documentList';
+import { documentPageOf, type DocumentPage } from '@/models/documentList';
 
 export interface InvoiceQueryParams {
   search?: string;
@@ -77,11 +77,7 @@ export const getInvoicePage = async (
   try {
     const response = await api.get('/invoices', { params: query });
     const rows = invoiceListSerializer(unwrapEnvelope(response.data));
-    return {
-      rows,
-      summary: documentListSummaryOf(response.data),
-      ...listPaginationOf(response.data, rows.length),
-    };
+    return documentPageOf(response.data, rows);
   } catch (e) {
     throw toApiError(e);
   }

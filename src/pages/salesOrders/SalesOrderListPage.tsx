@@ -1,4 +1,3 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { createColumnHelper } from '@tanstack/react-table';
 import { Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -8,14 +7,15 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { DataTable } from '@/components/ui/DataTable';
 import { DateField } from '@/components/ui/Field';
+import { LoadMore } from '@/components/ui/LoadMore';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { usePagedList } from '@/hooks/usePagedList';
 import { cn } from '@/lib/cn';
+import { LIST_PAGE_SIZE, statusCountsOf } from '@/models/documentList';
 import { fulfilledLineCount, type SalesOrder } from '@/models/salesOrder';
-import { getSalesOrders } from '@/networks/sales/salesOrderNetwork';
+import { getSalesOrderPage } from '@/networks/sales/salesOrderNetwork';
 import { formatMoney } from '@/utils/money';
-
-const PAGE_SIZE = 50;
 
 type Tab = 'all' | 'open' | 'partial' | 'fulfilled' | 'invoiced' | 'cancelled';
 
@@ -43,24 +43,22 @@ export default function SalesOrderListPage() {
     return () => clearTimeout(t);
   }, [searchInput]);
 
-  const { data: orders = [], isLoading, isError, error } = useQuery({
-    queryKey: ['sales-orders', 'list', { search, fromDate, toDate }],
-    queryFn: () =>
-      getSalesOrders({
-        search: search || undefined,
-        fromDate: fromDate || undefined,
-        toDate: toDate || undefined,
-        limit: PAGE_SIZE,
-      }),
-    placeholderData: keepPreviousData,
-  });
-
-  const counts = useMemo(() => {
-    const c = { all: orders.length } as Record<Tab, number>;
-    for (const t of TABS) if (t[0] !== 'all') c[t[0]] = 0;
-    for (const o of orders) if (o.status in c) c[o.status as Tab] += 1;
-    return c;
-  }, [orders]);
+  // Searched, filtered by tab and paged BY THE SERVER; "Load more" fetches the
+  // next page. The counts are the server's, over every order the search
+  // matches — this page used to show and count only the first 50.
+  const list = usePagedList(['sales-orders', 'list', { search, fromDate, toDate, tab }], (page) =>
+    getSalesOrderPage({
+      search: search || undefined,
+      fromDate: fromDate || undefined,
+      toDate: toDate || undefined,
+      status: tab === 'all' ? undefined : (tab as SalesOrder['status']),
+      page,
+      limit: LIST_PAGE_SIZE,
+    }),
+  );
+  const { isLoading, isError, error } = list;
+  const orders = list.rows;
+  const counts = useMemo(() => statusCountsOf(list.summary, orders), [list.summary, orders]);
 
   const rows = useMemo(
     () => (tab === 'all' ? orders : orders.filter((o) => o.status === tab)),
@@ -155,7 +153,7 @@ export default function SalesOrderListPage() {
             </span>
           ) : (
             <span className="text-body-sm text-text-tertiary">
-              {orders.length === 0
+              {!search && !fromDate && !toDate && tab === 'all'
                 ? 'No sales orders yet. Create one, or convert an accepted estimate.'
                 : 'No sales orders match these filters.'}
             </span>
@@ -217,12 +215,13 @@ export default function SalesOrderListPage() {
         }
       />
 
-      {orders.length >= PAGE_SIZE && (
-        <p className="text-center text-caption text-text-tertiary">
-          Showing the first {PAGE_SIZE}. Narrow the search or date range to see more —
-          this endpoint does not return a page count.
-        </p>
-      )}
+      <LoadMore
+        shown={orders.length}
+        total={list.total}
+        hasMore={list.hasNextPage}
+        loading={list.isFetchingNextPage}
+        onMore={list.fetchNextPage}
+      />
     </div>
   );
 }

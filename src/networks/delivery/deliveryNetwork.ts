@@ -23,6 +23,8 @@ import type {
   DeliveryIssue,
   DeliveryStatus,
 } from '@/models/delivery';
+import { documentPageOf, type DocumentPage } from '@/models/documentList';
+import { getAllRows } from '@/networks/network/allPages';
 import { listRows } from '@/serializers/inventorySerializer';
 import {
   mapDelivery,
@@ -33,23 +35,41 @@ import {
 } from '@/serializers/deliverySerializer';
 
 /**
- * One fetch, filtered and paged on the client: the response envelope strips
- * the server's paging totals, so a server-paged list could never say how many
- * pages there are.
+ * Every delivery these filters match, page by page — for sets a user picks
+ * from (unassigned deliveries to assign, a rider's deliveries). This was one
+ * fetch of 500; past that, deliveries silently went missing.
  */
-export const DELIVERY_LIST_LIMIT = 500;
-
 export const getDeliveries = async (params: {
   status?: DeliveryStatus;
   personnelId?: string;
   customerId?: string;
-} = {}): Promise<{ rows: Delivery[]; truncated: boolean }> => {
+} = {}): Promise<{ rows: Delivery[]; truncated: boolean }> => ({
+  rows: await getAllRows('/deliveries', { ...params }, mapDelivery),
+  truncated: false,
+});
+
+/**
+ * One page of deliveries, searched and filtered by the server, with counts
+ * per status over everything the search matches (`summary.byStatus`).
+ * `statuses` is a tab's group of statuses.
+ */
+export const getDeliveryPage = async (params: {
+  statuses?: readonly DeliveryStatus[];
+  q?: string;
+  page: number;
+  limit: number;
+}): Promise<DocumentPage<Delivery>> => {
   try {
     const response = await api.get('/deliveries', {
-      params: { page: 1, limit: DELIVERY_LIST_LIMIT, ...params },
+      params: {
+        page: params.page,
+        limit: params.limit,
+        ...(params.statuses?.length ? { statuses: params.statuses.join(',') } : {}),
+        ...(params.q ? { q: params.q } : {}),
+      },
     });
     const rows = listRows(unwrapEnvelope(response.data)).map(mapDelivery);
-    return { rows, truncated: rows.length >= DELIVERY_LIST_LIMIT };
+    return documentPageOf(response.data, rows);
   } catch (e) {
     throw toApiError(e);
   }
@@ -148,8 +168,7 @@ export const deleteDelivery = async (id: string): Promise<void> => {
 
 export const getDeliveryHistory = async (id: string): Promise<DeliveryHistoryEntry[]> => {
   try {
-    const response = await api.get(`/deliveries/${id}/history`, { params: { limit: 100 } });
-    return listRows(unwrapEnvelope(response.data)).map(mapHistoryEntry);
+    return await getAllRows(`/deliveries/${id}/history`, {}, mapHistoryEntry);
   } catch (e) {
     throw toApiError(e);
   }
@@ -157,8 +176,7 @@ export const getDeliveryHistory = async (id: string): Promise<DeliveryHistoryEnt
 
 export const getDeliveryIssues = async (id: string): Promise<DeliveryIssue[]> => {
   try {
-    const response = await api.get(`/deliveries/${id}/issues`, { params: { limit: 100 } });
-    return listRows(unwrapEnvelope(response.data)).map(mapIssue);
+    return await getAllRows(`/deliveries/${id}/issues`, {}, mapIssue);
   } catch (e) {
     throw toApiError(e);
   }

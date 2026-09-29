@@ -51,6 +51,7 @@ export const getStatementLineEntries = async (
   accountCode: string,
   range: ReportRange,
   limit = 50,
+  page = 1,
 ): Promise<StatementLineEntries> => {
   try {
     const response = await api.get(
@@ -60,6 +61,7 @@ export const getStatementLineEntries = async (
           startDate: range.startDate,
           endDate: range.endDate,
           limit,
+          page,
         },
       },
     );

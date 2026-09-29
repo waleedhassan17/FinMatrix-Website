@@ -24,6 +24,7 @@ import {
   vendorCreditSingleSerializer,
   type VendorCreditWritePayload,
 } from '@/serializers/vendorCreditSerializer';
+import { documentPageOf, type DocumentPage } from '@/models/documentList';
 
 export interface VendorCreditQueryParams {
   /** Matches `vendorCreditNumber` only — not the reason, not the vendor. */
@@ -49,6 +50,22 @@ export const getVendorCredits = async (
   try {
     const response = await api.get('/vendor-credits', { params });
     return vendorCreditListSerializer(unwrapEnvelope(response.data));
+  } catch (e) {
+    throw toApiError(e);
+  }
+};
+
+/**
+ * One page of the list, with the server's summary (every row the filters
+ * match) and pagination — what a list screen pages through with "Load more".
+ */
+export const getVendorCreditPage = async (
+  params: VendorCreditQueryParams & { page?: number; limit?: number } = {},
+): Promise<DocumentPage<VendorCredit>> => {
+  const query: Record<string, unknown> = { ...params };
+  try {
+    const response = await api.get('/vendor-credits', { params: query });
+    return documentPageOf(response.data, vendorCreditListSerializer(unwrapEnvelope(response.data)));
   } catch (e) {
     throw toApiError(e);
   }

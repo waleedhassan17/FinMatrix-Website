@@ -15,6 +15,7 @@ import type {
   EstimateSettableStatus,
   EstimateStatus,
 } from '@/models/estimate';
+import { documentPageOf, type DocumentPage } from '@/models/documentList';
 
 export interface EstimateQueryParams {
   search?: string;
@@ -41,6 +42,27 @@ export const getEstimates = async (
   try {
     const response = await api.get('/estimates', { params: query });
     return estimateListSerializer(unwrapEnvelope(response.data));
+  } catch (e) {
+    throw toApiError(e);
+  }
+};
+
+/**
+ * One page of the list, with the server's summary (every row the filters
+ * match) and pagination — what a list screen pages through with "Load more".
+ */
+export const getEstimatePage = async (
+  params: EstimateQueryParams & { page?: number; limit?: number } = {},
+): Promise<DocumentPage<Estimate>> => {
+  const { fromDate, toDate, ...rest } = params;
+  const query: Record<string, unknown> = { ...rest };
+  if (fromDate && toDate) {
+    query.startDate = fromDate;
+    query.endDate = toDate;
+  }
+  try {
+    const response = await api.get('/estimates', { params: query });
+    return documentPageOf(response.data, estimateListSerializer(unwrapEnvelope(response.data)));
   } catch (e) {
     throw toApiError(e);
   }

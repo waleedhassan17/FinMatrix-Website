@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -55,9 +55,16 @@ export function StatementLineDetail({
   range,
   lineAmount,
 }: StatementLineDetailProps) {
-  const query = useQuery({
+  // Paged: "Load more" fetches the next page, so a busy account's line is
+  // not cut off at the first 50 transactions.
+  const query = useInfiniteQuery({
     queryKey: ['reports', 'pl-line', accountCode, range],
-    queryFn: () => getStatementLineEntries(accountCode, range, PAGE_LIMIT),
+    queryFn: ({ pageParam }) => getStatementLineEntries(accountCode, range, PAGE_LIMIT, pageParam),
+    initialPageParam: 1,
+    getNextPageParam: (last, all) =>
+      all.reduce((n, p) => n + p.entries.length, 0) < last.total && last.entries.length > 0
+        ? all.length + 1
+        : undefined,
   });
 
   if (query.isLoading) {
@@ -84,8 +91,8 @@ export function StatementLineDetail({
     );
   }
 
-  const data = query.data;
-  const entries = data?.entries ?? [];
+  const data = query.data?.pages[0];
+  const entries = query.data?.pages.flatMap((p) => p.entries) ?? [];
 
   if (entries.length === 0) {
     return (
@@ -107,8 +114,6 @@ export function StatementLineDetail({
       );
     }
   }
-
-  const truncated = (data?.total ?? 0) > entries.length;
 
   return (
     <div className="ml-xl border-l-2 border-border-light py-xs pl-md">
@@ -153,11 +158,21 @@ export function StatementLineDetail({
         </tbody>
       </table>
 
-      {truncated && (
-        // Saying so beats an unqualified list that reads as complete.
-        <p className="pt-xs text-overline text-text-tertiary">
-          Showing the first {PAGE_LIMIT} of {data?.total} transactions.
-        </p>
+
+      {query.hasNextPage && (
+        <div className="flex items-center gap-sm pt-xs">
+          <p className="text-caption text-text-tertiary tabular">
+            Showing {entries.length} of {data?.total} transactions.
+          </p>
+          <button
+            type="button"
+            onClick={() => void query.fetchNextPage()}
+            disabled={query.isFetchingNextPage}
+            className="text-label-sm text-primary hover:underline disabled:opacity-50"
+          >
+            {query.isFetchingNextPage ? 'Loading…' : 'Load more'}
+          </button>
+        </div>
       )}
     </div>
   );

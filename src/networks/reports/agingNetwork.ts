@@ -72,12 +72,14 @@ export interface AgingDetailParams extends AgingParams {
   /** A bucket key from the report payload. Omit for every open document. */
   bucket?: string;
   limit?: number;
+  page?: number;
 }
 
 const agingDetailQuery = (params: AgingDetailParams): Record<string, string> => {
   const q = agingQuery(params);
   if (params.bucket) q.bucket = params.bucket;
   if (params.limit) q.limit = String(params.limit);
+  if (params.page) q.page = String(params.page);
   return q;
 };
 

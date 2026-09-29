@@ -7,6 +7,7 @@ import { getInventoryItems } from '@/networks/inventory/inventoryNetwork';
 import { getCustomers } from '@/networks/sales/customerNetwork';
 import { getVendors } from '@/networks/purchases/vendorNetwork';
 import type { Vendor } from '@/models/vendor';
+import { fetchAllPages } from '@/models/documentList';
 
 /**
  * The two pickers every sales document form needs.
@@ -17,12 +18,17 @@ import type { Vendor } from '@/models/vendor';
  */
 
 export function useCustomerOptions() {
+  // Every customer, page by page: the picker asked for 200, so a customer
+  // past the two-hundredth could not be chosen on any form.
   const { data, isLoading } = useQuery({
     queryKey: ['customers', 'picker'],
-    queryFn: () => getCustomers({ limit: 200 }),
+    queryFn: () =>
+      fetchAllPages((page, limit) =>
+        getCustomers({ page, limit }).then((r) => ({ rows: r.customers, totalPages: r.pagination.totalPages })),
+      ),
   });
 
-  const customers = useMemo(() => data?.customers ?? [], [data]);
+  const customers = useMemo(() => data ?? [], [data]);
 
   const options = useMemo(
     () =>
@@ -76,12 +82,16 @@ export function useInventoryOptions() {
  * join, unlike a customer.
  */
 export function useVendorOptions() {
+  // Every vendor, page by page — see useCustomerOptions.
   const { data, isLoading } = useQuery({
     queryKey: ['vendors', 'picker'],
-    queryFn: () => getVendors({ limit: 200 }),
+    queryFn: () =>
+      fetchAllPages((page, limit) =>
+        getVendors({ page, limit }).then((r) => ({ rows: r.vendors, totalPages: r.pagination.totalPages })),
+      ),
   });
 
-  const vendors = useMemo(() => data?.vendors ?? [], [data]);
+  const vendors = useMemo(() => data ?? [], [data]);
 
   const options = useMemo(
     () => vendors.filter((v) => v.isActive).map((v) => ({ value: v.id, label: v.name })),

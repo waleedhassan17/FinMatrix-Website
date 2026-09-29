@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -68,12 +68,19 @@ export function AgingPartyDocuments({
   rowAmount,
   bucketLabel,
 }: AgingPartyDocumentsProps) {
-  const query = useQuery({
+  // Paged: "Load more" fetches the next page. A party with more open
+  // documents than one page used to end at "Showing 50 of N".
+  const query = useInfiniteQuery({
     queryKey: ['reports', 'aging-party', partyType, partyId, params],
-    queryFn: () =>
+    queryFn: ({ pageParam }) =>
       partyType === 'vendor'
-        ? getApAgingPartyDocuments(partyId, { ...params, limit: PAGE_LIMIT })
-        : getArAgingPartyDocuments(partyId, { ...params, limit: PAGE_LIMIT }),
+        ? getApAgingPartyDocuments(partyId, { ...params, limit: PAGE_LIMIT, page: pageParam })
+        : getArAgingPartyDocuments(partyId, { ...params, limit: PAGE_LIMIT, page: pageParam }),
+    initialPageParam: 1,
+    getNextPageParam: (last, all) =>
+      all.reduce((n, p) => n + p.documents.length, 0) < last.total && last.documents.length > 0
+        ? all.length + 1
+        : undefined,
   });
 
   if (query.isLoading) {
@@ -100,8 +107,8 @@ export function AgingPartyDocuments({
     );
   }
 
-  const data = query.data;
-  const documents = data?.documents ?? [];
+  const data = query.data?.pages[0];
+  const documents = query.data?.pages.flatMap((p) => p.documents) ?? [];
   const noun = partyType === 'vendor' ? 'bills' : 'invoices';
 
   if (documents.length === 0) {
@@ -128,8 +135,6 @@ export function AgingPartyDocuments({
       );
     }
   }
-
-  const truncated = (data?.total ?? 0) > documents.length;
 
   const docHeader = partyType === 'vendor' ? 'Bill' : 'Invoice';
 
@@ -184,12 +189,22 @@ export function AgingPartyDocuments({
         </tbody>
       </table>
 
-      {truncated && (
-        <p className="mt-xxs pl-sm text-caption text-text-tertiary">
-          {/* Said out loud. A list that silently stops reads as complete, and
-              the reader would conclude the balance is smaller than it is. */}
-          Showing {documents.length} of {data?.total} open {noun}.
-        </p>
+      {/* Said out loud. A list that silently stops reads as complete, and
+          the reader would conclude the balance is smaller than it is. */}
+      {query.hasNextPage && (
+        <div className="mt-xxs flex items-center gap-sm pl-sm">
+          <p className="text-caption text-text-tertiary tabular">
+            Showing {documents.length} of {data?.total} open {noun}.
+          </p>
+          <button
+            type="button"
+            onClick={() => void query.fetchNextPage()}
+            disabled={query.isFetchingNextPage}
+            className="text-label-sm text-primary hover:underline disabled:opacity-50"
+          >
+            {query.isFetchingNextPage ? 'Loading…' : 'Load more'}
+          </button>
+        </div>
       )}
     </div>
   );

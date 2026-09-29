@@ -1,7 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { createColumnHelper } from '@tanstack/react-table';
 import { MapPin, Plus, Truck, UserPlus } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 import { Button } from '@/components/ui/Button';
@@ -21,9 +21,11 @@ import {
   mapsLink,
   riderLabel,
   type Delivery,
+  type DeliveryStatus,
 } from '@/models/delivery';
+import { statusCountsOf } from '@/models/documentList';
 import { formatReportDate } from '@/models/reportPeriod';
-import { getDeliveries, getDeliveryMonitor } from '@/networks/delivery/deliveryNetwork';
+import { getDeliveryMonitor, getDeliveryPage } from '@/networks/delivery/deliveryNetwork';
 import { formatMoney } from '@/utils/money';
 
 const PAGE_SIZE = 25;
@@ -38,19 +40,13 @@ const TABS: Array<[Tab, string]> = [
   ['all', 'All'],
 ];
 
-const inTab = (d: Delivery, tab: Tab): boolean => {
-  switch (tab) {
-    case 'active':
-      return ACTIVE_STATUSES.includes(d.status);
-    case 'unassigned':
-      return d.status === 'unassigned';
-    case 'delivered':
-      return d.status === 'delivered';
-    case 'closed':
-      return d.status === 'failed' || d.status === 'returned' || d.status === 'cancelled';
-    default:
-      return true;
-  }
+/** The statuses each tab shows; `all` sends none. */
+const TAB_STATUSES: Record<Tab, readonly DeliveryStatus[] | undefined> = {
+  active: ACTIVE_STATUSES,
+  unassigned: ['unassigned'],
+  delivered: ['delivered'],
+  closed: ['failed', 'returned', 'cancelled'],
+  all: undefined,
 };
 
 type Row = Delivery & { riderName: string; online: boolean; value: number; map: string | null };
@@ -70,8 +66,17 @@ export default function DeliveryMonitorPage() {
   const canCreate = useCapability('delivery.create').allowed;
   const canAssign = useCapability('delivery.assign').allowed;
   const [tab, setTab] = useState<Tab>('active');
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   const monitor = useQuery({
     queryKey: ['deliveries', 'monitor'],
@@ -79,11 +84,16 @@ export default function DeliveryMonitorPage() {
     enabled,
     refetchInterval: 30_000,
   });
+  // Searched, filtered by tab and paged BY THE SERVER. This was one fetch of
+  // the latest 500, searched and counted in the browser — past that, older
+  // deliveries could not be found and the tab counts stopped growing.
   const list = useQuery({
-    queryKey: ['deliveries', 'list', 'all'],
-    queryFn: () => getDeliveries(),
+    queryKey: ['deliveries', 'list', 'monitor', { tab, search, page }],
+    queryFn: () =>
+      getDeliveryPage({ statuses: TAB_STATUSES[tab], q: search || undefined, page, limit: PAGE_SIZE }),
     enabled,
     refetchInterval: 30_000,
+    placeholderData: keepPreviousData,
   });
   const { riders, byId } = useRiders(enabled);
 
@@ -92,7 +102,7 @@ export default function DeliveryMonitorPage() {
     [monitor.data],
   );
 
-  const all = useMemo<Row[]>(
+  const pageRows = useMemo<Row[]>(
     () =>
       (list.data?.rows ?? []).map((d) => {
         const rider = d.personnelId ? byId.get(d.personnelId) : undefined;
@@ -107,28 +117,19 @@ export default function DeliveryMonitorPage() {
     [list.data, byId, onlineByDelivery],
   );
 
+  // Per tab, over every delivery the search matches (the server's counts).
   const counts = useMemo(() => {
+    const byStatus = statusCountsOf(list.data?.summary ?? null, list.data?.rows ?? []);
     const c = {} as Record<Tab, number>;
-    for (const [t] of TABS) c[t] = all.filter((d) => inTab(d, t)).length;
+    for (const [t] of TABS) {
+      const statuses = TAB_STATUSES[t];
+      c[t] = statuses ? statuses.reduce((n, st) => n + (byStatus[st] ?? 0), 0) : (byStatus.all ?? 0);
+    }
     return c;
-  }, [all]);
+  }, [list.data]);
 
-  const rows = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return all
-      .filter((d) => inTab(d, tab))
-      .filter(
-        (d) =>
-          !q ||
-          d.referenceNo.toLowerCase().includes(q) ||
-          d.customerName.toLowerCase().includes(q) ||
-          d.riderName.toLowerCase().includes(q),
-      );
-  }, [all, tab, search]);
-
-  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const totalPages = list.data?.totalPages ?? 1;
   const current = Math.min(page, totalPages);
-  const pageRows = rows.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE);
 
   const columns = useMemo(
     () => [
@@ -234,9 +235,9 @@ export default function DeliveryMonitorPage() {
               <Link to="/deliveries/assign">
                 <UserPlus className="size-4" />
                 Assign
-                {counts.unassigned > 0 && (
+                {(monitor.data?.summary.unassigned ?? 0) > 0 && (
                   <span className="rounded-full bg-warning px-xs text-label-sm text-text-inverse tabular">
-                    {counts.unassigned}
+                    {monitor.data?.summary.unassigned}
                   </span>
                 )}
               </Link>
@@ -316,11 +317,8 @@ export default function DeliveryMonitorPage() {
           ))}
         </div>
         <SearchInput
-          value={search}
-          onValueChange={(v) => {
-            setSearch(v);
-            setPage(1);
-          }}
+          value={searchInput}
+          onValueChange={setSearchInput}
           placeholder="Reference, customer or rider…"
           aria-label="Search deliveries"
           containerClassName="w-72 max-w-full"
@@ -348,12 +346,12 @@ export default function DeliveryMonitorPage() {
             </div>
           }
         />
-        <TablePager page={current} totalPages={totalPages} total={rows.length} onPage={setPage} />
-        {list.data?.truncated && (
-          <p className="mt-sm text-caption text-text-tertiary">
-            Showing the most recent {all.length} deliveries.
-          </p>
-        )}
+        <TablePager
+          page={current}
+          totalPages={totalPages}
+          total={list.data?.total ?? pageRows.length}
+          onPage={setPage}
+        />
       </div>
     </div>
   );

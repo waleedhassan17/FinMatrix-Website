@@ -18,15 +18,17 @@ import {
 import { asRaw } from '@/serializers/documentLines';
 import { mapBill } from '@/serializers/billSerializer';
 import type { Bill } from '@/models/bill';
-import { ITEM_PO_SEARCH_LIMIT } from '@/models/itemPurchaseOrders';
 import type {
   PurchaseOrder,
   PurchaseOrderStatus,
   ReceiptLinePayload,
 } from '@/models/purchaseOrder';
+import { documentPageOf, fetchAllPages, type DocumentPage } from '@/models/documentList';
 
 export interface POQueryParams {
   search?: string;
+  /** Orders with a line for this inventory item. */
+  itemId?: string;
   status?: PurchaseOrderStatus;
   vendorId?: string;
   fromDate?: string;
@@ -58,25 +60,36 @@ export const getPurchaseOrders = async (
 };
 
 /**
- * The most recent purchase orders, with how many the company has in all.
- *
- * For an inventory item's Purchase orders tab: the list has no item filter, so
- * the tab filters these on their lines and needs the total to say when there
- * were older orders it did not search.
+ * One page of the list, with the server's summary (every row the filters
+ * match) and pagination — what a list screen pages through with "Load more".
  */
-export const getRecentPurchaseOrders = async (
-  limit = ITEM_PO_SEARCH_LIMIT,
-): Promise<{ rows: PurchaseOrder[]; total: number }> => {
+export const getPurchaseOrderPage = async (
+  params: POQueryParams & { page?: number; limit?: number } = {},
+): Promise<DocumentPage<PurchaseOrder>> => {
+  const { fromDate, toDate, ...rest } = params;
+  const query: Record<string, unknown> = { ...rest };
+  if (fromDate && toDate) {
+    query.startDate = fromDate;
+    query.endDate = toDate;
+  }
   try {
-    const response = await api.get('/purchase-orders', { params: { limit } });
-    const payload = unwrapEnvelope<{ pagination?: { total?: unknown } } | null>(response.data);
-    const rows = purchaseOrderListSerializer(payload);
-    const total = Number(payload?.pagination?.total);
-    return { rows, total: Number.isFinite(total) ? Math.max(total, rows.length) : rows.length };
+    const response = await api.get('/purchase-orders', { params: query });
+    return documentPageOf(response.data, purchaseOrderListSerializer(unwrapEnvelope(response.data)));
   } catch (e) {
     throw toApiError(e);
   }
 };
+
+/**
+ * Every purchase order with a line for this item — the item page's Purchase
+ * orders tab and its "on order" figure. Filtered by the server, every page:
+ * this used to read the 100 most recent orders and filter their lines here,
+ * so an item's older orders were never found.
+ */
+export const getPurchaseOrdersForItem = (itemId: string): Promise<PurchaseOrder[]> =>
+  fetchAllPages((page, limit) =>
+    getPurchaseOrderPage({ itemId, page, limit }).then((p) => ({ rows: p.rows, totalPages: p.totalPages })),
+  );
 
 export const getPurchaseOrderById = async (
   id: string,

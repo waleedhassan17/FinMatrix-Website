@@ -30,6 +30,9 @@ import {
 } from '@/networks/purchases/vendorNetwork';
 import { VENDOR_STATEMENT_KIND_LABELS } from '@/serializers/vendorSerializer';
 import { formatMoney } from '@/utils/money';
+import { LIST_PAGE_SIZE, pageOfRows } from '@/models/documentList';
+import { usePagedList } from '@/hooks/usePagedList';
+import { LoadMore } from '@/components/ui/LoadMore';
 
 const iso = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
@@ -345,73 +348,95 @@ function OverviewTab({
 }
 
 function BillsTab({ vendorId }: { vendorId: string }) {
-  const { data, isLoading } = useQuery({
-    queryKey: ['vendors', vendorId, 'bills'],
-    queryFn: () => getVendorBills(vendorId, { limit: 50 }),
-  });
+  // Page by page ("Load more"): this tab used to stop at the first 50.
+  const list = usePagedList(['vendors', vendorId, 'bills'], (page) =>
+    getVendorBills(vendorId, { page, limit: LIST_PAGE_SIZE }).then(pageOfRows),
+  );
+  const data = { rows: list.rows };
+  const { isLoading } = list;
 
   if (isLoading) return <Loading />;
   if (!data?.rows.length) return <Empty text="No bills from this vendor yet." />;
 
   return (
-    <Card className="divide-y divide-border-light p-lg">
-      {data.rows.map((r) => (
-        <Link
-          key={r.id}
-          to={`/bills/${r.id}`}
-          className="flex items-center gap-md py-sm first:pt-0 last:pb-0 hover:bg-surface-hover"
-        >
-          <div className="min-w-0 flex-1">
-            <p className="text-label-lg text-text-primary">{r.billNumber}</p>
-            <p className="text-caption text-text-secondary">
-              {r.date} · due {r.dueDate || '—'}
-            </p>
-          </div>
-          {/* Status is re-derived in the serializer: this route does not apply
-              the overdue rule that GET /bills does. */}
-          <StatusBadge status={r.status} />
-          <div className="w-32 shrink-0 text-right">
-            <p className="text-label-lg text-text-primary tabular">
-              {formatMoney(r.amount)}
-            </p>
-            {r.balance > 0 && (
-              <p className="text-caption text-danger tabular">
-                {formatMoney(r.balance)} owing
+    <>
+      <Card className="divide-y divide-border-light p-lg">
+        {data.rows.map((r) => (
+          <Link
+            key={r.id}
+            to={`/bills/${r.id}`}
+            className="flex items-center gap-md py-sm first:pt-0 last:pb-0 hover:bg-surface-hover"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="text-label-lg text-text-primary">{r.billNumber}</p>
+              <p className="text-caption text-text-secondary">
+                {r.date} · due {r.dueDate || '—'}
               </p>
-            )}
-          </div>
-        </Link>
-      ))}
-    </Card>
+            </div>
+            {/* Status is re-derived in the serializer: this route does not apply
+                the overdue rule that GET /bills does. */}
+            <StatusBadge status={r.status} />
+            <div className="w-32 shrink-0 text-right">
+              <p className="text-label-lg text-text-primary tabular">
+                {formatMoney(r.amount)}
+              </p>
+              {r.balance > 0 && (
+                <p className="text-caption text-danger tabular">
+                  {formatMoney(r.balance)} owing
+                </p>
+              )}
+            </div>
+          </Link>
+        ))}
+      </Card>
+      <LoadMore
+        shown={list.rows.length}
+        total={list.total}
+        hasMore={list.hasNextPage}
+        loading={list.isFetchingNextPage}
+        onMore={list.fetchNextPage}
+      />
+    </>
   );
 }
 
 function PaymentsTab({ vendorId }: { vendorId: string }) {
-  const { data, isLoading } = useQuery({
-    queryKey: ['vendors', vendorId, 'payments'],
-    queryFn: () => getVendorPayments(vendorId, { limit: 50 }),
-  });
+  // Page by page ("Load more"): this tab used to stop at the first 50.
+  const list = usePagedList(['vendors', vendorId, 'payments'], (page) =>
+    getVendorPayments(vendorId, { page, limit: LIST_PAGE_SIZE }).then(pageOfRows),
+  );
+  const data = { rows: list.rows };
+  const { isLoading } = list;
 
   if (isLoading) return <Loading />;
   if (!data?.rows.length) return <Empty text="No payments to this vendor yet." />;
 
   return (
-    <Card className="divide-y divide-border-light p-lg">
-      {data.rows.map((r) => (
-        <div key={r.id} className="flex items-center gap-md py-sm first:pt-0 last:pb-0">
-          <div className="min-w-0 flex-1">
-            <p className="text-label-lg text-text-primary">{r.reference}</p>
-            <p className="text-caption text-text-secondary">
-              {r.date} · {r.method}
-            </p>
+    <>
+      <Card className="divide-y divide-border-light p-lg">
+        {data.rows.map((r) => (
+          <div key={r.id} className="flex items-center gap-md py-sm first:pt-0 last:pb-0">
+            <div className="min-w-0 flex-1">
+              <p className="text-label-lg text-text-primary">{r.reference}</p>
+              <p className="text-caption text-text-secondary">
+                {r.date} · {r.method}
+              </p>
+            </div>
+            {/* Money out — not the success colour the customer side uses. */}
+            <span className="text-label-lg text-text-primary tabular">
+              {formatMoney(r.amount)}
+            </span>
           </div>
-          {/* Money out — not the success colour the customer side uses. */}
-          <span className="text-label-lg text-text-primary tabular">
-            {formatMoney(r.amount)}
-          </span>
-        </div>
-      ))}
-    </Card>
+        ))}
+      </Card>
+      <LoadMore
+        shown={list.rows.length}
+        total={list.total}
+        hasMore={list.hasNextPage}
+        loading={list.isFetchingNextPage}
+        onMore={list.fetchNextPage}
+      />
+    </>
   );
 }
 

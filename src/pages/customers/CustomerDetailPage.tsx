@@ -28,6 +28,9 @@ import {
 import { STATEMENT_KIND_LABELS } from '@/serializers/customerSerializer';
 import { colors } from '@/theme/tokens';
 import { formatMoney } from '@/utils/money';
+import { LIST_PAGE_SIZE, pageOfRows } from '@/models/documentList';
+import { usePagedList } from '@/hooks/usePagedList';
+import { LoadMore } from '@/components/ui/LoadMore';
 
 const iso = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
@@ -317,71 +320,93 @@ function OverviewTab({
 }
 
 function InvoicesTab({ customerId }: { customerId: string }) {
-  const { data, isLoading } = useQuery({
-    queryKey: ['customers', customerId, 'invoices'],
-    queryFn: () => getCustomerInvoices(customerId, { limit: 50 }),
-  });
+  // Page by page ("Load more"): this tab used to stop at the first 50.
+  const list = usePagedList(['customers', customerId, 'invoices'], (page) =>
+    getCustomerInvoices(customerId, { page, limit: LIST_PAGE_SIZE }).then(pageOfRows),
+  );
+  const data = { rows: list.rows };
+  const { isLoading } = list;
 
   if (isLoading) return <Loading />;
   if (!data?.rows.length) return <Empty text="No invoices for this customer yet." />;
 
   return (
-    <Card className="divide-y divide-border-light p-lg">
-      {data.rows.map((r) => (
-        <Link
-          key={r.id}
-          to={`/invoices/${r.id}`}
-          className="flex items-center gap-md py-sm first:pt-0 last:pb-0 hover:bg-surface-hover"
-        >
-          <div className="min-w-0 flex-1">
-            <p className="text-label-lg text-text-primary">{r.invoiceNumber}</p>
-            <p className="text-caption text-text-secondary">
-              {r.date} · due {r.dueDate || '—'}
-            </p>
-          </div>
-          <StatusBadge status={r.status} />
-          <div className="w-32 shrink-0 text-right">
-            <p className="text-label-lg text-text-primary tabular">
-              {formatMoney(r.amount)}
-            </p>
-            {r.balance > 0 && (
-              <p className="text-caption text-danger tabular">
-                {formatMoney(r.balance)} due
+    <>
+      <Card className="divide-y divide-border-light p-lg">
+        {data.rows.map((r) => (
+          <Link
+            key={r.id}
+            to={`/invoices/${r.id}`}
+            className="flex items-center gap-md py-sm first:pt-0 last:pb-0 hover:bg-surface-hover"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="text-label-lg text-text-primary">{r.invoiceNumber}</p>
+              <p className="text-caption text-text-secondary">
+                {r.date} · due {r.dueDate || '—'}
               </p>
-            )}
-          </div>
-        </Link>
-      ))}
-    </Card>
+            </div>
+            <StatusBadge status={r.status} />
+            <div className="w-32 shrink-0 text-right">
+              <p className="text-label-lg text-text-primary tabular">
+                {formatMoney(r.amount)}
+              </p>
+              {r.balance > 0 && (
+                <p className="text-caption text-danger tabular">
+                  {formatMoney(r.balance)} due
+                </p>
+              )}
+            </div>
+          </Link>
+        ))}
+      </Card>
+      <LoadMore
+        shown={list.rows.length}
+        total={list.total}
+        hasMore={list.hasNextPage}
+        loading={list.isFetchingNextPage}
+        onMore={list.fetchNextPage}
+      />
+    </>
   );
 }
 
 function PaymentsTab({ customerId }: { customerId: string }) {
-  const { data, isLoading } = useQuery({
-    queryKey: ['customers', customerId, 'payments'],
-    queryFn: () => getCustomerPayments(customerId, { limit: 50 }),
-  });
+  // Page by page ("Load more"): this tab used to stop at the first 50.
+  const list = usePagedList(['customers', customerId, 'payments'], (page) =>
+    getCustomerPayments(customerId, { page, limit: LIST_PAGE_SIZE }).then(pageOfRows),
+  );
+  const data = { rows: list.rows };
+  const { isLoading } = list;
 
   if (isLoading) return <Loading />;
   if (!data?.rows.length)
     return <Empty text="No payments recorded for this customer yet." />;
 
   return (
-    <Card className="divide-y divide-border-light p-lg">
-      {data.rows.map((r) => (
-        <div key={r.id} className="flex items-center gap-md py-sm first:pt-0 last:pb-0">
-          <div className="min-w-0 flex-1">
-            <p className="text-label-lg text-text-primary">{r.reference}</p>
-            <p className="text-caption text-text-secondary">
-              {r.date} · {r.method}
-            </p>
+    <>
+      <Card className="divide-y divide-border-light p-lg">
+        {data.rows.map((r) => (
+          <div key={r.id} className="flex items-center gap-md py-sm first:pt-0 last:pb-0">
+            <div className="min-w-0 flex-1">
+              <p className="text-label-lg text-text-primary">{r.reference}</p>
+              <p className="text-caption text-text-secondary">
+                {r.date} · {r.method}
+              </p>
+            </div>
+            <span className="text-label-lg text-success tabular">
+              {formatMoney(r.amount)}
+            </span>
           </div>
-          <span className="text-label-lg text-success tabular">
-            {formatMoney(r.amount)}
-          </span>
-        </div>
-      ))}
-    </Card>
+        ))}
+      </Card>
+      <LoadMore
+        shown={list.rows.length}
+        total={list.total}
+        hasMore={list.hasNextPage}
+        loading={list.isFetchingNextPage}
+        onMore={list.fetchNextPage}
+      />
+    </>
   );
 }
 

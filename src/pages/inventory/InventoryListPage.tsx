@@ -298,11 +298,6 @@ export default function InventoryListPage() {
           }
         />
         <TablePager page={current} totalPages={totalPages} total={rows.length} onPage={setPage} />
-        {query.data?.truncated && (
-          <p className="mt-sm text-caption text-text-tertiary">
-            Showing the first {items.length} items.
-          </p>
-        )}
       </div>
     </div>
   );

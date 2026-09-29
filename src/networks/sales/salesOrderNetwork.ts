@@ -20,6 +20,7 @@ import type {
   SalesOrder,
   SalesOrderStatus,
 } from '@/models/salesOrder';
+import { documentPageOf, type DocumentPage } from '@/models/documentList';
 
 export interface SalesOrderQueryParams {
   search?: string;
@@ -44,6 +45,27 @@ export const getSalesOrders = async (
   try {
     const response = await api.get('/sales-orders', { params: query });
     return salesOrderListSerializer(unwrapEnvelope(response.data));
+  } catch (e) {
+    throw toApiError(e);
+  }
+};
+
+/**
+ * One page of the list, with the server's summary (every row the filters
+ * match) and pagination — what a list screen pages through with "Load more".
+ */
+export const getSalesOrderPage = async (
+  params: SalesOrderQueryParams & { page?: number; limit?: number } = {},
+): Promise<DocumentPage<SalesOrder>> => {
+  const { fromDate, toDate, ...rest } = params;
+  const query: Record<string, unknown> = { ...rest };
+  if (fromDate && toDate) {
+    query.startDate = fromDate;
+    query.endDate = toDate;
+  }
+  try {
+    const response = await api.get('/sales-orders', { params: query });
+    return documentPageOf(response.data, salesOrderListSerializer(unwrapEnvelope(response.data)));
   } catch (e) {
     throw toApiError(e);
   }

@@ -23,7 +23,7 @@ import { asRaw, str } from '@/serializers/documentLines';
 import type { Bill, BillStatus } from '@/models/bill';
 import type { AllocationRow } from '@/models/allocation';
 import { toNumber } from '@/utils/money';
-import { documentListSummaryOf, listPaginationOf, type DocumentPage } from '@/models/documentList';
+import { documentPageOf, fetchAllPages, type DocumentPage } from '@/models/documentList';
 
 export interface BillQueryParams {
   search?: string;
@@ -55,11 +55,7 @@ export const getBillPage = async (
   try {
     const response = await api.get('/bills', { params });
     const rows = billListSerializer(unwrapEnvelope(response.data));
-    return {
-      rows,
-      summary: documentListSummaryOf(response.data),
-      ...listPaginationOf(response.data, rows.length),
-    };
+    return documentPageOf(response.data, rows);
   } catch (e) {
     throw toApiError(e);
   }
@@ -69,20 +65,14 @@ export const getBillPage = async (
  * List bills — the rows alone. `status` filters by the status each bill
  * displays, overdue included: the server derives it from the due date.
  */
-export const getBills = async (params: BillQueryParams = {}): Promise<Bill[]> => {
+export const getBills = (params: Omit<BillQueryParams, 'page' | 'limit'> = {}): Promise<Bill[]> => {
   const { fromDate, toDate, ...rest } = params;
-  const query: Record<string, unknown> = { ...rest };
-  if (fromDate && toDate) {
-    query.startDate = fromDate;
-    query.endDate = toDate;
-  }
-
-  try {
-    const response = await api.get('/bills', { params: query });
-    return billListSerializer(unwrapEnvelope(response.data));
-  } catch (e) {
-    throw toApiError(e);
-  }
+  const query = { ...rest, ...(fromDate && toDate ? { startDate: fromDate, endDate: toDate } : {}) };
+  // Every page: a vendor's bills past the first 200 were missing from Pay
+  // Bills and from the duplicate-number check.
+  return fetchAllPages((page, limit) =>
+    getBillPage({ ...query, page, limit }).then((p) => ({ rows: p.rows, totalPages: p.totalPages })),
+  );
 };
 
 export const getBillById = async (id: string): Promise<Bill | null> => {
@@ -173,7 +163,7 @@ export const getBillPayments = async (
 export const getPayableBills = async (
   vendorId: string,
 ): Promise<AllocationRow[]> => {
-  const bills = await getBills({ vendorId, limit: 200 });
+  const bills = await getBills({ vendorId });
   return bills
     .filter((b) => b.balance > 0 && b.status !== 'draft' && b.status !== 'void')
     .sort((a, b) => (a.dueDate || '9999').localeCompare(b.dueDate || '9999'))

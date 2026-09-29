@@ -25,6 +25,8 @@ import {
   mapStockMovement,
 } from '@/serializers/inventorySerializer';
 import { toNumber } from '@/utils/money';
+import { documentPageOf, LIST_PAGE_SIZE, type DocumentPage } from '@/models/documentList';
+import { getAllRows } from '@/networks/network/allPages';
 
 // ─── Picker ─────────────────────────────────────────────
 // The invoice, PO and delivery line editors need only a handful of fields.
@@ -62,46 +64,31 @@ const mapItem = (raw: unknown): InventoryItemOption => {
 };
 
 /**
- * Items for the picker.
- *
- * The default page size of 50 truncates the dropdown in any real warehouse —
- * the app raised it for the same reason — so this asks for 200.
+ * Items for the picker — every one of them, page by page. This asked for 200
+ * (then the server's page size), so a warehouse with more could not pick the
+ * rest on an invoice, a bill or an order.
  */
 export const getInventoryItems = async (params?: {
   search?: string;
   limit?: number;
 }): Promise<InventoryItemOption[]> => {
-  try {
-    const response = await api.get('/inventory/items', {
-      params: { limit: 200, ...params },
-    });
-    return listRows(unwrapEnvelope(response.data)).map(mapItem).filter((i) => i.id);
-  } catch (e) {
-    throw toApiError(e);
-  }
+  const { limit: _ignored, ...rest } = params ?? {};
+  const rows = await getAllRows('/inventory/items', rest, mapItem);
+  return rows.filter((i) => i.id);
 };
 
 // ─── Items ──────────────────────────────────────────────
 
 /**
- * The paging totals are stripped by the response envelope (it keeps only
- * `data`), so a server-paged list could never say how many pages there are.
- * One generous fetch, paged on the client; `truncated` says when it was not
- * everything.
+ * Every item, page by page, paged again on the client. This used to be one
+ * fetch of 500 — the envelope stripped the page count — with `truncated`
+ * saying when it was not everything; the server now sends its pagination, so
+ * nothing is left out and `truncated` stays false.
  */
-export const ITEM_LIST_LIMIT = 500;
-
-export const getItems = async (): Promise<{ rows: InventoryItem[]; truncated: boolean }> => {
-  try {
-    const response = await api.get('/inventory/items', {
-      params: { page: 1, limit: ITEM_LIST_LIMIT },
-    });
-    const rows = listRows(unwrapEnvelope(response.data)).map(mapInventoryItem);
-    return { rows, truncated: rows.length >= ITEM_LIST_LIMIT };
-  } catch (e) {
-    throw toApiError(e);
-  }
-};
+export const getItems = async (): Promise<{ rows: InventoryItem[]; truncated: boolean }> => ({
+  rows: await getAllRows('/inventory/items', {}, mapInventoryItem),
+  truncated: false,
+});
 
 export const getItem = async (id: string): Promise<InventoryItem> => {
   try {
@@ -199,18 +186,19 @@ export const reverseAdjustment = async (adjustmentId: string): Promise<Inventory
 
 // ─── Movements ──────────────────────────────────────────
 
-export const MOVEMENT_LIMIT = 200;
-
-/** The item's stock ledger, newest first. */
-export const getItemMovements = async (
+/**
+ * One page of the item's stock ledger, newest first. The tab pages through it
+ * with "Load more"; it used to stop at the latest 200.
+ */
+export const getItemMovementPage = async (
   id: string,
-): Promise<{ rows: StockMovement[]; truncated: boolean }> => {
+  page: number,
+  limit = LIST_PAGE_SIZE,
+): Promise<DocumentPage<StockMovement>> => {
   try {
-    const response = await api.get(`/inventory/items/${id}/movements`, {
-      params: { page: 1, limit: MOVEMENT_LIMIT },
-    });
+    const response = await api.get(`/inventory/items/${id}/movements`, { params: { page, limit } });
     const rows = listRows(unwrapEnvelope(response.data)).map(mapStockMovement);
-    return { rows, truncated: rows.length >= MOVEMENT_LIMIT };
+    return documentPageOf(response.data, rows);
   } catch (e) {
     throw toApiError(e);
   }

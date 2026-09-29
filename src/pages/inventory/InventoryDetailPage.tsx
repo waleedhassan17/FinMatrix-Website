@@ -20,6 +20,7 @@ import { DetailPageSkeleton, PageMessage } from '@/components/layout/PageState';
 import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { LoadMore } from '@/components/ui/LoadMore';
 import { DataTable } from '@/components/ui/DataTable';
 import { DateField, Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Field';
 import { Input } from '@/components/ui/Input';
@@ -48,7 +49,6 @@ import {
   type StockMovement,
 } from '@/models/inventory';
 import {
-  ITEM_PO_SEARCH_LIMIT,
   itemLineQuantities,
   onOrderForItem,
   pendingPORequestsForItem,
@@ -58,13 +58,14 @@ import { formatReportDate } from '@/models/reportPeriod';
 import { fetchApprovals } from '@/networks/approvals/approvalsNetwork';
 import {
   getItem,
-  getItemMovements,
+  getItemMovementPage,
   reverseAdjustment,
   setOpeningStock,
   toggleItem,
 } from '@/networks/inventory/inventoryNetwork';
-import { getRecentPurchaseOrders } from '@/networks/purchases/purchaseOrderNetwork';
+import { getPurchaseOrdersForItem } from '@/networks/purchases/purchaseOrderNetwork';
 import { formatMoney, toDecimal } from '@/utils/money';
+import { usePagedList } from '@/hooks/usePagedList';
 
 const columnHelper = createColumnHelper<StockMovement>();
 
@@ -100,23 +101,24 @@ export default function InventoryDetailPage() {
     enabled,
   });
 
-  const movesQuery = useQuery({
-    queryKey: ['inventory', 'items', itemId, 'movements'],
-    queryFn: () => getItemMovements(itemId),
-    enabled,
-  });
+  // Paged by the server, newest first; "Load more" reaches the oldest.
+  const movesQuery = usePagedList(
+    ['inventory', 'items', itemId, 'movements'],
+    (page) => getItemMovementPage(itemId, page),
+    { enabled },
+  );
 
   // Purchase orders, as the app's POs tab has them. Staff may raise one too —
   // it files a request the owner approves — and the button says which.
   const poCap = useCapability('purchaseOrder.create');
   const posEnabled = useFeature('purchaseOrders');
 
-  // The recent list filtered on its lines: there is no per-item endpoint. Kept
-  // under the purchase-orders key, so creating, receiving or closing an order
+  // Every order with a line for this item, filtered by the server. Kept under
+  // the purchase-orders key, so creating, receiving or closing an order
   // anywhere refreshes this tab too.
   const posQuery = useQuery({
     queryKey: ['purchase-orders', 'for-item', itemId],
-    queryFn: () => getRecentPurchaseOrders(),
+    queryFn: () => getPurchaseOrdersForItem(itemId),
     enabled: enabled && posEnabled,
     placeholderData: keepPreviousData,
   });
@@ -131,7 +133,7 @@ export default function InventoryDetailPage() {
   });
 
   const itemPOs = useMemo(
-    () => purchaseOrdersForItem(posQuery.data?.rows ?? [], itemId),
+    () => purchaseOrdersForItem(posQuery.data ?? [], itemId),
     [posQuery.data, itemId],
   );
   const pendingRequests = useMemo(
@@ -139,18 +141,15 @@ export default function InventoryDetailPage() {
     [requestsQuery.data, itemId],
   );
   const onOrder = useMemo(() => onOrderForItem(itemPOs, itemId), [itemPOs, itemId]);
-  // Only one page was searched; an unqualified "none" would be a confident
-  // wrong answer to "is this already on order?".
-  const poTruncated = (posQuery.data?.total ?? 0) > (posQuery.data?.rows.length ?? 0);
 
   // The server orders by date only; within a day, newest-created first keeps a
   // same-day receipt and adjustment in the order they happened.
   const movements = useMemo(
     () =>
-      [...(movesQuery.data?.rows ?? [])].sort(
+      [...movesQuery.rows].sort(
         (a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt),
       ),
-    [movesQuery.data],
+    [movesQuery.rows],
   );
 
   const toggle = useMutation({
@@ -293,7 +292,7 @@ export default function InventoryDetailPage() {
   const value = itemValue(item).toDecimalPlaces(2).toNumber();
   const unit = item.unitOfMeasure ? ` ${item.unitOfMeasure}` : '';
   const openingAvailable =
-    !movesQuery.isLoading && canSetOpeningStock(item, movesQuery.data?.rows.length ?? 0);
+    !movesQuery.isLoading && canSetOpeningStock(item, movesQuery.total);
   const openingErrors = validateOpeningStock(opening, item.unitCost);
   const openingValue = toDecimal(opening.quantity.replace(/,/g, '') || 0)
     .times(item.unitCost)
@@ -493,11 +492,13 @@ export default function InventoryDetailPage() {
                   </p>
                 }
               />
-              {movesQuery.data?.truncated && (
-                <p className="text-caption text-text-tertiary">
-                  Showing the latest {movements.length} movements.
-                </p>
-              )}
+              <LoadMore
+                shown={movements.length}
+                total={movesQuery.total}
+                hasMore={movesQuery.hasNextPage}
+                loading={movesQuery.isFetchingNextPage}
+                onMore={movesQuery.fetchNextPage}
+              />
             </TabsContent>
 
             {posEnabled && (
@@ -509,7 +510,6 @@ export default function InventoryDetailPage() {
                   isLoading={posQuery.isLoading}
                   error={posQuery.error}
                   onRetry={() => posQuery.refetch()}
-                  truncated={poTruncated}
                 />
               </TabsContent>
             )}
@@ -596,7 +596,6 @@ function ItemPurchaseOrders({
   isLoading,
   error,
   onRetry,
-  truncated,
 }: {
   itemId: string;
   orders: ReturnType<typeof purchaseOrdersForItem>;
@@ -604,7 +603,6 @@ function ItemPurchaseOrders({
   isLoading: boolean;
   error: Error | null;
   onRetry: () => void;
-  truncated: boolean;
 }) {
   const hasRows = orders.length > 0 || requests.length > 0;
 
@@ -637,11 +635,7 @@ function ItemPurchaseOrders({
   if (!hasRows) {
     return (
       <Card className="p-xl text-center">
-        <p className="text-body-sm text-text-tertiary">
-          {truncated
-            ? `None in the ${ITEM_PO_SEARCH_LIMIT} most recent purchase orders — older ones are not searched.`
-            : 'No purchase orders for this item yet.'}
-        </p>
+        <p className="text-body-sm text-text-tertiary">No purchase orders for this item yet.</p>
       </Card>
     );
   }
@@ -705,11 +699,6 @@ function ItemPurchaseOrders({
           );
         })}
       </ul>
-      {truncated && (
-        <p className="border-t border-border-light bg-surface-2 px-lg py-sm text-caption text-text-tertiary">
-          Searched the {ITEM_PO_SEARCH_LIMIT} most recent purchase orders. Older ones are not shown.
-        </p>
-      )}
     </Card>
   );
 }

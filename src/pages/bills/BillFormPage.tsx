@@ -134,7 +134,7 @@ export default function BillFormPage() {
   // reissue a number, and only the person entering it knows.
   const { data: vendorBills = [] } = useQuery({
     queryKey: ['bills', 'dupe-check', form.vendorId],
-    queryFn: () => getBills({ vendorId: form.vendorId, limit: 200 }),
+    queryFn: () => getBills({ vendorId: form.vendorId }),
     enabled: Boolean(form.vendorId && form.billNumber.trim()),
   });
 

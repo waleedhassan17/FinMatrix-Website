@@ -137,11 +137,6 @@ export default function TaxPaymentsPage() {
           total={rows.length}
           onPage={setPage}
         />
-        {payments.data?.truncated && (
-          <p className="mt-sm text-caption text-text-tertiary">
-            Showing the most recent {rows.length} payments.
-          </p>
-        )}
       </div>
 
       <ConfirmDialog

@@ -1,4 +1,3 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { createColumnHelper } from '@tanstack/react-table';
 import { Plus } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -9,12 +8,13 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DataTable } from '@/components/ui/DataTable';
 import { DateField } from '@/components/ui/Field';
+import { LoadMore } from '@/components/ui/LoadMore';
 import { Select } from '@/components/ui/Select';
+import { usePagedList } from '@/hooks/usePagedList';
+import { extraNumber, LIST_PAGE_SIZE } from '@/models/documentList';
 import { PAYMENT_METHOD_OPTIONS, paymentMethodLabel, type ApiPaymentMethod, type Payment } from '@/models/payment';
-import { getPayments } from '@/networks/sales/paymentNetwork';
+import { getPaymentPage } from '@/networks/sales/paymentNetwork';
 import { formatMoney } from '@/utils/money';
-
-const PAGE_SIZE = 50;
 
 const columnHelper = createColumnHelper<Payment>();
 
@@ -24,19 +24,27 @@ export default function PaymentListPage() {
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
 
-  const { data: payments = [], isLoading, isError, error } = useQuery({
-    queryKey: ['payments', 'list', { method, fromDate, toDate }],
-    queryFn: () =>
-      getPayments({
-        paymentMethod: method || undefined,
-        fromDate: fromDate || undefined,
-        toDate: toDate || undefined,
-        limit: PAGE_SIZE,
-      }),
-    placeholderData: keepPreviousData,
-  });
+  // Filtered and paged BY THE SERVER; "Load more" fetches the next page. This
+  // page used to show only the first 50 receipts and total just those.
+  const list = usePagedList(['payments', 'list', { method, fromDate, toDate }], (page) =>
+    getPaymentPage({
+      paymentMethod: method || undefined,
+      fromDate: fromDate || undefined,
+      toDate: toDate || undefined,
+      page,
+      limit: LIST_PAGE_SIZE,
+    }),
+  );
+  const { isLoading, isError, error } = list;
+  const payments = list.rows;
 
+  // The server's totals, over every receipt the filters match; from the rows
+  // loaded only with a server too old to send them.
+  const serverTotals = 'amount' in list.extras;
   const totals = useMemo(() => {
+    if (serverTotals) {
+      return { received: extraNumber(list.extras, 'amount'), unapplied: extraNumber(list.extras, 'unapplied') };
+    }
     let received = 0;
     let unapplied = 0;
     for (const p of payments) {
@@ -44,7 +52,7 @@ export default function PaymentListPage() {
       unapplied += p.unapplied;
     }
     return { received, unapplied };
-  }, [payments]);
+  }, [serverTotals, list.extras, payments]);
 
   const columns = useMemo(
     () => [
@@ -111,13 +119,17 @@ export default function PaymentListPage() {
 
       <div className="grid gap-md sm:grid-cols-2">
         <Card className="p-lg">
-          <p className="text-caption text-text-secondary">Received (loaded)</p>
+          <p className="text-caption text-text-secondary">
+            {serverTotals ? 'Received' : 'Received (loaded)'}
+          </p>
           <p className="mt-xxs text-h3 text-text-primary tabular">
             {formatMoney(totals.received)}
           </p>
         </Card>
         <Card className="p-lg">
-          <p className="text-caption text-text-secondary">Held as credit (loaded)</p>
+          <p className="text-caption text-text-secondary">
+            {serverTotals ? 'Held as credit' : 'Held as credit (loaded)'}
+          </p>
           <p className="mt-xxs text-h3 text-warning tabular">
             {formatMoney(totals.unapplied)}
           </p>
@@ -170,12 +182,13 @@ export default function PaymentListPage() {
         }
       />
 
-      {payments.length >= PAGE_SIZE && (
-        <p className="text-center text-caption text-text-tertiary">
-          Showing the first {PAGE_SIZE}. Narrow the filters to see more — this
-          endpoint does not return a page count.
-        </p>
-      )}
+      <LoadMore
+        shown={payments.length}
+        total={list.total}
+        hasMore={list.hasNextPage}
+        loading={list.isFetchingNextPage}
+        onMore={list.fetchNextPage}
+      />
     </div>
   );
 }

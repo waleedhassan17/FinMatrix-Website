@@ -21,6 +21,7 @@ import {
   type CreditMemoWritePayload,
 } from '@/serializers/creditMemoSerializer';
 import type { CreditMemo, CreditMemoStatus } from '@/models/creditMemo';
+import { documentPageOf, type DocumentPage } from '@/models/documentList';
 
 export interface CreditMemoQueryParams {
   /** Matches `creditMemoNumber` only — not the reason, not the customer. */
@@ -46,6 +47,22 @@ export const getCreditMemos = async (
   try {
     const response = await api.get('/credit-memos', { params });
     return creditMemoListSerializer(unwrapEnvelope(response.data));
+  } catch (e) {
+    throw toApiError(e);
+  }
+};
+
+/**
+ * One page of the list, with the server's summary (every row the filters
+ * match) and pagination — what a list screen pages through with "Load more".
+ */
+export const getCreditMemoPage = async (
+  params: CreditMemoQueryParams & { page?: number; limit?: number } = {},
+): Promise<DocumentPage<CreditMemo>> => {
+  const query: Record<string, unknown> = { ...params };
+  try {
+    const response = await api.get('/credit-memos', { params: query });
+    return documentPageOf(response.data, creditMemoListSerializer(unwrapEnvelope(response.data)));
   } catch (e) {
     throw toApiError(e);
   }

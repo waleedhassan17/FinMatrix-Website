@@ -2,22 +2,14 @@
 // FinMatrix Web — An inventory item's purchase orders
 // ═══════════════════════════════════════════════════════
 // The item page's "Create PO" and its Purchase orders tab, as the app has them.
-// There is no per-item PO endpoint — GET /purchase-orders filters by status,
-// vendor and search only, but returns lines — so the recent list is read and
-// filtered on its lines here.
+// GET /purchase-orders?itemId= returns the orders with a line for the item,
+// lines included; these helpers read this item's lines off them.
 
 import type { ApprovalRequest } from '@/models/approval';
 import { freshLine, type FormLineItem } from '@/models/document';
 import type { InventoryItem } from '@/models/inventory';
 import type { PurchaseOrder, PurchaseOrderStatus } from '@/models/purchaseOrder';
 import { toDecimal } from '@/utils/money';
-
-/**
- * One page of recent purchase orders is searched, as on the app. Past this the
- * item needs a server-side filter, and the page says so rather than implying
- * the list is complete.
- */
-export const ITEM_PO_SEARCH_LIMIT = 100;
 
 /** Purchase orders with at least one line for the item. */
 export const purchaseOrdersForItem = (pos: PurchaseOrder[], itemId: string): PurchaseOrder[] =>

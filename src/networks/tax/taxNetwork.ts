@@ -6,12 +6,9 @@
 // `@Roles('admin')`. Staff therefore see the liability figures and nothing that
 // changes them.
 //
-// The two list endpoints return `{data, total, page, limit}`, but the backend's
-// ResponseEnvelopeInterceptor keeps only `data` and `message` from any payload
-// with a `data` key — so `total` never reaches the client, and a table paged on
-// the server could never know there is a page two. Both lists are small (a
-// handful of rates; a few remittances a year), so each is fetched as one large
-// page and paged on the client, where the total is exact.
+// Both list endpoints are paged; each is walked to its last page (they are
+// small — a handful of rates, a few remittances a year) and paged on the
+// client, where the total is exact.
 
 import type {
   TaxLiability,
@@ -25,12 +22,9 @@ import { api, toApiError, unwrapEnvelope } from '@/networks/network/apiHelpers';
 import {
   mapTaxPayment,
   mapTaxRate,
-  pagedSerializer,
   taxLiabilitySerializer,
 } from '@/serializers/taxSerializer';
-
-/** Large enough that a real company never reaches it. */
-const LIST_LIMIT = 500;
+import { getAllRows } from '@/networks/network/allPages';
 
 export const getTaxLiability = async (range: ReportRange): Promise<TaxLiability> => {
   try {
@@ -47,20 +41,9 @@ export const getTaxLiability = async (range: ReportRange): Promise<TaxLiability>
  * Every rate. The endpoint's default page is 20 and the app asks once without
  * paging, so it never sees a twenty-first rate.
  */
-export const getTaxRates = async (params: { activeOnly?: boolean } = {}): Promise<TaxRate[]> => {
-  try {
-    const response = await api.get('/taxes/rates', {
-      params: {
-        page: 1,
-        limit: LIST_LIMIT,
-        ...(params.activeOnly ? { isActive: 'true' } : {}),
-      },
-    });
-    return pagedSerializer(response.data, mapTaxRate, { page: 1, limit: LIST_LIMIT }).rows;
-  } catch (e) {
-    throw toApiError(e);
-  }
-};
+export const getTaxRates = async (params: { activeOnly?: boolean } = {}): Promise<TaxRate[]> =>
+  // Every page: a rate past the first 500 could not be picked on a document.
+  getAllRows('/taxes/rates', params.activeOnly ? { isActive: 'true' } : {}, mapTaxRate);
 
 /** Setting `isDefault` clears the previous default server-side. */
 export const createTaxRate = async (payload: TaxRatePayload): Promise<TaxRate> => {
@@ -97,30 +80,19 @@ export const deleteTaxRate = async (id: string): Promise<void> => {
 };
 
 /**
- * Every tax payment, newest first. `truncated` is true only if the company has
- * reached the fetch limit, so the page can say it is showing the latest ones
- * rather than pretend it has them all.
+ * Every tax payment, newest first, walked page by page. `truncated` is always
+ * false now; it stays for callers written against the capped fetch.
  */
 export const getTaxPayments = async (
   params: { taxRateId?: string } = {},
-): Promise<{ rows: TaxPayment[]; truncated: boolean }> => {
-  try {
-    const response = await api.get('/taxes/payments', {
-      params: {
-        page: 1,
-        limit: LIST_LIMIT,
-        ...(params.taxRateId ? { taxRateId: params.taxRateId } : {}),
-      },
-    });
-    const { rows } = pagedSerializer(response.data, mapTaxPayment, {
-      page: 1,
-      limit: LIST_LIMIT,
-    });
-    return { rows, truncated: rows.length >= LIST_LIMIT };
-  } catch (e) {
-    throw toApiError(e);
-  }
-};
+): Promise<{ rows: TaxPayment[]; truncated: boolean }> => ({
+  rows: await getAllRows(
+    '/taxes/payments',
+    params.taxRateId ? { taxRateId: params.taxRateId } : {},
+    mapTaxPayment,
+  ),
+  truncated: false,
+});
 
 /**
  * Record a remittance. Posts Dr Sales Tax Payable (2300) / Cr Cash (1000) —
