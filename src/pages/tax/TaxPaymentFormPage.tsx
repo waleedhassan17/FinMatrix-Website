@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Info, Landmark } from 'lucide-react';
+import { Info, Landmark } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { BackButton, CancelButton } from '@/components/layout/BackLink';
+import { useLeaveForm } from '@/features/shell/navHistory';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DateField } from '@/components/ui/Field';
@@ -28,7 +30,7 @@ import { formatMoney, toDecimal } from '@/utils/money';
  * (`?endDate&amount`), so the common case is one click and a reference.
  */
 export default function TaxPaymentFormPage() {
-  const navigate = useNavigate();
+  const leave = useLeaveForm();
   const queryClient = useQueryClient();
   const [params] = useSearchParams();
   const idempotencyKey = useRef(crypto.randomUUID());
@@ -93,7 +95,7 @@ export default function TaxPaymentFormPage() {
       toast.success('Tax payment recorded', {
         description: `${formatMoney(p.amount)} for ${p.period}, paid from Cash.`,
       });
-      navigate('/tax/payments', { replace: true });
+      leave('/tax/payments');
     },
     onError: (e: Error) => toast.error('Could not record the payment', { description: e.message }),
   });
@@ -129,12 +131,7 @@ export default function TaxPaymentFormPage() {
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-lg">
       <TaxTabs />
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to="/tax/payments">
-          <ArrowLeft className="size-4" />
-          Tax payments
-        </Link>
-      </Button>
+      <BackButton fallback={{ to: '/tax/payments', label: 'Tax payments' }} />
 
       <div>
         <h1 className="text-h2 text-text-primary">Record a tax payment</h1>
@@ -212,9 +209,7 @@ export default function TaxPaymentFormPage() {
       )}
 
       <div className="flex justify-end gap-sm">
-        <Button asChild variant="secondary">
-          <Link to="/tax/payments">Cancel</Link>
-        </Button>
+        <CancelButton fallback="/tax/payments" />
         <Button onClick={submit} disabled={save.isPending}>
           {save.isPending ? 'Recording…' : 'Record payment'}
         </Button>

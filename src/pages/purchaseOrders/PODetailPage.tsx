@@ -4,7 +4,6 @@ import {
   PackageCheck,
   Pencil,
   Send,
-  Store,
   Trash2,
   XCircle,
 } from 'lucide-react';
@@ -106,6 +105,11 @@ export default function PODetailPage() {
       setPurchaseOrderStatus(poId, status),
     onSuccess: (updated) => {
       invalidate();
+      // ConfirmDialog stays open until its caller closes it (so it can show
+      // "Working…" and survive an error). Left open, a second Send PATCHed the
+      // order again.
+      setConfirmSend(false);
+      setConfirmClose(false);
       toast.success(
         updated.status === 'closed' ? 'Purchase order closed' : 'Approved and sent to the vendor',
       );
@@ -286,7 +290,6 @@ export default function PODetailPage() {
 
               <MoreActionsMenu
                 actions={[
-                  { label: 'View vendor', icon: Store, to: `/vendors/${po.vendorId}` },
                   {
                     label: 'Close order',
                     icon: XCircle,

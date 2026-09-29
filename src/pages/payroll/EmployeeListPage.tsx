@@ -229,14 +229,6 @@ export default function EmployeeListPage() {
             <p className="mt-sm text-body-md text-text-secondary">
               {employees.length === 0 ? 'No employees yet.' : 'No employees match.'}
             </p>
-            {employees.length === 0 && (
-              <Button asChild className="mt-lg">
-                <Link to="/employees/new">
-                  <Plus className="size-4" />
-                  New employee
-                </Link>
-              </Button>
-            )}
           </div>
         }
       />

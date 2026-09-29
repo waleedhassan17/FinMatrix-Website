@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Check, Info, Plus, Scale } from 'lucide-react';
+import { Check, Info, Plus, Scale } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { BackButton, CancelButton } from '@/components/layout/BackLink';
+import { useLeaveForm } from '@/features/shell/navHistory';
 import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { DateField, Textarea } from '@/components/ui/Field';
@@ -28,6 +30,7 @@ import { invalidateAfterPosting } from '@/features/documents/invalidateAfterPost
 
 export default function JournalEntryFormPage() {
   const navigate = useNavigate();
+  const leave = useLeaveForm();
   const queryClient = useQueryClient();
 
   const cap = useCapability('journal.post');
@@ -85,7 +88,7 @@ export default function JournalEntryFormPage() {
       toast.success(status === 'posted' ? 'Entry posted' : 'Draft saved', {
         description: result.entry.reference || undefined,
       });
-      navigate(`/journal-entries/${result.entry.id}`, { replace: true });
+      leave(`/journal-entries/${result.entry.id}`);
     },
     onError: (e: Error) =>
       toast.error('Could not save the entry', { description: e.message }),
@@ -127,12 +130,7 @@ export default function JournalEntryFormPage() {
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-lg">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to="/journal-entries">
-          <ArrowLeft className="size-4" />
-          Journal entries
-        </Link>
-      </Button>
+      <BackButton fallback={{ to: '/journal-entries', label: 'Journal entries' }} />
 
       <div>
         <h1 className="text-h2 text-text-primary">New journal entry</h1>
@@ -269,9 +267,7 @@ export default function JournalEntryFormPage() {
       </div>
 
       <div className="flex flex-wrap justify-end gap-sm pb-xl">
-        <Button asChild variant="secondary" disabled={busy}>
-          <Link to="/journal-entries">Cancel</Link>
-        </Button>
+        <CancelButton fallback="/journal-entries" disabled={busy} />
 
         {/* A draft may be unbalanced; that is the point of one. */}
         <Button variant="secondary" onClick={() => submit('draft')} disabled={busy}>

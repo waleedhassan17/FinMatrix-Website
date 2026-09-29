@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Banknote, CheckCircle2, FileText, Pencil, Store, Trash2 } from 'lucide-react';
+import { Banknote, CheckCircle2, FileText, Pencil, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -61,6 +61,9 @@ export default function BillDetailPage() {
     mutationFn: () => postBill(billId),
     onSuccess: () => {
       invalidateAfterPosting(queryClient);
+      // ConfirmDialog is closed by its caller; left open, it offered to post
+      // a bill that was already posted.
+      setConfirmPost(false);
       toast.success('Bill posted', {
         description: 'Accounts payable now carries this balance.',
       });
@@ -156,7 +159,6 @@ export default function BillDetailPage() {
               />
               <MoreActionsMenu
                 actions={[
-                  { label: 'View vendor', icon: Store, to: `/vendors/${bill.vendorId}` },
                   {
                     label: 'View purchase order',
                     icon: FileText,

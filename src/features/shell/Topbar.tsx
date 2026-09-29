@@ -1,12 +1,13 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, Building2, LogOut, Menu, Search, UserCircle } from 'lucide-react';
+import { Bell, Building2, ChevronRight, LogOut, Menu, Search, UserCircle } from 'lucide-react';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 import { cn } from '@/lib/cn';
 import { useSignOut } from '@/features/auth/useSignOut';
 import { GlobalSearch } from '@/features/search/GlobalSearch';
+import { notificationTarget } from '@/models/notificationTarget';
 import {
   fetchNotifications,
   fetchUnreadCount,
@@ -25,6 +26,7 @@ export function Topbar({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
   const company = useAppSelector(selectCompany);
   const { signOut } = useSignOut();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [mobileSearch, setMobileSearch] = useState(false);
 
   const { data: unread = 0 } = useQuery({
@@ -140,26 +142,42 @@ export function Topbar({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
                     Nothing new.
                   </p>
                 ) : (
-                  notifications.map((n) => (
-                    <button
-                      key={n.id}
-                      type="button"
-                      onClick={() => !n.isRead && readOne.mutate(n.id)}
-                      className={cn(
-                        'block w-full rounded-md px-sm py-xs text-left hover:bg-surface-hover',
-                        !n.isRead && 'bg-primary-tint',
-                      )}
-                    >
-                      <div className="text-label-md text-text-primary">
-                        {n.title}
-                      </div>
-                      {n.body && (
-                        <div className="text-caption text-text-secondary">
-                          {n.body}
+                  notifications.map((n) => {
+                    // A notification opens what it is about — the completion to
+                    // review, the delivery assigned. Menu items, so choosing one
+                    // closes the menu and the arrow keys move between them.
+                    const target = notificationTarget(n);
+                    return (
+                      <DropdownMenu.Item
+                        key={n.id}
+                        onSelect={() => {
+                          if (!n.isRead) readOne.mutate(n.id);
+                          if (target) navigate(target);
+                        }}
+                        className={cn(
+                          'flex w-full cursor-pointer items-start gap-xs rounded-md px-sm py-xs text-left outline-none data-[highlighted]:bg-surface-hover',
+                          !n.isRead && 'bg-primary-tint',
+                        )}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="text-label-md text-text-primary">
+                            {n.title}
+                          </div>
+                          {n.body && (
+                            <div className="text-caption text-text-secondary">
+                              {n.body}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </button>
-                  ))
+                        {target && (
+                          <ChevronRight
+                            className="mt-[2px] size-4 shrink-0 text-text-tertiary"
+                            aria-hidden="true"
+                          />
+                        )}
+                      </DropdownMenu.Item>
+                    );
+                  })
                 )}
               </div>
             </DropdownMenu.Content>

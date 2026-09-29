@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Info, Lock } from 'lucide-react';
+import { Info, Lock } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { BackButton, CancelButton } from '@/components/layout/BackLink';
+import { useLeaveForm } from '@/features/shell/navHistory';
 import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { Combobox } from '@/components/ui/Combobox';
@@ -42,7 +44,7 @@ const TYPE_OPTIONS = ACCOUNT_TYPE_ORDER.map((t) => ({
 export default function AccountFormPage() {
   const { accountId } = useParams<{ accountId: string }>();
   const isEditing = Boolean(accountId);
-  const navigate = useNavigate();
+  const leave = useLeaveForm();
   const queryClient = useQueryClient();
 
   const [form, setForm] = useState<AccountFormData>(() => emptyAccountForm());
@@ -125,7 +127,7 @@ export default function AccountFormPage() {
       toast.success(isEditing ? 'Account updated' : 'Account created', {
         description: `${account.accountNumber} · ${account.name}`,
       });
-      navigate(`/accounts/${account.id}`, { replace: true });
+      leave(`/accounts/${account.id}`);
     },
     onError: (e: Error) =>
       toast.error(
@@ -153,12 +155,7 @@ export default function AccountFormPage() {
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-lg">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to={isEditing ? `/accounts/${accountId}` : '/accounts'}>
-          <ArrowLeft className="size-4" />
-          {isEditing ? 'Account' : 'Chart of accounts'}
-        </Link>
-      </Button>
+      <BackButton fallback={{ to: isEditing ? `/accounts/${accountId}` : '/accounts', label: isEditing ? 'Account' : 'Chart of accounts' }} />
 
       <div>
         <h1 className="text-h2 text-text-primary">
@@ -344,9 +341,7 @@ export default function AccountFormPage() {
       )}
 
       <div className="flex flex-wrap justify-end gap-sm pb-xl">
-        <Button asChild variant="secondary" disabled={busy}>
-          <Link to={isEditing ? `/accounts/${accountId}` : '/accounts'}>Cancel</Link>
-        </Button>
+        <CancelButton fallback={isEditing ? `/accounts/${accountId}` : '/accounts'} disabled={busy} />
         <Button onClick={submit} disabled={busy}>
           {busy ? 'Saving…' : isEditing ? 'Save changes' : 'Create account'}
         </Button>

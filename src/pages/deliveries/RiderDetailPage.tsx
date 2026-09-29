@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createColumnHelper } from '@tanstack/react-table';
-import { ArrowLeft, Eye, KeyRound, Truck } from 'lucide-react';
+import { Eye, KeyRound, Truck } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { BackButton } from '@/components/layout/BackLink';
 import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -200,12 +201,7 @@ export default function RiderDetailPage() {
 
   return (
     <div className="flex flex-col gap-lg">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to="/delivery-personnel">
-          <ArrowLeft className="size-4" />
-          Riders
-        </Link>
-      </Button>
+      <BackButton fallback={{ to: '/delivery-personnel', label: 'Riders' }} />
 
       <Card className="p-lg">
         <div className="flex flex-wrap items-start justify-between gap-md">

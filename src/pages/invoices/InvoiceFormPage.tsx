@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, CreditCard, Info } from 'lucide-react';
+import { CreditCard, Info } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { BackButton, CancelButton } from '@/components/layout/BackLink';
+import { useLeaveForm } from '@/features/shell/navHistory';
 import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { Combobox } from '@/components/ui/Combobox';
@@ -56,6 +58,7 @@ export default function InvoiceFormPage() {
   const [searchParams] = useSearchParams();
   const isEditing = Boolean(invoiceId);
   const navigate = useNavigate();
+  const leave = useLeaveForm();
   const queryClient = useQueryClient();
 
   const cap = useCapability('invoice.create');
@@ -150,7 +153,7 @@ export default function InvoiceFormPage() {
       if (outcome.kind === 'updated') {
         queryClient.invalidateQueries({ queryKey: ['invoices'] });
         toast.success('Invoice updated');
-        navigate(`/invoices/${outcome.invoice.id}`, { replace: true });
+        leave(`/invoices/${outcome.invoice.id}`);
         return;
       }
 
@@ -172,7 +175,7 @@ export default function InvoiceFormPage() {
       toast.success('Invoice created', {
         description: `${outcome.result.invoice.invoiceNumber} has been saved.`,
       });
-      navigate(`/invoices/${outcome.result.invoice.id}`, { replace: true });
+      leave(`/invoices/${outcome.result.invoice.id}`);
     },
     onError: (e: Error) => {
       // Posting past the customer's credit limit: advance or owner override.
@@ -200,12 +203,7 @@ export default function InvoiceFormPage() {
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-lg">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to={isEditing ? `/invoices/${invoiceId}` : '/invoices'}>
-          <ArrowLeft className="size-4" />
-          Back
-        </Link>
-      </Button>
+      <BackButton fallback={{ to: isEditing ? `/invoices/${invoiceId}` : '/invoices', label: 'Back' }} />
 
       <div>
         <h1 className="text-h2 text-text-primary">
@@ -294,9 +292,7 @@ export default function InvoiceFormPage() {
 
       {/* ── Actions ─────────────────────────────────────────────────── */}
       <div className="flex flex-wrap justify-end gap-sm pb-xl">
-        <Button asChild variant="secondary" disabled={busy}>
-          <Link to={isEditing ? `/invoices/${invoiceId}` : '/invoices'}>Cancel</Link>
-        </Button>
+        <CancelButton fallback={isEditing ? `/invoices/${invoiceId}` : '/invoices'} disabled={busy} />
 
         {isEditing ? (
           <Button onClick={() => submit('draft')} disabled={busy}>

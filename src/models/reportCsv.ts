@@ -77,16 +77,19 @@ export const csvAmount = (value: number | null | undefined): string => {
  * A BOM is prepended so Excel reads the file as UTF-8. Without it, Excel on
  * Windows falls back to the system code page and mangles every non-ASCII
  * character — including the en-dashes in our own period labels.
+ *
+ * Returns the name the file was saved under, for the confirmation toast.
  */
-export const downloadCsv = (filename: string, csv: string): void => {
+export const downloadCsv = (filename: string, csv: string): string => {
   const blob = new Blob([`﻿${csv}`], {
     type: 'text/csv;charset=utf-8;',
   });
   const url = URL.createObjectURL(blob);
+  const name = csvDownloadName(filename);
 
   const link = document.createElement('a');
   link.href = url;
-  link.download = filename.endsWith('.csv') ? filename : `${filename}.csv`;
+  link.download = name;
   // Kept out of the layout: appending is required for Firefox, which ignores a
   // click on a detached anchor.
   link.style.display = 'none';
@@ -95,7 +98,12 @@ export const downloadCsv = (filename: string, csv: string): void => {
   document.body.removeChild(link);
 
   setTimeout(() => URL.revokeObjectURL(url), 0);
+  return name;
 };
+
+/** The name a CSV is saved under — what the download confirmation shows. */
+export const csvDownloadName = (filename: string): string =>
+  filename.endsWith('.csv') ? filename : `${filename}.csv`;
 
 /**
  * A filename stamped with the period, e.g. `profit-loss-2026-01-01-to-2026-03-31`.

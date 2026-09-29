@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ArrowRight, Info, Package } from 'lucide-react';
+import { ArrowRight, Info, Package } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { BackButton, CancelButton } from '@/components/layout/BackLink';
+import { useLeaveForm } from '@/features/shell/navHistory';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DateField, Textarea } from '@/components/ui/Field';
@@ -42,6 +44,7 @@ export default function AdjustStockPage() {
   const { itemId = '' } = useParams<{ itemId: string }>();
   const enabled = useFeature('inventory');
   const navigate = useNavigate();
+  const leave = useLeaveForm();
   const queryClient = useQueryClient();
   const adjust = useCapability('inventory.adjust');
 
@@ -79,7 +82,7 @@ export default function AdjustStockPage() {
       toast.success('Adjustment posted', {
         description: 'The quantity, the stock value and the journal entry are updated.',
       });
-      navigate(`/inventory/${itemId}`, { replace: true });
+      leave(`/inventory/${itemId}`);
     },
     onError: (e: Error) => toast.error('Could not adjust stock', { description: e.message }),
   });
@@ -125,12 +128,7 @@ export default function AdjustStockPage() {
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-lg">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to={`/inventory/${item.id}`}>
-          <ArrowLeft className="size-4" />
-          {item.name}
-        </Link>
-      </Button>
+      <BackButton fallback={{ to: `/inventory/${item.id}`, label: item.name }} />
 
       <div>
         <h1 className="text-h2 text-text-primary">Adjust stock</h1>
@@ -236,9 +234,7 @@ export default function AdjustStockPage() {
       </Card>
 
       <div className="flex justify-end gap-sm pb-xl">
-        <Button asChild variant="secondary">
-          <Link to={`/inventory/${item.id}`}>Cancel</Link>
-        </Button>
+        <CancelButton fallback={`/inventory/${item.id}`} />
         <Button onClick={submit} disabled={save.isPending}>
           {save.isPending ? 'Submitting…' : adjust.submitLabel('Post adjustment')}
         </Button>

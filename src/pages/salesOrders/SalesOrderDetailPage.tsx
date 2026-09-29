@@ -6,7 +6,6 @@ import {
   PackageCheck,
   Pencil,
   Trash2,
-  Users,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -248,7 +247,6 @@ export default function SalesOrderDetailPage() {
 
               <MoreActionsMenu
                 actions={[
-                  { label: 'View customer', icon: Users, to: `/customers/${order.customerId}` },
                   {
                     label: 'Cancel order',
                     icon: Ban,
@@ -294,18 +292,6 @@ export default function SalesOrderDetailPage() {
             party={doc.party}
             loading={!customer}
           />
-
-          {order.invoiceId && (
-            <RailSection title="Invoice">
-              <Link
-                to={`/invoices/${order.invoiceId}`}
-                className="inline-flex items-center gap-xs text-body-sm text-primary hover:underline"
-              >
-                <FileText className="size-4" aria-hidden="true" />
-                Open the invoice for this order
-              </Link>
-            </RailSection>
-          )}
 
           <RailSection title="Details">
             <KeyValueList

@@ -245,7 +245,7 @@ export default function InventoryValuationPage() {
           ]
         : []),
     ]);
-    downloadCsv(
+    return downloadCsv(
       csvFilename('inventory-valuation', showSales ? range : { asOfDate: isoToday() }),
       toCsv(out),
     );

@@ -2,7 +2,7 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createColumnHelper } from '@tanstack/react-table';
 import { Eye, KeyRound, MoreHorizontal, Plus, RefreshCw, ShieldCheck, UserCheck, UserX, Users } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 
 import { CopyField, CredentialsDialog, type HandoverCredentials } from '@/components/shared/CredentialsDialog';
@@ -12,6 +12,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { DataTable } from '@/components/ui/DataTable';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
+import { SidePanel } from '@/components/ui/SidePanel';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { SettingsTabs } from '@/features/settings/SettingsTabs';
 import { FeatureUnavailable } from '@/features/shell/FeatureUnavailable';
@@ -281,7 +282,7 @@ export default function TeamPage() {
         </Card>
       )}
 
-      <AddMemberDialog
+      <AddMemberPanel
         open={adding}
         onOpenChange={setAdding}
         onIssued={(title, credentials) => {
@@ -345,7 +346,13 @@ export default function TeamPage() {
 
 type Mode = 'account' | 'email';
 
-function AddMemberDialog({
+/**
+ * Adding a team member, in a side panel like the site's other in-page editors:
+ * the team list stays in view, and ✕, Escape or a click outside closes it. It
+ * was a confirmation dialog holding a form — no close button, no outside click,
+ * and taller than a laptop screen with nothing to scroll.
+ */
+function AddMemberPanel({
   open,
   onOpenChange,
   onIssued,
@@ -367,13 +374,19 @@ function AddMemberDialog({
   const [serverErrors, setServerErrors] = useState<Partial<Record<keyof TeamMemberForm, string>>>({});
   const [limit, setLimit] = useState<string | null>(null);
 
-  const reset = () => {
-    setMode('account');
-    setForm({ name: '', username: '', password: generatePassword(), role: 'staff', email: '', phone: '' });
-    setUsernameTouched(false);
-    setServerErrors({});
-    setLimit(null);
-  };
+  // A fresh form each time the panel opens. Reset on open rather than on close,
+  // so the fields do not blank out while the panel is still sliding away.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) {
+      setMode('account');
+      setForm({ name: '', username: '', password: generatePassword(), role: 'staff', email: '', phone: '' });
+      setUsernameTouched(false);
+      setServerErrors({});
+      setLimit(null);
+    }
+  }
 
   const patch = (p: Partial<TeamMemberForm>) => {
     setForm((f) => {
@@ -397,7 +410,6 @@ function AddMemberDialog({
         : inviteTeamUser({ email: form.email.trim(), role: form.role, displayName: form.name.trim() || undefined }),
     onSuccess: ({ user, credentials }) => {
       onIssued(`${user.name || user.username} can now sign in`, credentials);
-      reset();
     },
     onError: (e: Error) => {
       const code = e instanceof ApiError ? e.code : undefined;
@@ -408,21 +420,32 @@ function AddMemberDialog({
     },
   });
 
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (valid && !save.isPending) save.mutate();
+  };
+
   return (
-    <ConfirmDialog
+    <SidePanel
       open={open}
       onOpenChange={(o) => {
-        if (!o) reset();
+        if (!o && save.isPending) return;
         onOpenChange(o);
       }}
       title="Add a team member"
       description="They sign in with a username and password you hand over — no invite email is sent."
-      confirmLabel={save.isPending ? 'Adding…' : 'Add member'}
-      busy={save.isPending}
-      confirmDisabled={!valid}
-      onConfirm={() => save.mutate()}
+      footer={
+        <div className="flex justify-end gap-sm">
+          <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={save.isPending}>
+            Cancel
+          </Button>
+          <Button type="submit" form="add-member-form" disabled={save.isPending || !valid}>
+            {save.isPending ? 'Adding…' : 'Add member'}
+          </Button>
+        </div>
+      }
     >
-      <div className="flex flex-col gap-md">
+      <form id="add-member-form" onSubmit={submit} noValidate className="flex flex-col gap-md px-lg py-lg">
         <div className="flex gap-xxs rounded-md bg-surface-2 p-xxs" role="tablist">
           {(
             [
@@ -504,7 +527,7 @@ function AddMemberDialog({
           </>
         )}
         <Select label="Role" value={form.role} onChange={(v) => patch({ role: v as TeamRole })} options={ROLE_OPTIONS} />
-      </div>
-    </ConfirmDialog>
+      </form>
+    </SidePanel>
   );
 }

@@ -299,11 +299,14 @@ export function Sidebar({
         </div>
       )}
 
+      {/* Centred on the logo row (h-16), which never scrolls. Lower down it sat
+          on the nav's scrollbar and beside every page title. */}
       <button
         type="button"
         onClick={() => setCollapsed((v) => !v)}
-        className="absolute -right-3 top-20 hidden size-6 items-center justify-center rounded-full border-2 border-border bg-[color:var(--color-sidebar-from)] text-white shadow-md lg:flex"
+        className="absolute -right-3 top-5 hidden size-6 items-center justify-center rounded-full border-2 border-border bg-[color:var(--color-sidebar-from)] text-white shadow-md lg:flex"
         aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
         {collapsed ? (
           <ChevronRight className="size-3" />

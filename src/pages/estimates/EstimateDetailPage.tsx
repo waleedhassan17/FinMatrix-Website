@@ -6,7 +6,6 @@ import {
   Pencil,
   Send,
   Trash2,
-  Users,
   X,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -280,7 +279,6 @@ export default function EstimateDetailPage() {
                     hidden: !(convertible && salesOrdersEnabled),
                     disabled: busy,
                   },
-                  { label: 'View customer', icon: Users, to: `/customers/${estimate.customerId}` },
                   {
                     label: 'Delete estimate',
                     icon: Trash2,
@@ -316,18 +314,6 @@ export default function EstimateDetailPage() {
             party={doc.party}
             loading={!customer}
           />
-
-          {convertedTo && (
-            <RailSection title="Converted">
-              <Link
-                to={convertedTo.to}
-                className="inline-flex items-center gap-xs text-body-sm text-primary hover:underline"
-              >
-                <ArrowRight className="size-4" aria-hidden="true" />
-                Open the {convertedTo.label} this became
-              </Link>
-            </RailSection>
-          )}
 
           <RailSection title="Details">
             <KeyValueList

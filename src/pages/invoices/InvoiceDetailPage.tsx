@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Ban, Banknote, Pencil, Plus, ReceiptText, Send, Trash2, Users } from 'lucide-react';
+import { Ban, Banknote, Pencil, Plus, ReceiptText, Send, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -226,7 +226,6 @@ export default function InvoiceDetailPage() {
               <MoreActionsMenu
                 actions={[
                   { label: 'New invoice', icon: Plus, to: '/invoices/new', hidden: !settled },
-                  { label: 'View customer', icon: Users, to: `/customers/${invoice.customerId}` },
                   {
                     label: voidCap.submitLabel('Void invoice'),
                     icon: Ban,

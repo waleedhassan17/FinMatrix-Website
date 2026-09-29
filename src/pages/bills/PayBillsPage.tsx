@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Banknote, Info } from 'lucide-react';
+import { Banknote, Info } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { BackButton, CancelButton } from '@/components/layout/BackLink';
 import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { Combobox } from '@/components/ui/Combobox';
@@ -247,12 +248,7 @@ export default function PayBillsPage() {
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-lg">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to="/bills">
-          <ArrowLeft className="size-4" />
-          Bills
-        </Link>
-      </Button>
+      <BackButton fallback={{ to: '/bills', label: 'Bills' }} />
 
       <div>
         <h1 className="text-h2 text-text-primary">Pay bills</h1>
@@ -429,9 +425,7 @@ export default function PayBillsPage() {
             {blockedReason}
           </span>
         )}
-        <Button asChild variant="secondary" disabled={busy}>
-          <Link to="/bills">Cancel</Link>
-        </Button>
+        <CancelButton fallback="/bills" disabled={busy} />
         <Button
           onClick={() => {
             if (validate()) save.mutate();

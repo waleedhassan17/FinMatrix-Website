@@ -121,6 +121,10 @@
   --color-surface: #ffffff;
   --color-surface-2: #f9fafb;
   --color-surface-hover: #fcfcfd;
+  /* The scrim behind a dialog (tokens.ts colors.overlay). Every dialog asked
+     for var(--color-overlay) while only the TS palette defined it, so each one
+     opened over a transparent backdrop. */
+  --color-overlay: rgba(15, 23, 42, 0.55);
 
   /* ── Hairlines ────────────────────────────────────── */
   --color-border: #d3dae3;

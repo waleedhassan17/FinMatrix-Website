@@ -1,5 +1,6 @@
 import { Printer, Table2 } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { toast } from 'sonner';
 
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -39,8 +40,12 @@ export interface ReportShellProps {
    */
   back?: { to: string; label: string } | null;
 
-  /** Called for Download CSV. Omit to hide the button. */
-  onExportCsv?: () => void;
+  /**
+   * Called for Download CSV. Omit to hide the button. Returns the saved file's
+   * name (what `downloadCsv` returns), which the confirmation shows; nothing
+   * when there was nothing to save.
+   */
+  onExportCsv?: () => string | undefined;
   /** Disable export while there is nothing to export. */
   canExport?: boolean;
   /** Print, PDF and Share. Without it the page falls back to the browser's print. */
@@ -101,6 +106,20 @@ export function ReportShell({
   const company = useDocumentCompany();
   const backLink = back ?? undefined;
 
+  // Confirmed the way the PDF download is (DocumentActions): QA found the PDF
+  // button acknowledged every download and the CSV button none.
+  const exportCsv = () => {
+    if (!onExportCsv) return;
+    try {
+      const filename = onExportCsv();
+      if (filename) toast.success('CSV downloaded', { description: filename });
+    } catch (e) {
+      toast.error('Could not prepare the CSV', {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    }
+  };
+
   return (
     <div className="flex flex-col gap-lg">
       <PageHeader
@@ -116,8 +135,10 @@ export function ReportShell({
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={onExportCsv}
-                disabled={!canExport || !hasData}
+                onClick={exportCsv}
+                // Held during a refetch like the PDF: the rows on screen are the
+                // previous period's until the new ones arrive.
+                disabled={!canExport || !hasData || isRefetching}
               >
                 <Table2 className="size-4" />
                 CSV

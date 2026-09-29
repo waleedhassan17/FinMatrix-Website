@@ -191,14 +191,6 @@ export default function JournalEntryListPage() {
                 ? 'Try a different search or tab.'
                 : 'Invoices, bills and payments post their own entries. These are the ones you write by hand.'}
             </p>
-            {!search && tab === 'all' && (
-              <Button asChild className="mt-lg">
-                <Link to="/journal-entries/new">
-                  <Plus className="size-4" />
-                  New entry
-                </Link>
-              </Button>
-            )}
           </div>
         }
       />

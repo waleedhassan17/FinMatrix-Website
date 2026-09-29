@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { ArrowDownUp, ChevronRight, RefreshCw } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -18,6 +18,7 @@ import {
   matchPreset,
   presetRange,
   rangeLabel,
+  type ReportRange,
 } from '@/models/reportPeriod';
 import {
   getGeneralLedger,
@@ -26,6 +27,7 @@ import {
 import { formatAmount, formatMoney } from '@/utils/money';
 
 const PAGE_SIZE = 100;
+const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
 type LedgerOrder = 'newest' | 'oldest';
 const ORDER_KEY = 'finmatrix.gl.order';
@@ -48,8 +50,46 @@ const saveOrder = (order: LedgerOrder) => {
 
 export default function GeneralLedgerPage() {
   const navigate = useNavigate();
-  const [range, setRange] = useState(defaultReportRange);
-  const [accountCode, setAccountCode] = useState('');
+
+  /**
+   * The view — period, account and page — lives in the URL, so Back from a
+   * journal entry opened off a ledger row lands on the same slice of the ledger
+   * rather than on year-to-date, all accounts, page 1. Written with `replace`,
+   * so adjusting a filter does not stack history entries for Back to wade
+   * through.
+   */
+  const [params, setParams] = useSearchParams();
+  const fromParam = params.get('from');
+  const toParam = params.get('to');
+  const range: ReportRange = useMemo(
+    () =>
+      fromParam && toParam && ISO.test(fromParam) && ISO.test(toParam) && fromParam <= toParam
+        ? { startDate: fromParam, endDate: toParam }
+        : defaultReportRange(),
+    [fromParam, toParam],
+  );
+  const accountCode = params.get('account') ?? '';
+  const requestedPage = Math.max(1, Math.floor(Number(params.get('page'))) || 1);
+
+  const update = (patch: Record<string, string | null>) =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        for (const [k, v] of Object.entries(patch)) {
+          if (v === null || v === '') next.delete(k);
+          else next.set(k, v);
+        }
+        return next;
+      },
+      { replace: true },
+    );
+  // A new period or account means the page number no longer refers to
+  // anything, so both start again at page 1.
+  const setRange = (next: ReportRange) =>
+    update({ from: next.startDate, to: next.endDate, page: null });
+  const setAccountCode = (code: string) => update({ account: code || null, page: null });
+  const setPage = (next: number) => update({ page: next > 1 ? String(next) : null });
+
   // Newest first by default: the question people bring to a ledger is usually
   // "did my posting land", and oldest-first paging put today's entries on the
   // last page — QA's "entries are not updating". Balances stay the server's
@@ -58,22 +98,8 @@ export default function GeneralLedgerPage() {
   const setOrder = (next: LedgerOrder) => {
     setOrderState(next);
     saveOrder(next);
+    update({ page: null });
   };
-
-  /**
-   * The page number, scoped to the filter that produced it.
-   *
-   * Changing the period or the account means the current page number no longer
-   * refers to anything, so it has to go back to 1. Storing WHICH filter the page
-   * belongs to and comparing during render does that without an effect — an
-   * effect here would set state during commit and cause a second render pass on
-   * every filter change, and would leave one frame showing page 5 of a result
-   * that now has two pages.
-   */
-  const filterKey = `${range.startDate}|${range.endDate}|${accountCode}|${order}`;
-  const [pageState, setPageState] = useState({ key: filterKey, page: 1 });
-  const page = pageState.key === filterKey ? pageState.page : 1;
-  const setPage = (next: number) => setPageState({ key: filterKey, page: next });
 
   // Always fresh on arrival: a ledger served from cache after a posting is
   // exactly the stale view this page exists not to show.
@@ -136,6 +162,9 @@ export default function GeneralLedgerPage() {
   const opening = accountCode ? ledger.data?.openingBalances.find((b) => b.accountCode === accountCode) : undefined;
   const closing = accountCode ? ledger.data?.closingBalances.find((b) => b.accountCode === accountCode) : undefined;
   const totalPages = Math.max(1, Math.ceil(entries.length / PAGE_SIZE));
+  // Clamped rather than trusted: a URL from before a posting, or typed by hand,
+  // can name a page the ledger no longer has.
+  const page = Math.min(requestedPage, totalPages);
 
   /**
    * Paged in memory, in the order the reader chose.
@@ -186,7 +215,7 @@ export default function GeneralLedgerPage() {
       csvAmount(ledger.data.totals.credit),
       '',
     ]);
-    downloadCsv(csvFilename('general-ledger', range), toCsv(out));
+    return downloadCsv(csvFilename('general-ledger', range), toCsv(out));
   };
 
   return (

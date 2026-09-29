@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/Button';
@@ -9,6 +9,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Switch } from '@/components/ui/Field';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
+import { SidePanel } from '@/components/ui/SidePanel';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { TaxTabs } from '@/features/tax/TaxTabs';
 import {
@@ -39,6 +40,9 @@ import {
 export default function TaxRatesPage() {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<{ id: string | null; form: TaxRateForm } | null>(null);
+  // Separate from `editing` so the fields stay on screen while the panel
+  // slides out, instead of emptying the moment it starts to close.
+  const [panelOpen, setPanelOpen] = useState(false);
   const [deleting, setDeleting] = useState<TaxRate | null>(null);
   const [touched, setTouched] = useState(false);
 
@@ -50,7 +54,7 @@ export default function TaxRatesPage() {
     mutationFn: async ({ id, form }: { id: string | null; form: TaxRateForm }) =>
       id ? updateTaxRate(id, taxRatePayload(form)) : createTaxRate(taxRatePayload(form)),
     onSuccess: (r, v) => {
-      setEditing(null);
+      setPanelOpen(false);
       invalidate();
       toast.success(v.id ? 'Rate updated' : 'Rate added', { description: r.name });
     },
@@ -86,6 +90,13 @@ export default function TaxRatesPage() {
   const open = (rate: TaxRate | null) => {
     setTouched(false);
     setEditing({ id: rate?.id ?? null, form: rate ? taxRateToForm(rate) : emptyTaxRateForm() });
+    setPanelOpen(true);
+  };
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    setTouched(true);
+    if (editing && Object.keys(errors).length === 0) save.mutate(editing);
   };
 
   return (
@@ -170,65 +181,81 @@ export default function TaxRatesPage() {
         )}
       </Card>
 
-      <ConfirmDialog
-        open={editing !== null}
-        onOpenChange={(o) => !o && setEditing(null)}
-        title={editing?.id ? 'Edit tax rate' : 'New tax rate'}
-        confirmLabel={editing?.id ? 'Save rate' : 'Add rate'}
-        busy={save.isPending}
-        confirmDisabled={touched && Object.keys(errors).length > 0}
-        onConfirm={() => {
-          setTouched(true);
-          if (editing && Object.keys(errors).length === 0) save.mutate(editing);
+      {/* A side panel, like the site's other in-page editors: the rates stay in
+          view beside it, and ✕, Escape or a click outside closes it. It was a
+          confirmation dialog holding a form — no close button, no outside
+          click, no scrolling. */}
+      <SidePanel
+        open={panelOpen}
+        onOpenChange={(o) => {
+          if (!o && !save.isPending) setPanelOpen(false);
         }}
+        title={editing?.id ? 'Edit tax rate' : 'New tax rate'}
+        description={editing?.id ? editing.form.name || undefined : 'A rate the business charges or pays.'}
+        footer={
+          <div className="flex justify-end gap-sm">
+            <Button variant="secondary" onClick={() => setPanelOpen(false)} disabled={save.isPending}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form="tax-rate-form"
+              disabled={save.isPending || (touched && Object.keys(errors).length > 0)}
+            >
+              {save.isPending ? 'Saving…' : editing?.id ? 'Save rate' : 'Add rate'}
+            </Button>
+          </div>
+        }
       >
-        {editing && (
-          <div className="grid gap-md">
-            <Input
-              label="Name"
-              value={editing.form.name}
-              onChange={(e) => patch({ name: e.target.value })}
-              placeholder="GST 17%"
-              error={shownErrors.name}
-              autoFocus
-            />
-            <div className="grid gap-md sm:grid-cols-2">
+        <form id="tax-rate-form" onSubmit={submit} noValidate className="px-lg py-lg">
+          {editing && (
+            <div className="grid gap-md">
               <Input
-                label="Rate (%)"
-                value={editing.form.rate}
-                onChange={(e) => patch({ rate: e.target.value })}
-                inputMode="decimal"
-                placeholder="17"
-                className="tabular"
-                error={shownErrors.rate}
+                label="Name"
+                value={editing.form.name}
+                onChange={(e) => patch({ name: e.target.value })}
+                placeholder="GST 17%"
+                error={shownErrors.name}
+                autoFocus
               />
-              <Select
-                label="Type"
-                value={editing.form.type}
-                onChange={(v) => patch({ type: v as TaxRateType })}
-                options={TAX_TYPE_OPTIONS}
+              <div className="grid gap-md sm:grid-cols-2">
+                <Input
+                  label="Rate (%)"
+                  value={editing.form.rate}
+                  onChange={(e) => patch({ rate: e.target.value })}
+                  inputMode="decimal"
+                  placeholder="17"
+                  className="tabular"
+                  error={shownErrors.rate}
+                />
+                <Select
+                  label="Type"
+                  value={editing.form.type}
+                  onChange={(v) => patch({ type: v as TaxRateType })}
+                  options={TAX_TYPE_OPTIONS}
+                />
+              </div>
+              <Input
+                label="Authority (optional)"
+                value={editing.form.authority}
+                onChange={(e) => patch({ authority: e.target.value })}
+                placeholder="Who it is paid to"
+                error={shownErrors.authority}
+              />
+              <Switch
+                checked={editing.form.isActive}
+                onCheckedChange={(v) => patch({ isActive: v })}
+                label="Active"
+              />
+              <Switch
+                checked={editing.form.isDefault}
+                onCheckedChange={(v) => patch({ isDefault: v })}
+                label="Default rate — replaces the current default"
               />
             </div>
-            <Input
-              label="Authority (optional)"
-              value={editing.form.authority}
-              onChange={(e) => patch({ authority: e.target.value })}
-              placeholder="Who it is paid to"
-              error={shownErrors.authority}
-            />
-            <Switch
-              checked={editing.form.isActive}
-              onCheckedChange={(v) => patch({ isActive: v })}
-              label="Active"
-            />
-            <Switch
-              checked={editing.form.isDefault}
-              onCheckedChange={(v) => patch({ isDefault: v })}
-              label="Default rate — replaces the current default"
-            />
-          </div>
-        )}
-      </ConfirmDialog>
+          )}
+        </form>
+      </SidePanel>
 
       <ConfirmDialog
         open={deleting !== null}

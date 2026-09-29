@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, FileText } from 'lucide-react';
+import { FileText } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { BackButton, CancelButton } from '@/components/layout/BackLink';
+import { useLeaveForm } from '@/features/shell/navHistory';
 import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { Combobox } from '@/components/ui/Combobox';
@@ -52,7 +54,7 @@ export default function EstimateFormPage() {
   const { estimateId } = useParams<{ estimateId: string }>();
   const [searchParams] = useSearchParams();
   const isEditing = Boolean(estimateId);
-  const navigate = useNavigate();
+  const leave = useLeaveForm();
   const queryClient = useQueryClient();
 
   const { byId: customersById, options: customerOptions } = useCustomerOptions();
@@ -112,7 +114,7 @@ export default function EstimateFormPage() {
           ? `${estimate.estimateNumber} has been saved.`
           : undefined,
       });
-      navigate(`/estimates/${estimate.id}`, { replace: true });
+      leave(`/estimates/${estimate.id}`);
     },
     onError: (e: Error) =>
       toast.error('Could not save estimate', { description: e.message }),
@@ -131,12 +133,7 @@ export default function EstimateFormPage() {
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-lg">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to={isEditing ? `/estimates/${estimateId}` : '/estimates'}>
-          <ArrowLeft className="size-4" />
-          Back
-        </Link>
-      </Button>
+      <BackButton fallback={{ to: isEditing ? `/estimates/${estimateId}` : '/estimates', label: 'Back' }} />
 
       <div>
         <h1 className="text-h2 text-text-primary">
@@ -214,9 +211,7 @@ export default function EstimateFormPage() {
       />
 
       <div className="flex flex-wrap justify-end gap-sm pb-xl">
-        <Button asChild variant="secondary" disabled={busy}>
-          <Link to={isEditing ? `/estimates/${estimateId}` : '/estimates'}>Cancel</Link>
-        </Button>
+        <CancelButton fallback={isEditing ? `/estimates/${estimateId}` : '/estimates'} disabled={busy} />
 
         {/* estimate.create is 'direct' for both roles — no approval wording
             anywhere in this module. */}

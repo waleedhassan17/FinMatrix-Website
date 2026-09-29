@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, CalendarRange, History, PiggyBank, Plus, Trash2 } from 'lucide-react';
+import { CalendarRange, History, PiggyBank, Plus, Trash2 } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { BackButton, CancelButton } from '@/components/layout/BackLink';
+import { useLeaveForm } from '@/features/shell/navHistory';
 import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { Combobox } from '@/components/ui/Combobox';
@@ -51,7 +53,7 @@ export default function BudgetFormPage() {
   const { budgetId } = useParams<{ budgetId: string }>();
   const editing = Boolean(budgetId);
   const enabled = useFeature('budgets');
-  const navigate = useNavigate();
+  const leave = useLeaveForm();
   const queryClient = useQueryClient();
   const thisYear = new Date().getFullYear();
 
@@ -127,7 +129,7 @@ export default function BudgetFormPage() {
     onSuccess: (saved) => {
       for (const key of ['budgets']) queryClient.invalidateQueries({ queryKey: [key] });
       toast.success(editing ? 'Budget updated' : 'Budget created', { description: saved.name });
-      navigate(`/budgets/${saved.id || budgetId}`, { replace: true });
+      leave(`/budgets/${saved.id || budgetId}`);
     },
     onError: (e: Error) => toast.error('Could not save the budget', { description: e.message }),
   });
@@ -171,12 +173,7 @@ export default function BudgetFormPage() {
 
   return (
     <form onSubmit={submit} className="mx-auto flex max-w-5xl flex-col gap-lg" noValidate>
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to={editing ? `/budgets/${budgetId}` : '/budgets'}>
-          <ArrowLeft className="size-4" />
-          {editing ? 'Budget' : 'Budgets'}
-        </Link>
-      </Button>
+      <BackButton fallback={{ to: editing ? `/budgets/${budgetId}` : '/budgets', label: editing ? 'Budget' : 'Budgets' }} />
 
       <div className="flex flex-wrap items-start justify-between gap-md">
         <div>
@@ -305,9 +302,7 @@ export default function BudgetFormPage() {
       </Card>
 
       <div className="flex justify-end gap-sm pb-xl">
-        <Button asChild variant="secondary">
-          <Link to={editing ? `/budgets/${budgetId}` : '/budgets'}>Cancel</Link>
-        </Button>
+        <CancelButton fallback={editing ? `/budgets/${budgetId}` : '/budgets'} />
         <Button type="submit" disabled={save.isPending}>
           {save.isPending ? 'Saving…' : editing ? 'Save budget' : 'Create budget'}
         </Button>

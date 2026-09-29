@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FileText, ReceiptText, RotateCcw, Users } from 'lucide-react';
+import { FileText, ReceiptText, RotateCcw } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -115,7 +115,6 @@ export default function PaymentDetailPage() {
               />
               <MoreActionsMenu
                 actions={[
-                  { label: 'View customer', icon: Users, to: `/customers/${payment.customerId}` },
                   {
                     // Admin only. DELETE /payments/:id is @Roles('admin') with no
                     // approval path, so staff cannot reverse a payment or request it.

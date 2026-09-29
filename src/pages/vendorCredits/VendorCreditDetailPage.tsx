@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Ban, FileText, Link2, Store, Trash2 } from 'lucide-react';
+import { Ban, FileText, Link2, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -189,7 +189,6 @@ export default function VendorCreditDetailPage() {
 
               <MoreActionsMenu
                 actions={[
-                  { label: 'View vendor', icon: Store, to: `/vendors/${credit.vendorId}` },
                   {
                     label: 'View original bill',
                     icon: FileText,

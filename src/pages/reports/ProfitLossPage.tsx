@@ -186,7 +186,7 @@ export default function ProfitLossPage() {
           : [row.label, csvAmount(row.amount)],
       );
     }
-    downloadCsv(csvFilename('profit-loss', range), toCsv(out));
+    return downloadCsv(csvFilename('profit-loss', range), toCsv(out));
   };
 
   return (

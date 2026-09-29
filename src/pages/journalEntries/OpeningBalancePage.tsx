@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowLeft,
   Banknote,
   Check,
   CreditCard,
@@ -16,6 +15,8 @@ import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { BackButton, CancelButton } from '@/components/layout/BackLink';
+import { useLeaveForm } from '@/features/shell/navHistory';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Combobox } from '@/components/ui/Combobox';
@@ -99,6 +100,7 @@ const SIDE_COPY: Record<Side, { title: string; blurb: string; amountLabel: strin
 
 export default function OpeningBalancePage() {
   const navigate = useNavigate();
+  const leave = useLeaveForm();
   const queryClient = useQueryClient();
 
   const cap = useCapability('journal.post');
@@ -267,7 +269,7 @@ export default function OpeningBalancePage() {
       toast.success('Opening balances posted', {
         description: result.entry.reference || undefined,
       });
-      navigate(`/journal-entries/${result.entry.id}`, { replace: true });
+      leave(`/journal-entries/${result.entry.id}`);
     },
     onError: (e: Error) =>
       toast.error('Could not post the opening balances', { description: e.message }),
@@ -302,12 +304,7 @@ export default function OpeningBalancePage() {
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-lg">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to="/journal-entries">
-          <ArrowLeft className="size-4" />
-          Journal entries
-        </Link>
-      </Button>
+      <BackButton fallback={{ to: '/journal-entries', label: 'Journal entries' }} />
 
       <div>
         <h1 className="text-h2 text-text-primary">Opening balances</h1>
@@ -522,9 +519,7 @@ export default function OpeningBalancePage() {
       )}
 
       <div className="flex flex-wrap justify-end gap-sm pb-xl">
-        <Button asChild variant="secondary" disabled={busy}>
-          <Link to="/journal-entries">Cancel</Link>
-        </Button>
+        <CancelButton fallback="/journal-entries" disabled={busy} />
         <Button onClick={submit} disabled={busy || !anyEntered}>
           {busy ? 'Posting…' : cap.submitLabel('Post opening balances')}
         </Button>

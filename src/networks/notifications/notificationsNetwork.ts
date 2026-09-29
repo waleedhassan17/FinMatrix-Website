@@ -14,11 +14,14 @@ export interface Notification {
   type: string;
   isRead: boolean;
   createdAt: string;
+  /** The ids the notification is about — `requestId`, `deliveryId`… — by type. */
+  data: Record<string, unknown> | null;
 }
 
-interface RawNotification extends Partial<Notification> {
+interface RawNotification extends Partial<Omit<Notification, 'data'>> {
   message?: string;
   read?: boolean;
+  data?: unknown;
 }
 
 const serialize = (raw: RawNotification): Notification => ({
@@ -28,6 +31,11 @@ const serialize = (raw: RawNotification): Notification => ({
   type: raw.type ?? 'info',
   isRead: raw.isRead ?? raw.read ?? false,
   createdAt: raw.createdAt ?? new Date().toISOString(),
+  // Kept: it is what a click opens. Dropping it left every notification inert.
+  data:
+    raw.data && typeof raw.data === 'object' && !Array.isArray(raw.data)
+      ? (raw.data as Record<string, unknown>)
+      : null,
 });
 
 export const fetchNotifications = async (params?: {

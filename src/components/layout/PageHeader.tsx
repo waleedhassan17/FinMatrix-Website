@@ -1,7 +1,8 @@
-import { ChevronLeft, MoreHorizontal, type LucideIcon } from 'lucide-react';
+import { MoreHorizontal, type LucideIcon } from 'lucide-react';
 import { Fragment, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
+import { BackLink } from '@/components/layout/BackLink';
 import { Button } from '@/components/ui/Button';
 import {
   DropdownMenu,
@@ -14,7 +15,10 @@ import { cn } from '@/lib/cn';
 
 export interface PageHeaderProps {
   title: ReactNode;
-  /** Where "back" goes — the list this record belongs to. */
+  /**
+   * Where "back" goes when the page was opened cold — the list this record
+   * belongs to. Opened from another page, Back returns there instead.
+   */
   back?: { to: string; label: string };
   /** Status badge(s), shown beside the title. */
   status?: ReactNode;
@@ -49,15 +53,7 @@ export function PageHeader({
 
   return (
     <div className={cn('flex flex-col gap-xs', className)}>
-      {back && (
-        <Link
-          to={back.to}
-          className="inline-flex w-fit items-center gap-xxs rounded-sm text-label-md text-text-secondary transition-colors hover:text-primary"
-        >
-          <ChevronLeft className="size-4" aria-hidden="true" />
-          {back.label}
-        </Link>
-      )}
+      {back && <BackLink fallback={back} />}
 
       <div className="flex flex-col gap-md lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">

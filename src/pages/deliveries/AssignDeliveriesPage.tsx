@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createColumnHelper } from '@tanstack/react-table';
-import { ArrowLeft, Sparkles, Truck, UserPlus } from 'lucide-react';
+import { Sparkles, Truck, UserPlus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { BackButton } from '@/components/layout/BackLink';
 import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -228,12 +229,7 @@ export default function AssignDeliveriesPage() {
 
   return (
     <div className="flex flex-col gap-lg">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to="/deliveries">
-          <ArrowLeft className="size-4" />
-          Delivery monitor
-        </Link>
-      </Button>
+      <BackButton fallback={{ to: '/deliveries', label: 'Delivery monitor' }} />
 
       <div>
         <h1 className="text-h2 text-text-primary">Assign deliveries</h1>

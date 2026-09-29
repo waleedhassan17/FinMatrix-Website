@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Lock, Package } from 'lucide-react';
+import { Lock, Package } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { BackButton, CancelButton } from '@/components/layout/BackLink';
+import { useLeaveForm } from '@/features/shell/navHistory';
 import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { Textarea } from '@/components/ui/Field';
@@ -36,7 +38,7 @@ export default function InventoryFormPage() {
   const { itemId } = useParams<{ itemId: string }>();
   const editing = Boolean(itemId);
   const enabled = useFeature('inventory');
-  const navigate = useNavigate();
+  const leave = useLeaveForm();
   const queryClient = useQueryClient();
 
   const itemQuery = useQuery({
@@ -73,7 +75,7 @@ export default function InventoryFormPage() {
       toast.success(editing ? 'Item updated' : 'Item created', {
         description: `${saved.name} (${saved.sku}) has been saved.`,
       });
-      navigate(`/inventory/${saved.id}`, { replace: true });
+      leave(`/inventory/${saved.id}`);
     },
     onError: (e: Error) => {
       // The one server rule the form cannot check alone.
@@ -124,12 +126,7 @@ export default function InventoryFormPage() {
 
   return (
     <form onSubmit={submit} className="mx-auto flex max-w-3xl flex-col gap-lg" noValidate>
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to={back}>
-          <ArrowLeft className="size-4" />
-          Back
-        </Link>
-      </Button>
+      <BackButton fallback={{ to: back, label: 'Back' }} />
 
       <div>
         <h1 className="text-h2 text-text-primary">{editing ? 'Edit item' : 'New item'}</h1>
@@ -267,9 +264,7 @@ export default function InventoryFormPage() {
       </Card>
 
       <div className="flex justify-end gap-sm pb-xl">
-        <Button asChild variant="secondary">
-          <Link to={back}>Cancel</Link>
-        </Button>
+        <CancelButton fallback={back} />
         {/* inventory.manageItems is direct for both roles — no approval step. */}
         <Button type="submit" disabled={save.isPending}>
           {save.isPending ? 'Saving…' : editing ? 'Save changes' : 'Create item'}

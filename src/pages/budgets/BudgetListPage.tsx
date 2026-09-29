@@ -105,12 +105,6 @@ export default function BudgetListPage() {
         empty={
           <div className="py-xl text-center">
             <p className="text-body-md text-text-secondary">No budgets yet.</p>
-            <Button asChild className="mt-lg">
-              <Link to="/budgets/new">
-                <Plus className="size-4" />
-                New budget
-              </Link>
-            </Button>
           </div>
         }
       />

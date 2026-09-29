@@ -63,7 +63,7 @@ export default function TrialBalancePage() {
       csvAmount(report.totalDebits),
       csvAmount(report.totalCredits),
     ]);
-    downloadCsv(csvFilename('trial-balance', range), toCsv(out));
+    return downloadCsv(csvFilename('trial-balance', range), toCsv(out));
   };
 
   return (

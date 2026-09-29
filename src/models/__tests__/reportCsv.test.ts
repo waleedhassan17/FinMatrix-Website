@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { csvAmount, csvFilename, toCsv } from '@/models/reportCsv';
+import { csvAmount, csvDownloadName, csvFilename, toCsv } from '@/models/reportCsv';
 
 describe('toCsv', () => {
   it('joins cells with commas and rows with CRLF', () => {
@@ -105,5 +105,17 @@ describe('csvFilename', () => {
 
   it('falls back to the bare report name with no period', () => {
     expect(csvFilename('ar-aging', {})).toBe('ar-aging');
+  });
+});
+
+describe('csvDownloadName', () => {
+  // The name the "CSV downloaded" confirmation shows, so it must be the name
+  // the file is actually saved under.
+  it('adds the extension', () => {
+    expect(csvDownloadName('profit-loss_2026-01-01_2026-09-29')).toBe('profit-loss_2026-01-01_2026-09-29.csv');
+  });
+
+  it('does not double it', () => {
+    expect(csvDownloadName('ar-aging.csv')).toBe('ar-aging.csv');
   });
 });

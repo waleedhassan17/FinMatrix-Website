@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, CornerUpLeft, Info, Plus } from 'lucide-react';
+import { CornerUpLeft, Info, Plus } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { BackButton, CancelButton } from '@/components/layout/BackLink';
+import { useLeaveForm } from '@/features/shell/navHistory';
 import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { Combobox } from '@/components/ui/Combobox';
@@ -39,6 +41,7 @@ const emptyForm = (): VendorCreditFormData => ({
 export default function VendorCreditFormPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const leave = useLeaveForm();
   const queryClient = useQueryClient();
 
   const cap = useCapability('vendorCredit.manage');
@@ -156,7 +159,7 @@ export default function VendorCreditFormPage() {
           ? `${result.vendorCredit.vendorCreditNumber} has been created.`
           : undefined,
       });
-      navigate(`/vendor-credits/${result.vendorCredit.id}`, { replace: true });
+      leave(`/vendor-credits/${result.vendorCredit.id}`);
     },
     onError: (e: Error) =>
       toast.error('Could not record vendor credit', { description: e.message }),
@@ -166,12 +169,7 @@ export default function VendorCreditFormPage() {
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-lg">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to="/vendor-credits">
-          <ArrowLeft className="size-4" />
-          Vendor credits
-        </Link>
-      </Button>
+      <BackButton fallback={{ to: '/vendor-credits', label: 'Vendor credits' }} />
 
       <div>
         <h1 className="text-h2 text-text-primary">New vendor credit</h1>
@@ -314,9 +312,7 @@ export default function VendorCreditFormPage() {
       </div>
 
       <div className="flex flex-wrap justify-end gap-sm pb-xl">
-        <Button asChild variant="secondary" disabled={busy}>
-          <Link to="/vendor-credits">Cancel</Link>
-        </Button>
+        <CancelButton fallback="/vendor-credits" disabled={busy} />
         <Button
           onClick={() => {
             if (validate()) save.mutate();

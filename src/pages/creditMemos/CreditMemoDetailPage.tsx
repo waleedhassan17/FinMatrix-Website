@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Ban, Banknote, FileText, Link2, Trash2, Users } from 'lucide-react';
+import { Ban, Banknote, FileText, Link2, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -178,7 +178,6 @@ export default function CreditMemoDetailPage() {
 
               <MoreActionsMenu
                 actions={[
-                  { label: 'View customer', icon: Users, to: `/customers/${memo.customerId}` },
                   {
                     label: 'View original invoice',
                     icon: FileText,

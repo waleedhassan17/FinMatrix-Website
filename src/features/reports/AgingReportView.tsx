@@ -181,7 +181,7 @@ export function AgingReportView({
       ...buckets.map((b) => csvAmount(report.totals.amounts[b.key] ?? 0)),
       csvAmount(report.totals.total),
     ]);
-    downloadCsv(
+    return downloadCsv(
       csvFilename(csvName, { asOfDate: report.asOfDate }),
       toCsv(out),
     );

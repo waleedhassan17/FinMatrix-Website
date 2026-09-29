@@ -286,14 +286,6 @@ export default function InventoryListPage() {
                   ? 'Try a different search, category or filter.'
                   : 'Add the products you stock, then bring in their quantities with opening stock or a purchase-order receipt.'}
               </p>
-              {!narrowed && canManage && (
-                <Button asChild className="mt-lg">
-                  <Link to="/inventory/new">
-                    <Plus className="size-4" />
-                    New item
-                  </Link>
-                </Button>
-              )}
             </div>
           }
         />

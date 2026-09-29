@@ -1,9 +1,10 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ArrowLeft, RefreshCw, Truck } from 'lucide-react';
+import { AlertTriangle, RefreshCw, Truck } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { BackButton, CancelButton } from '@/components/layout/BackLink';
+import { useLeaveForm } from '@/features/shell/navHistory';
 import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -42,7 +43,7 @@ const suggestUsername = (name: string): string =>
  */
 export default function RiderFormPage() {
   const enabled = useFeature('delivery');
-  const navigate = useNavigate();
+  const leave = useLeaveForm();
   const queryClient = useQueryClient();
   const [form, setForm] = useState<RiderForm>(() => ({
     ...emptyRiderForm(),
@@ -119,12 +120,7 @@ export default function RiderFormPage() {
 
   return (
     <form onSubmit={submit} className="mx-auto flex max-w-2xl flex-col gap-lg" noValidate>
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to="/delivery-personnel">
-          <ArrowLeft className="size-4" />
-          Riders
-        </Link>
-      </Button>
+      <BackButton fallback={{ to: '/delivery-personnel', label: 'Riders' }} />
 
       <div>
         <h1 className="text-h2 text-text-primary">Add a rider</h1>
@@ -257,9 +253,7 @@ export default function RiderFormPage() {
       </Card>
 
       <div className="flex justify-end gap-sm pb-xl">
-        <Button asChild variant="secondary">
-          <Link to="/delivery-personnel">Cancel</Link>
-        </Button>
+        <CancelButton fallback="/delivery-personnel" />
         <Button type="submit" disabled={save.isPending}>
           {save.isPending ? 'Adding…' : 'Add rider'}
         </Button>
@@ -270,9 +264,7 @@ export default function RiderFormPage() {
         title="Rider added"
         credentials={issued?.credentials ?? null}
         onClose={() =>
-          navigate(issued?.userId ? `/delivery-personnel/${issued.userId}` : '/delivery-personnel', {
-            replace: true,
-          })
+          leave(issued?.userId ? `/delivery-personnel/${issued.userId}` : '/delivery-personnel')
         }
       />
     </form>

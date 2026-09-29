@@ -1,5 +1,11 @@
 import { Suspense } from 'react';
-import { createBrowserRouter, Navigate, Outlet, useRouteError } from 'react-router-dom';
+import {
+  createBrowserRouter,
+  Navigate,
+  Outlet,
+  ScrollRestoration,
+  useRouteError,
+} from 'react-router-dom';
 
 import {
   RedirectIfAuthenticated,
@@ -113,6 +119,7 @@ import {
   VerifyEmailPage,
 } from '@/app/lazyPages';
 import { AppLayout } from '@/features/shell/AppLayout';
+import { navHistory, SHELL_ROUTE_ID } from '@/features/shell/navHistory';
 
 /** Shown while a lazy route's chunk arrives. Mirrors SessionGate's BootSplash. */
 function RouteFallback() {
@@ -175,17 +182,22 @@ function RouteError() {
  */
 function Root() {
   return (
-    <SessionGate>
-      {/* Covers every lazy route outside AppLayout — the auth screens, onboarding,
-          renewal, /dev/tokens. AppLayout has its own boundary so a page
-          transition inside the product does not blank the sidebar.
+    <>
+      {/* Back lands where the page was left; a new page opens at the top. The
+          window is the scroller — the shell has no scrolling container. */}
+      <ScrollRestoration />
+      <SessionGate>
+        {/* Covers every lazy route outside AppLayout — the auth screens, onboarding,
+            renewal, /dev/tokens. AppLayout has its own boundary so a page
+            transition inside the product does not blank the sidebar.
 
-          The fallback matches SessionGate's own BootSplash, so arriving at a
-          sign-in screen looks like one continuous load rather than two. */}
-      <Suspense fallback={<RouteFallback />}>
-        <Outlet />
-      </Suspense>
-    </SessionGate>
+            The fallback matches SessionGate's own BootSplash, so arriving at a
+            sign-in screen looks like one continuous load rather than two. */}
+        <Suspense fallback={<RouteFallback />}>
+          <Outlet />
+        </Suspense>
+      </SessionGate>
+    </>
   );
 }
 
@@ -319,6 +331,9 @@ export const router = createBrowserRouter([
 
       // ── Authenticated ─────────────────────────────────────────────
       {
+        // navHistory only counts pages under this route as places Back can
+        // return to.
+        id: SHELL_ROUTE_ID,
         element: (
           <RequireAuth>
             <RequireVerifiedEmail>
@@ -555,5 +570,10 @@ export const router = createBrowserRouter([
     ],
   },
 ]);
+
+// Registered before RouterProvider subscribes, so each page's origin is on
+// record by the time the page renders.
+navHistory.track(router.state);
+router.subscribe((state) => navHistory.track(state));
 
 export default router;

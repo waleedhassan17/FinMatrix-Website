@@ -231,7 +231,7 @@ export default function InventoryItemReportPage() {
       [],
       ...explorerCsvRows(months),
     ];
-    downloadCsv(
+    return downloadCsv(
       csvFilename(`item-${(sku || itemName).toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, range),
       toCsv(out),
     );

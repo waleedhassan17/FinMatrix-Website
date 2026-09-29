@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ClipboardList } from 'lucide-react';
+import { ClipboardList } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { BackButton, CancelButton } from '@/components/layout/BackLink';
+import { useLeaveForm } from '@/features/shell/navHistory';
 import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { Combobox } from '@/components/ui/Combobox';
@@ -53,7 +55,7 @@ export default function SalesOrderFormPage() {
   const { salesOrderId } = useParams<{ salesOrderId: string }>();
   const [searchParams] = useSearchParams();
   const isEditing = Boolean(salesOrderId);
-  const navigate = useNavigate();
+  const leave = useLeaveForm();
   const queryClient = useQueryClient();
 
   const { byId: customersById, options: customerOptions } = useCustomerOptions();
@@ -132,7 +134,7 @@ export default function SalesOrderFormPage() {
           duration: 12_000,
         });
       }
-      navigate(`/sales-orders/${order.id}`, { replace: true });
+      leave(`/sales-orders/${order.id}`);
     },
     onError: (e: Error) => {
       const short = backorderRefusal(e);
@@ -152,12 +154,7 @@ export default function SalesOrderFormPage() {
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-lg">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to={isEditing ? `/sales-orders/${salesOrderId}` : '/sales-orders'}>
-          <ArrowLeft className="size-4" />
-          Back
-        </Link>
-      </Button>
+      <BackButton fallback={{ to: isEditing ? `/sales-orders/${salesOrderId}` : '/sales-orders', label: 'Back' }} />
 
       <div>
         <h1 className="text-h2 text-text-primary">
@@ -238,11 +235,7 @@ export default function SalesOrderFormPage() {
       />
 
       <div className="flex flex-wrap justify-end gap-sm pb-xl">
-        <Button asChild variant="secondary" disabled={busy}>
-          <Link to={isEditing ? `/sales-orders/${salesOrderId}` : '/sales-orders'}>
-            Cancel
-          </Link>
-        </Button>
+        <CancelButton fallback={isEditing ? `/sales-orders/${salesOrderId}` : '/sales-orders'} disabled={busy} />
         {/* salesOrder.create is 'direct' for both roles. */}
         <Button
           onClick={() => {

@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Info, Users, Wallet } from 'lucide-react';
+import { Info, Users, Wallet } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { BackButton, CancelButton } from '@/components/layout/BackLink';
+import { useLeaveForm } from '@/features/shell/navHistory';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DateField } from '@/components/ui/Field';
@@ -34,7 +36,7 @@ const HOURS = /^\d+(\.\d{1,2})?$/;
  */
 export default function PayrollRunFormPage() {
   const enabled = useFeature('payroll');
-  const navigate = useNavigate();
+  const leave = useLeaveForm();
   const queryClient = useQueryClient();
 
   const [month, setMonth] = useState(() => isoToday().slice(0, 7));
@@ -80,7 +82,7 @@ export default function PayrollRunFormPage() {
       toast.success('Draft payroll run created', {
         description: 'Nothing has posted yet. Check it, then process it.',
       });
-      navigate(`/payroll/runs/${run.id}`, { replace: true });
+      leave(`/payroll/runs/${run.id}`);
     },
     onError: (e: Error) => toast.error('Could not build the run', { description: e.message }),
   });
@@ -91,12 +93,7 @@ export default function PayrollRunFormPage() {
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-lg">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to="/payroll/runs">
-          <ArrowLeft className="size-4" />
-          Payroll runs
-        </Link>
-      </Button>
+      <BackButton fallback={{ to: '/payroll/runs', label: 'Payroll runs' }} />
 
       <div>
         <h1 className="text-h2 text-text-primary">New payroll run</h1>
@@ -245,9 +242,7 @@ export default function PayrollRunFormPage() {
       )}
 
       <div className="flex justify-end gap-sm pb-xl">
-        <Button asChild variant="secondary">
-          <Link to="/payroll/runs">Cancel</Link>
-        </Button>
+        <CancelButton fallback="/payroll/runs" />
         <Button
           disabled={save.isPending || included.length === 0 || badHours || negativeNet}
           onClick={() => save.mutate()}

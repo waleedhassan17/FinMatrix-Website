@@ -151,7 +151,7 @@ export default function CashFlowPage() {
           : [row.label, csvAmount(row.amount)],
       );
     }
-    downloadCsv(csvFilename('cash-flow', range), toCsv(out));
+    return downloadCsv(csvFilename('cash-flow', range), toCsv(out));
   };
 
   return (

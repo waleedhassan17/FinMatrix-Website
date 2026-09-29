@@ -1,9 +1,11 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ArrowLeft, Check, CloudOff, Loader2 } from 'lucide-react';
+import { AlertTriangle, Check, CloudOff, Loader2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { BackButton } from '@/components/layout/BackLink';
+import { useLeaveForm } from '@/features/shell/navHistory';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DateField, Textarea } from '@/components/ui/Field';
@@ -86,7 +88,7 @@ const MARK_DEBOUNCE_MS = 700;
  */
 export default function ReconcilePage() {
   const { accountId = '' } = useParams<{ accountId: string }>();
-  const navigate = useNavigate();
+  const leave = useLeaveForm();
   const queryClient = useQueryClient();
   const enabled = useFeature('bankReconciliation');
 
@@ -197,7 +199,7 @@ export default function ReconcilePage() {
       toast.success('Reconciled', {
         description: `${saved.clearedCount} transaction${saved.clearedCount === 1 ? '' : 's'} cleared and locked.`,
       });
-      navigate(`/reconciliations/${saved.id}`, { replace: true });
+      leave(`/reconciliations/${saved.id}`);
     },
     onError: (e: Error) => toast.error('Could not finish', { description: e.message }),
   });
@@ -219,12 +221,7 @@ export default function ReconcilePage() {
 
   return (
     <div className="flex flex-col gap-lg pb-xxxl">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to="/reconciliations">
-          <ArrowLeft className="size-4" />
-          Bank reconciliation
-        </Link>
-      </Button>
+      <BackButton fallback={{ to: '/reconciliations', label: 'Bank reconciliation' }} />
 
       <div>
         <h1 className="text-h2 text-text-primary">

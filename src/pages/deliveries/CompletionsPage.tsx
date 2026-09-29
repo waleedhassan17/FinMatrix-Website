@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, ClipboardCheck, Truck } from 'lucide-react';
+import { ClipboardCheck, Truck } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 
-import { Button } from '@/components/ui/Button';
+import { BackButton } from '@/components/layout/BackLink';
 import { Card } from '@/components/ui/Card';
 import { CompletionCard } from '@/features/delivery/CompletionCard';
 import { useRiders } from '@/features/delivery/useRiders';
@@ -40,6 +40,15 @@ export default function CompletionsPage() {
   const [params] = useSearchParams();
   const focus = params.get('focus');
   const [tab, setTab] = useState<Tab>(focus ? 'all' : 'pending');
+  // A new `focus` — a notification clicked while this page is already open —
+  // opens on "all" again, or a completion outside the current tab is never
+  // found. Adjusted during render rather than in an effect, so no frame shows
+  // the old tab.
+  const [seenFocus, setSeenFocus] = useState(focus);
+  if (focus !== seenFocus) {
+    setSeenFocus(focus);
+    if (focus) setTab('all');
+  }
   const { byId } = useRiders(enabled);
 
   const query = useQuery({
@@ -82,12 +91,7 @@ export default function CompletionsPage() {
 
   return (
     <div className="flex flex-col gap-lg">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to="/deliveries">
-          <ArrowLeft className="size-4" />
-          Delivery monitor
-        </Link>
-      </Button>
+      <BackButton fallback={{ to: '/deliveries', label: 'Delivery monitor' }} />
 
       <div>
         <h1 className="text-h2 text-text-primary">Delivery completions</h1>

@@ -30,7 +30,7 @@ interface ConfirmDialogProps {
 }
 
 const overlay =
-  'fixed inset-0 z-50 bg-[color:var(--color-overlay)] data-[state=open]:animate-in';
+  'fixed inset-0 z-50 bg-overlay data-[state=open]:animate-scrim-in data-[state=closed]:animate-scrim-out motion-reduce:animate-none';
 
 export function ConfirmDialog({
   open,
@@ -63,7 +63,9 @@ export function ConfirmDialog({
         <AlertDialog.Overlay className={overlay} />
         <AlertDialog.Content
           className={cn(
-            'fixed left-1/2 top-1/2 z-50 w-[calc(100vw-2rem)] max-w-[28rem] -translate-x-1/2 -translate-y-1/2',
+            // Capped to the viewport and scrolling within it, so a tall body
+            // never pushes the buttons off a short screen.
+            'fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-[28rem] -translate-x-1/2 -translate-y-1/2 overflow-y-auto',
             'rounded-lg bg-surface p-xl shadow-lg',
           )}
         >

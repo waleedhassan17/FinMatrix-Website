@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Plus, Receipt } from 'lucide-react';
+import { Plus, Receipt } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { BackButton, CancelButton } from '@/components/layout/BackLink';
+import { useLeaveForm } from '@/features/shell/navHistory';
 import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { Combobox } from '@/components/ui/Combobox';
@@ -50,6 +52,7 @@ export default function BillFormPage() {
   const [searchParams] = useSearchParams();
   const isEditing = Boolean(billId);
   const navigate = useNavigate();
+  const leave = useLeaveForm();
   const queryClient = useQueryClient();
 
   const { byId: vendorsById, options: vendorOptions } = useVendorOptions();
@@ -176,7 +179,7 @@ export default function BillFormPage() {
       if (outcome.kind === 'updated') {
         queryClient.invalidateQueries({ queryKey: ['bills'] });
         toast.success('Bill updated');
-        navigate(`/bills/${outcome.bill.id}`, { replace: true });
+        leave(`/bills/${outcome.bill.id}`);
         return;
       }
 
@@ -194,7 +197,7 @@ export default function BillFormPage() {
       toast.success(
         outcome.result.bill.status === 'draft' ? 'Draft saved' : 'Bill recorded',
       );
-      navigate(`/bills/${outcome.result.bill.id}`, { replace: true });
+      leave(`/bills/${outcome.result.bill.id}`);
     },
     onError: (e: Error) =>
       toast.error('Could not save bill', { description: e.message }),
@@ -230,12 +233,7 @@ export default function BillFormPage() {
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-lg">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to={isEditing ? `/bills/${billId}` : '/bills'}>
-          <ArrowLeft className="size-4" />
-          Back
-        </Link>
-      </Button>
+      <BackButton fallback={{ to: isEditing ? `/bills/${billId}` : '/bills', label: 'Back' }} />
 
       <div>
         <h1 className="text-h2 text-text-primary">
@@ -377,9 +375,7 @@ export default function BillFormPage() {
 
       {/* ── Actions ─────────────────────────────────────────────────── */}
       <div className="flex flex-wrap justify-end gap-sm pb-xl">
-        <Button asChild variant="secondary" disabled={busy}>
-          <Link to={isEditing ? `/bills/${billId}` : '/bills'}>Cancel</Link>
-        </Button>
+        <CancelButton fallback={isEditing ? `/bills/${billId}` : '/bills'} disabled={busy} />
         {/* `status` is draft | open on create and only `open` posts the AP
             entry. Recording a bill is direct for staff — the approval gate on
             the purchase side sits on paying it, not on entering it. */}

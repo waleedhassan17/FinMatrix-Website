@@ -52,7 +52,7 @@ export default function TaxLiabilityPage() {
       out.push([row.taxName, csvAmount(row.collected), csvAmount(row.paid), csvAmount(row.net)]);
     }
     out.push(['Total', csvAmount(report.totalCollected), csvAmount(report.totalPaid), csvAmount(report.totalNet)]);
-    downloadCsv(csvFilename('tax-liability', range), toCsv(out));
+    return downloadCsv(csvFilename('tax-liability', range), toCsv(out));
   };
 
   const payHref = report

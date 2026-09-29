@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, CreditCard, Info } from 'lucide-react';
+import { CreditCard, Info } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { BackButton, CancelButton } from '@/components/layout/BackLink';
+import { useLeaveForm } from '@/features/shell/navHistory';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Card, SectionHeader } from '@/components/ui/Card';
@@ -89,6 +91,7 @@ const emptyForm = (): PaymentFormData => ({
 export default function ReceivePaymentPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const leave = useLeaveForm();
   const queryClient = useQueryClient();
 
   const cap = useCapability('payment.receive');
@@ -295,7 +298,7 @@ export default function ReceivePaymentPage() {
         toast.success('Invoices settled from credit', {
           description: `${formatMoney(creditTotal)} of credit on account applied — no new money recorded.`,
         });
-        navigate(`/customers/${form.customerId}`, { replace: true });
+        leave(`/customers/${form.customerId}`);
         return;
       }
       toast.success(creditTotal > 0 ? 'Payment recorded with credit' : 'Payment recorded', {
@@ -306,7 +309,7 @@ export default function ReceivePaymentPage() {
           .filter(Boolean)
           .join(' ') || undefined,
       });
-      navigate(`/payments/${payment.id}`, { replace: true });
+      leave(`/payments/${payment.id}`);
     },
     // Server reasons matter: PAYMENT_EXCEEDS_BALANCE usually means someone
     // settled the invoice while this form was open, and PERIOD_LOCKED means
@@ -319,12 +322,7 @@ export default function ReceivePaymentPage() {
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-lg">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to="/payments">
-          <ArrowLeft className="size-4" />
-          Payments
-        </Link>
-      </Button>
+      <BackButton fallback={{ to: '/payments', label: 'Payments' }} />
 
       <div>
         <h1 className="text-h2 text-text-primary">Receive payment</h1>
@@ -594,9 +592,7 @@ export default function ReceivePaymentPage() {
       />
 
       <div className="flex flex-wrap justify-end gap-sm pb-xl">
-        <Button asChild variant="secondary" disabled={busy}>
-          <Link to="/payments">Cancel</Link>
-        </Button>
+        <CancelButton fallback="/payments" disabled={busy} />
         <Button
           onClick={() => {
             if (!validate()) return;

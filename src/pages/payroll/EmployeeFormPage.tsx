@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Trash2, Wallet } from 'lucide-react';
+import { Trash2, Wallet } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { BackButton, CancelButton } from '@/components/layout/BackLink';
+import { useLeaveForm } from '@/features/shell/navHistory';
 import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -50,7 +52,7 @@ export default function EmployeeFormPage() {
   const { employeeId } = useParams<{ employeeId: string }>();
   const editing = Boolean(employeeId);
   const enabled = useFeature('payroll');
-  const navigate = useNavigate();
+  const leave = useLeaveForm();
   const queryClient = useQueryClient();
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -84,7 +86,7 @@ export default function EmployeeFormPage() {
       toast.success(editing ? 'Employee updated' : 'Employee added', {
         description: `${fullName(saved)} has been saved.`,
       });
-      navigate('/employees', { replace: true });
+      leave('/employees');
     },
     onError: (e: Error) => toast.error('Could not save the employee', { description: e.message }),
   });
@@ -94,7 +96,7 @@ export default function EmployeeFormPage() {
     onSuccess: () => {
       invalidatePayroll(queryClient);
       toast.success('Employee deleted');
-      navigate('/employees', { replace: true });
+      leave('/employees');
     },
     // EMPLOYEE_HAS_PAYROLL_HISTORY says to set them inactive instead — worth
     // showing verbatim.
@@ -146,12 +148,7 @@ export default function EmployeeFormPage() {
 
   return (
     <form onSubmit={submit} className="mx-auto flex max-w-3xl flex-col gap-lg" noValidate>
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to="/employees">
-          <ArrowLeft className="size-4" />
-          Employees
-        </Link>
-      </Button>
+      <BackButton fallback={{ to: '/employees', label: 'Employees' }} />
 
       <div className="flex flex-wrap items-start justify-between gap-md">
         <div>
@@ -266,9 +263,7 @@ export default function EmployeeFormPage() {
       </Card>
 
       <div className="flex justify-end gap-sm pb-xl">
-        <Button asChild variant="secondary">
-          <Link to="/employees">Cancel</Link>
-        </Button>
+        <CancelButton fallback="/employees" />
         <Button type="submit" disabled={save.isPending}>
           {save.isPending ? 'Saving…' : editing ? 'Save changes' : 'Add employee'}
         </Button>

@@ -1,9 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ArrowLeft, Plus, Trash2, Truck } from 'lucide-react';
+import { AlertTriangle, Plus, Trash2, Truck } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { BackButton, CancelButton } from '@/components/layout/BackLink';
+import { useLeaveForm } from '@/features/shell/navHistory';
 import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { Combobox } from '@/components/ui/Combobox';
@@ -68,6 +70,7 @@ export default function CreateDeliveryPage() {
   const canCreate = useCapability('delivery.create').allowed;
   const isOwner = useRole() === 'admin';
   const navigate = useNavigate();
+  const leave = useLeaveForm();
   const queryClient = useQueryClient();
 
   const { options: customerOptions, byId: customersById, isLoading: customersLoading } =
@@ -180,7 +183,7 @@ export default function CreateDeliveryPage() {
           ? `${d.referenceNo} is with ${riderName}. The stock is in Goods in Transit.`
           : `${d.referenceNo} is waiting for a rider.`,
       });
-      navigate(`/deliveries/${d.id}`, { replace: true });
+      leave(`/deliveries/${d.id}`);
     },
     onError: (e: Error) => {
       setConfirming(false);
@@ -215,12 +218,7 @@ export default function CreateDeliveryPage() {
 
   return (
     <form onSubmit={submit} className="mx-auto flex max-w-4xl flex-col gap-lg" noValidate>
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to="/deliveries">
-          <ArrowLeft className="size-4" />
-          Delivery monitor
-        </Link>
-      </Button>
+      <BackButton fallback={{ to: '/deliveries', label: 'Delivery monitor' }} />
 
       <div>
         <h1 className="text-h2 text-text-primary">New delivery</h1>
@@ -463,9 +461,7 @@ export default function CreateDeliveryPage() {
       </Card>
 
       <div className="flex justify-end gap-sm pb-xl">
-        <Button asChild variant="secondary">
-          <Link to="/deliveries">Cancel</Link>
-        </Button>
+        <CancelButton fallback="/deliveries" />
         <Button type="submit" disabled={!canCreate || save.isPending}>
           {save.isPending
             ? asRequest

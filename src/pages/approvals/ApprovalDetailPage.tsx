@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
-  ArrowLeft,
   ArrowUpRight,
   Check,
   Info,
@@ -13,6 +12,7 @@ import { useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { BackButton } from '@/components/layout/BackLink';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -169,12 +169,7 @@ export default function ApprovalDetailPage() {
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-lg pb-xxxl">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to={back.to}>
-          <ArrowLeft className="size-4" />
-          {back.label}
-        </Link>
-      </Button>
+      <BackButton fallback={back} />
 
       <div className="flex flex-wrap items-start justify-between gap-md">
         <div className="min-w-0">

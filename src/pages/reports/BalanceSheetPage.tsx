@@ -174,7 +174,7 @@ export default function BalanceSheetPage() {
     out.push([], ['LIABILITIES AND EQUITY']);
     for (const row of liabilityRows) out.push([row.label, csvAmount(row.amount)]);
 
-    downloadCsv(csvFilename('balance-sheet', { asOfDate }), toCsv(out));
+    return downloadCsv(csvFilename('balance-sheet', { asOfDate }), toCsv(out));
   };
 
   return (

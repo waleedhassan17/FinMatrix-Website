@@ -1,12 +1,13 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 import { Controller, useForm } from 'react-hook-form';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
+import { BackButton, CancelButton } from '@/components/layout/BackLink';
+import { useLeaveForm } from '@/features/shell/navHistory';
 import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { Combobox } from '@/components/ui/Combobox';
@@ -78,7 +79,7 @@ type VendorSchema = z.infer<typeof vendorSchema>;
 export default function VendorFormPage() {
   const { vendorId } = useParams<{ vendorId: string }>();
   const isEditing = Boolean(vendorId);
-  const navigate = useNavigate();
+  const leave = useLeaveForm();
   const queryClient = useQueryClient();
 
   const { data: vendor, isLoading } = useQuery({
@@ -131,7 +132,7 @@ export default function VendorFormPage() {
       toast.success(isEditing ? 'Vendor updated' : 'Vendor created', {
         description: `${saved.name} has been saved.`,
       });
-      navigate(`/vendors/${saved.id}`, { replace: true });
+      leave(`/vendors/${saved.id}`);
     },
     onError: (e: Error) =>
       toast.error('Could not save vendor', { description: e.message }),
@@ -160,12 +161,7 @@ export default function VendorFormPage() {
       onSubmit={handleSubmit((v) => save.mutate(v))}
       className="mx-auto flex max-w-3xl flex-col gap-lg"
     >
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to={isEditing ? `/vendors/${vendorId}` : '/vendors'}>
-          <ArrowLeft className="size-4" />
-          Back
-        </Link>
-      </Button>
+      <BackButton fallback={{ to: isEditing ? `/vendors/${vendorId}` : '/vendors', label: 'Back' }} />
 
       <div>
         <h1 className="text-h2 text-text-primary">
@@ -273,9 +269,7 @@ export default function VendorFormPage() {
       </Card>
 
       <div className="flex justify-end gap-sm pb-xl">
-        <Button asChild variant="secondary">
-          <Link to={isEditing ? `/vendors/${vendorId}` : '/vendors'}>Cancel</Link>
-        </Button>
+        <CancelButton fallback={isEditing ? `/vendors/${vendorId}` : '/vendors'} />
         {/* vendor.manage is 'direct' for both roles — no approval affordance. */}
         <Button type="submit" disabled={isSubmitting || save.isPending}>
           {save.isPending ? 'Saving…' : 'Save vendor'}

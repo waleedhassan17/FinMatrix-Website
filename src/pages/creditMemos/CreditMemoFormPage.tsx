@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Info, RotateCcw, Truck } from 'lucide-react';
+import { Info, RotateCcw, Truck } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { BackButton, CancelButton } from '@/components/layout/BackLink';
+import { useLeaveForm } from '@/features/shell/navHistory';
 import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { Combobox } from '@/components/ui/Combobox';
@@ -52,6 +54,7 @@ const emptyForm = (): CreditMemoFormData => ({
 export default function CreditMemoFormPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const leave = useLeaveForm();
   const queryClient = useQueryClient();
   const fromDelivery = searchParams.get('fromDelivery');
 
@@ -160,7 +163,7 @@ export default function CreditMemoFormPage() {
           ? `${result.creditMemo.creditMemoNumber} has been created.`
           : undefined,
       });
-      navigate(`/credit-memos/${result.creditMemo.id}`, { replace: true });
+      leave(`/credit-memos/${result.creditMemo.id}`);
     },
     onError: (e: Error) =>
       toast.error(reversal ? 'Could not reverse the delivery' : 'Could not issue credit memo', {
@@ -177,12 +180,7 @@ export default function CreditMemoFormPage() {
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-lg">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to={back}>
-          <ArrowLeft className="size-4" />
-          {fromDelivery ? 'Delivery completions' : 'Credit memos'}
-        </Link>
-      </Button>
+      <BackButton fallback={{ to: back, label: fromDelivery ? 'Delivery completions' : 'Credit memos' }} />
 
       <div>
         <h1 className="text-h2 text-text-primary">
@@ -303,9 +301,7 @@ export default function CreditMemoFormPage() {
       />
 
       <div className="flex flex-wrap justify-end gap-sm pb-xl">
-        <Button asChild variant="secondary" disabled={busy}>
-          <Link to={back}>Cancel</Link>
-        </Button>
+        <CancelButton fallback={back} disabled={busy} />
         <Button
           onClick={() => {
             if (validate()) save.mutate();

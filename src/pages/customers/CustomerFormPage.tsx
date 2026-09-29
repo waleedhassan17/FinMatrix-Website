@@ -1,11 +1,12 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft } from 'lucide-react';
 import { useEffect } from 'react';
 import { Controller, useForm } from 'react-hook-form';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { BackButton, CancelButton } from '@/components/layout/BackLink';
+import { useLeaveForm } from '@/features/shell/navHistory';
 import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { Switch, Textarea } from '@/components/ui/Field';
@@ -30,7 +31,7 @@ import {
 export default function CustomerFormPage() {
   const { customerId } = useParams<{ customerId: string }>();
   const isEditing = Boolean(customerId);
-  const navigate = useNavigate();
+  const leave = useLeaveForm();
   const queryClient = useQueryClient();
 
   // Fetch by id rather than reading from the list cache. The app hydrates its
@@ -79,7 +80,7 @@ export default function CustomerFormPage() {
       toast.success(isEditing ? 'Customer updated' : 'Customer created', {
         description: `${customer.name} has been saved.`,
       });
-      navigate(`/customers/${customer.id}`, { replace: true });
+      leave(`/customers/${customer.id}`);
     },
     onError: (e: Error) => toast.error('Could not save customer', {
       description: e.message,
@@ -96,12 +97,7 @@ export default function CustomerFormPage() {
       className="mx-auto flex max-w-3xl flex-col gap-lg"
     >
       <div className="flex items-center gap-sm">
-        <Button asChild variant="text" size="sm" className="px-0">
-          <Link to={isEditing ? `/customers/${customerId}` : '/customers'}>
-            <ArrowLeft className="size-4" />
-            Back
-          </Link>
-        </Button>
+        <BackButton fallback={{ to: isEditing ? `/customers/${customerId}` : '/customers', label: 'Back' }} />
       </div>
 
       <div>
@@ -257,9 +253,7 @@ export default function CustomerFormPage() {
       </Card>
 
       <div className="flex justify-end gap-sm pb-xl">
-        <Button asChild variant="secondary">
-          <Link to={isEditing ? `/customers/${customerId}` : '/customers'}>Cancel</Link>
-        </Button>
+        <CancelButton fallback={isEditing ? `/customers/${customerId}` : '/customers'} />
         {/* customer.manage is 'direct' for both roles, so there is no
             approval affordance in this module — the label never changes. */}
         <Button type="submit" disabled={isSubmitting || save.isPending}>

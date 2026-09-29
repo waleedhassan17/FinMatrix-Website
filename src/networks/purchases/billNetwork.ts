@@ -118,10 +118,16 @@ export const updateBill = async (
   }
 };
 
-/** Draft → open. This is what posts the AP journal entry. */
+/**
+ * Draft → open. This is what posts the AP journal entry.
+ *
+ * `POST /bills/:id/post` is the server's posting route. There is no
+ * `PATCH /bills/:id/status`: calling it 404'd, so no draft bill could ever be
+ * posted from the web.
+ */
 export const postBill = async (id: string): Promise<Bill> => {
   try {
-    const response = await api.patch(`/bills/${id}/status`, { status: 'open' });
+    const response = await api.post(`/bills/${id}/post`);
     return mapBill(unwrapEnvelope(response.data));
   } catch (e) {
     throw toApiError(e);

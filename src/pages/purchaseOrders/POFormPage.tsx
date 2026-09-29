@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, ArrowLeft, Info, Plus, ShoppingCart } from 'lucide-react';
+import { AlertCircle, Info, Plus, ShoppingCart } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { BackButton, CancelButton } from '@/components/layout/BackLink';
+import { useLeaveForm } from '@/features/shell/navHistory';
 import { LineItemRow } from '@/components/shared/LineItemRow';
 import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
@@ -54,6 +56,7 @@ export default function POFormPage() {
   const [searchParams] = useSearchParams();
   const isEditing = Boolean(poId);
   const navigate = useNavigate();
+  const leave = useLeaveForm();
   const queryClient = useQueryClient();
 
   const createCap = useCapability('purchaseOrder.create');
@@ -214,7 +217,7 @@ export default function POFormPage() {
       if (outcome.kind === 'updated') {
         queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
         toast.success('Purchase order updated');
-        navigate(`/purchase-orders/${outcome.po.id}`, { replace: true });
+        leave(`/purchase-orders/${outcome.po.id}`);
         return;
       }
 
@@ -233,9 +236,7 @@ export default function POFormPage() {
       toast.success('Purchase order created', {
         description: `${outcome.result.purchaseOrder.poNumber} has been raised.`,
       });
-      navigate(`/purchase-orders/${outcome.result.purchaseOrder.id}`, {
-        replace: true,
-      });
+      leave(`/purchase-orders/${outcome.result.purchaseOrder.id}`);
     },
     onError: (e: Error) =>
       toast.error('Could not save purchase order', { description: e.message }),
@@ -295,12 +296,7 @@ export default function POFormPage() {
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-lg">
-      <Button asChild variant="text" size="sm" className="self-start px-0">
-        <Link to={backTo}>
-          <ArrowLeft className="size-4" />
-          {prefillItemId ? 'Back to item' : 'Back'}
-        </Link>
-      </Button>
+      <BackButton fallback={{ to: backTo, label: prefillItemId ? 'Back to item' : 'Back' }} />
 
       <div>
         <h1 className="text-h2 text-text-primary">
@@ -471,9 +467,7 @@ export default function POFormPage() {
       </SummaryPanel>
 
       <div className="flex flex-wrap justify-end gap-sm pb-xl">
-        <Button asChild variant="secondary" disabled={busy}>
-          <Link to={backTo}>Cancel</Link>
-        </Button>
+        <CancelButton fallback={backTo} disabled={busy} />
         <Button
           onClick={() => {
             if (validate()) save.mutate();

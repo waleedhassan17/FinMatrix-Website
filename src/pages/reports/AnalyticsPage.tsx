@@ -87,7 +87,7 @@ export default function AnalyticsPage() {
     out.push([], ['Spend by supplier (all time)'], ['Supplier', 'Billed']);
     for (const p of data.expenseCategories) out.push([p.label, csvAmount(p.value)]);
 
-    downloadCsv(csvFilename('analytics', {}), toCsv(out));
+    return downloadCsv(csvFilename('analytics', {}), toCsv(out));
   };
 
   return (
