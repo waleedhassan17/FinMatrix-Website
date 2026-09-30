@@ -11,7 +11,7 @@ import { Card, SectionHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Select } from '@/components/ui/Select';
 import { CompletionCard } from '@/features/delivery/CompletionCard';
-import { DeliveryStatusBadge, OnlineDot, PriorityBadge } from '@/features/delivery/DeliveryBadges';
+import { DeliveryStatusBadge, DutyDot, PriorityBadge } from '@/features/delivery/DeliveryBadges';
 import { invalidateDeliveries } from '@/features/delivery/invalidateDeliveries';
 import { useRiders } from '@/features/delivery/useRiders';
 import { reportPdfBlob } from '@/features/documents/documentPdf';
@@ -26,7 +26,8 @@ import {
   deliveryValue,
   formatWhen,
   isDispatched,
-  isRiderOnline,
+  isLocationLive,
+  isRiderOnDuty,
   mapsLink,
   operatorActions,
   riderLabel,
@@ -374,7 +375,7 @@ export default function DeliveryDetailPage() {
                   to={`/delivery-personnel/${rider.userId}`}
                   className="flex items-center gap-xs text-label-lg text-primary hover:underline"
                 >
-                  <OnlineDot online={isRiderOnline(rider)} />
+                  <DutyDot onDuty={isRiderOnDuty(rider)} locationLive={isLocationLive(rider)} />
                   {riderLabel(rider)}
                 </Link>
                 <p className="mt-xxs text-body-sm text-text-secondary">

@@ -190,7 +190,15 @@ export interface MonitorMarker {
   itemCount: number;
   address: string;
   destination: { lat: number | null; lng: number | null } | null;
-  rider: { lat: number | null; lng: number | null; isOnline: boolean; locationUpdatedAt: string | null } | null;
+  rider: {
+    lat: number | null;
+    lng: number | null;
+    /** Duty. The server has always sent this; the monitor used to drop it. */
+    isAvailable: boolean;
+    /** GPS recency, NOT duty — see isLocationLive in models/delivery. */
+    isOnline: boolean;
+    locationUpdatedAt: string | null;
+  } | null;
 }
 
 export interface MonitorSummary {
@@ -229,6 +237,7 @@ export const mapMonitorData = (raw: unknown): MonitorData => {
           ? {
               lat: nullableNum(p.lat),
               lng: nullableNum(p.lng),
+              isAvailable: p.isAvailable === true,
               isOnline: p.isOnline === true,
               locationUpdatedAt: nullableStr(p.locationUpdatedAt),
             }

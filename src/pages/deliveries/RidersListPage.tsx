@@ -7,12 +7,12 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DataTable } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/StatusBadge';
-import { OnlineDot } from '@/features/delivery/DeliveryBadges';
+import { DutyDot } from '@/features/delivery/DeliveryBadges';
 import { useRiders } from '@/features/delivery/useRiders';
 import { FeatureUnavailable } from '@/features/shell/FeatureUnavailable';
 import { useCapability, useFeature } from '@/hooks/useCapability';
 import { cn } from '@/lib/cn';
-import { isRiderOnline, riderAvailability, riderLabel, type Rider } from '@/models/delivery';
+import { isLocationLive, isRiderOnDuty, riderAvailability, riderLabel, type Rider } from '@/models/delivery';
 
 type Filter = 'all' | ReturnType<typeof riderAvailability>;
 
@@ -54,7 +54,10 @@ export default function RidersListPage() {
         header: 'Rider',
         cell: (c) => (
           <div className="flex items-center gap-xs">
-            <OnlineDot online={isRiderOnline(c.row.original)} />
+            <DutyDot
+              onDuty={isRiderOnDuty(c.row.original)}
+              locationLive={isLocationLive(c.row.original)}
+            />
             <div className="min-w-0">
               <p className="text-label-md text-text-primary">{riderLabel(c.row.original)}</p>
               <p className="text-caption text-text-tertiary">{c.row.original.username}</p>

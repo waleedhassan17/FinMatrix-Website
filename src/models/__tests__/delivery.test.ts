@@ -16,7 +16,8 @@ import {
   generateRiderPassword,
   hasDeliveryErrors,
   isDispatched,
-  isRiderOnline,
+  isLocationLive,
+  isRiderOnDuty,
   mapsLink,
   operatorActions,
   parseZones,
@@ -332,16 +333,46 @@ describe('riders', () => {
     }
   });
 
-  it('reads availability and online state', () => {
+  it('reads availability', () => {
     expect(riderAvailability({ status: 'active', isAvailable: true })).toBe('available');
     expect(riderAvailability({ status: 'active', isAvailable: false })).toBe('busy');
     expect(riderAvailability({ status: 'on_leave', isAvailable: true })).toBe('on_leave');
     // A plan-paused rider is never shown as available, whatever the toggle says.
     expect(riderAvailability({ status: 'plan_locked', isAvailable: true })).toBe('plan_locked');
+  });
+
+  /**
+   * Duty and GPS are deliberately independent, and this suite used to hide that
+   * by testing only the GPS half under the name `isRiderOnline`. Going on duty
+   * writes `isAvailable` and never touches `locationUpdatedAt`, so a rider on
+   * duty with an empty queue reported no location — and the Delivery Monitor,
+   * which read only the GPS half, showed them offline while the Riders page
+   * showed them available. The two are tested apart so that cannot recur.
+   */
+  it('reads GPS liveness — a property of the phone, not the rider', () => {
     const now = Date.parse('2026-09-11T10:00:00Z');
-    expect(isRiderOnline({ locationUpdatedAt: '2026-09-11T09:59:00Z' }, now)).toBe(true);
-    expect(isRiderOnline({ locationUpdatedAt: '2026-09-11T09:50:00Z' }, now)).toBe(false);
-    expect(isRiderOnline({ locationUpdatedAt: null }, now)).toBe(false);
+    expect(isLocationLive({ locationUpdatedAt: '2026-09-11T09:59:00Z' }, now)).toBe(true);
+    expect(isLocationLive({ locationUpdatedAt: '2026-09-11T09:50:00Z' }, now)).toBe(false);
+    expect(isLocationLive({ locationUpdatedAt: null }, now)).toBe(false);
+  });
+
+  it('reads duty — a property of the rider, not the phone', () => {
+    expect(isRiderOnDuty({ status: 'active', isAvailable: true })).toBe(true);
+    expect(isRiderOnDuty({ status: 'active', isAvailable: false })).toBe(false);
+    // Plan-paused or on leave is not on duty however the toggle is set.
+    expect(isRiderOnDuty({ status: 'plan_locked', isAvailable: true })).toBe(false);
+    expect(isRiderOnDuty({ status: 'on_leave', isAvailable: true })).toBe(false);
+  });
+
+  it('does not infer one from the other', () => {
+    // The exact reported case: on duty, phone silent. Duty must survive it.
+    const onDutyNoGps = {
+      status: 'active' as const,
+      isAvailable: true,
+      locationUpdatedAt: null,
+    };
+    expect(isRiderOnDuty(onDutyNoGps)).toBe(true);
+    expect(isLocationLive(onDutyNoGps)).toBe(false);
   });
 });
 

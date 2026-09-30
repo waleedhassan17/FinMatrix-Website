@@ -9,7 +9,7 @@ import { Card } from '@/components/ui/Card';
 import { DataTable, TablePager } from '@/components/ui/DataTable';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { StatTile } from '@/components/ui/StatTile';
-import { DeliveryStatusBadge, OnlineDot, PriorityBadge } from '@/features/delivery/DeliveryBadges';
+import { DeliveryStatusBadge, DutyDot, PriorityBadge } from '@/features/delivery/DeliveryBadges';
 import { useRiders } from '@/features/delivery/useRiders';
 import { FeatureUnavailable } from '@/features/shell/FeatureUnavailable';
 import { useCapability, useFeature } from '@/hooks/useCapability';
@@ -17,7 +17,8 @@ import { cn } from '@/lib/cn';
 import {
   ACTIVE_STATUSES,
   deliveryValue,
-  isRiderOnline,
+  isLocationLive,
+  isRiderOnDuty,
   mapsLink,
   riderLabel,
   type Delivery,
@@ -97,8 +98,11 @@ export default function DeliveryMonitorPage() {
   });
   const { riders, byId } = useRiders(enabled);
 
-  const onlineByDelivery = useMemo(
-    () => new Map((monitor.data?.markers ?? []).map((m) => [m.deliveryId, !!m.rider?.isOnline])),
+  // Duty, not GPS. The marker has always carried `isAvailable`; reading
+  // `isOnline` here is what made an on-duty rider with no recent ping show as
+  // offline to the person deciding who can take the next job.
+  const onDutyByDelivery = useMemo(
+    () => new Map((monitor.data?.markers ?? []).map((m) => [m.deliveryId, !!m.rider?.isAvailable])),
     [monitor.data],
   );
 
@@ -109,12 +113,12 @@ export default function DeliveryMonitorPage() {
         return {
           ...d,
           riderName: d.personnelId ? riderLabel(rider) : '—',
-          online: onlineByDelivery.get(d.id) ?? (rider ? isRiderOnline(rider) : false),
+          online: onDutyByDelivery.get(d.id) ?? (rider ? isRiderOnDuty(rider) : false),
           value: deliveryValue(d.lines).toNumber(),
           map: mapsLink({ lat: d.destLat, lng: d.destLng }, d.address),
         };
       }),
-    [list.data, byId, onlineByDelivery],
+    [list.data, byId, onDutyByDelivery],
   );
 
   // Per tab, over every delivery the search matches (the server's counts).
@@ -155,7 +159,7 @@ export default function DeliveryMonitorPage() {
         cell: (c) =>
           c.row.original.personnelId ? (
             <span className="flex items-center gap-xs">
-              <OnlineDot online={c.row.original.online} />
+              <DutyDot onDuty={c.row.original.online} />
               {c.getValue()}
             </span>
           ) : (
@@ -216,7 +220,10 @@ export default function DeliveryMonitorPage() {
   }
 
   const summary = monitor.data?.summary;
-  const online = riders.filter((r) => isRiderOnline(r)).length;
+  // Two numbers, two meanings. The tile used to report only the second and
+  // label it "Riders online", which answered a question nobody was asking.
+  const onDuty = riders.filter((r) => isRiderOnDuty(r)).length;
+  const locationLive = riders.filter((r) => isLocationLive(r)).length;
   const loading = monitor.isLoading;
   const error = monitor.error ?? list.error;
 
@@ -287,9 +294,9 @@ export default function DeliveryMonitorPage() {
           loading={loading}
         />
         <StatTile
-          label="Riders online"
-          value={`${online} of ${riders.length}`}
-          hint="Location in the last 2 minutes"
+          label="Riders on duty"
+          value={`${onDuty} of ${riders.length}`}
+          hint={`${locationLive} sharing location now`}
           loading={loading}
         />
       </div>

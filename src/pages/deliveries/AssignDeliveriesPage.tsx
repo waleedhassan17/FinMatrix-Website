@@ -11,7 +11,7 @@ import { Card, SectionHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { DataTable } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/StatusBadge';
-import { OnlineDot, PriorityBadge } from '@/features/delivery/DeliveryBadges';
+import { DutyDot, PriorityBadge } from '@/features/delivery/DeliveryBadges';
 import { invalidateDeliveries } from '@/features/delivery/invalidateDeliveries';
 import { useRiders } from '@/features/delivery/useRiders';
 import { FeatureUnavailable } from '@/features/shell/FeatureUnavailable';
@@ -20,7 +20,8 @@ import { cn } from '@/lib/cn';
 import {
   canTakeWork,
   deliveryValue,
-  isRiderOnline,
+  isLocationLive,
+  isRiderOnDuty,
   riderAvailability,
   riderLabel,
   type Delivery,
@@ -353,7 +354,7 @@ function RiderOption({
       >
         <span className="flex items-center justify-between gap-sm">
           <span className="flex min-w-0 items-center gap-xs">
-            <OnlineDot online={isRiderOnline(rider)} />
+            <DutyDot onDuty={isRiderOnDuty(rider)} locationLive={isLocationLive(rider)} />
             <span className="truncate text-label-md text-text-primary">{riderLabel(rider)}</span>
           </span>
           <StatusBadge status={availability} label={AVAILABILITY_LABEL[availability]} />

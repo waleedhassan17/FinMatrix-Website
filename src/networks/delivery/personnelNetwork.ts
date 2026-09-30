@@ -22,10 +22,23 @@ export interface RiderCredentials {
 type Raw = Record<string, unknown>;
 const asRaw = (v: unknown): Raw => (v && typeof v === 'object' ? (v as Raw) : {});
 
-const readCredentials = (data: unknown): RiderCredentials | null => {
+/**
+ * Keyed on the PASSWORD alone, deliberately.
+ *
+ * This used to require both fields. A rider with no username came back as
+ * `{ username: '', password: 'Xvnnys92Ruy' }`, `''` is falsy, and the whole
+ * thing was discarded — so pressing "Reset password" threw away the password
+ * the server had just issued and hashed, and the dialog said the server had
+ * returned nothing. Pressing it again looped forever. An admin could not
+ * rescue such a rider from this screen at all.
+ *
+ * The password is the part that cannot be recovered a second time; a missing
+ * username is a fact to show, not a reason to drop it.
+ */
+export const readCredentials = (data: unknown): RiderCredentials | null => {
   const c = asRaw(asRaw(data).credentials);
-  return c.username && c.password
-    ? { username: String(c.username), password: String(c.password) }
+  return c.password
+    ? { username: c.username ? String(c.username) : '', password: String(c.password) }
     : null;
 };
 
@@ -96,12 +109,14 @@ export const resetRiderPassword = async (userId: string): Promise<RiderCredentia
  */
 export const revealRiderCredential = async (
   userId: string,
-): Promise<{ username: string; password: string | null }> => {
+): Promise<{ username: string | null; password: string | null }> => {
   try {
     const response = await api.get(`/delivery-personnel/${userId}/credential`);
     const d = asRaw(unwrapEnvelope(response.data));
     return {
-      username: String(d.username ?? ''),
+      // null, not '': "this rider has no username" is a different fact from
+      // "their username is the empty string", and the screen says so.
+      username: d.username ? String(d.username) : null,
       password: d.password ? String(d.password) : null,
     };
   } catch (e) {

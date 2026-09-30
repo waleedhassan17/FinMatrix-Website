@@ -25,13 +25,37 @@ export function PriorityBadge({ priority }: { priority: string }) {
   );
 }
 
-/** Green when the rider's phone has reported a location in the last two minutes. */
-export function OnlineDot({ online }: { online: boolean }) {
+/**
+ * Is this rider working?
+ *
+ * The dot reports DUTY — whether the rider has put themselves on shift — and
+ * the tooltip adds whether their phone is currently reporting GPS. Those are
+ * two facts, and this used to show only the second while calling it "Online":
+ * a rider who went on duty with an empty queue sent no location pings and so
+ * appeared offline everywhere, including to the dispatcher deciding who could
+ * take a job.
+ *
+ * `locationLive` is deliberately optional. Omit it where GPS is not known and
+ * the dot still answers the question that matters.
+ */
+export function DutyDot({
+  onDuty,
+  locationLive,
+}: {
+  onDuty: boolean;
+  locationLive?: boolean;
+}) {
+  const duty = onDuty ? 'On duty' : 'Off duty';
+  const gps =
+    locationLive === undefined ? '' : locationLive ? ' · location live' : ' · no recent location';
   return (
     <span
-      className={cn('inline-block size-2 shrink-0 rounded-full', online ? 'bg-success' : 'bg-neutral-200')}
-      title={online ? 'Sharing location now' : 'No recent location'}
-      aria-label={online ? 'Online' : 'Offline'}
+      className={cn(
+        'inline-block size-2 shrink-0 rounded-full',
+        onDuty ? 'bg-success' : 'bg-neutral-200',
+      )}
+      title={`${duty}${gps}`}
+      aria-label={duty}
     />
   );
 }

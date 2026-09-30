@@ -16,7 +16,7 @@ import { Select } from '@/components/ui/Select';
 import { StatTile } from '@/components/ui/StatTile';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { CopyField, CredentialsDialog } from '@/components/shared/CredentialsDialog';
-import { DeliveryStatusBadge, OnlineDot } from '@/features/delivery/DeliveryBadges';
+import { DeliveryStatusBadge, DutyDot } from '@/features/delivery/DeliveryBadges';
 import { invalidateDeliveries } from '@/features/delivery/invalidateDeliveries';
 import { FeatureUnavailable } from '@/features/shell/FeatureUnavailable';
 import { useCapability, useFeature } from '@/hooks/useCapability';
@@ -24,7 +24,8 @@ import {
   RIDER_STATUS_OPTIONS,
   deliveryValue,
   formatWhen,
-  isRiderOnline,
+  isLocationLive,
+  isRiderOnDuty,
   parseZones,
   riderAvailability,
   riderLabel,
@@ -74,7 +75,7 @@ export default function RiderDetailPage() {
   const canManage = useCapability('personnel.manage').allowed;
 
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [revealed, setRevealed] = useState<{ username: string; password: string | null } | null>(null);
+  const [revealed, setRevealed] = useState<{ username: string | null; password: string | null } | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
   const [issued, setIssued] = useState<RiderCredentials | null | undefined>(undefined);
 
@@ -211,7 +212,7 @@ export default function RiderDetailPage() {
               <StatusBadge status={availability} label={AVAILABILITY_LABEL[availability]} />
             </div>
             <p className="flex items-center gap-xs text-body-sm text-text-secondary">
-              <OnlineDot online={isRiderOnline(rider)} />
+              <DutyDot onDuty={isRiderOnDuty(rider)} locationLive={isLocationLive(rider)} />
               {rider.username}
               {rider.phone && ` · ${rider.phone}`}
               {rider.locationUpdatedAt && ` · last seen ${formatWhen(rider.locationUpdatedAt)}`}
@@ -311,7 +312,18 @@ export default function RiderDetailPage() {
           <SectionHeader title="Sign-in" />
           {revealed ? (
             <div className="flex flex-col gap-sm">
-              <CopyField label="Username" value={revealed.username || rider.username} />
+              {revealed.username || rider.username ? (
+                <CopyField
+                  label="Username"
+                  value={(revealed.username || rider.username) as string}
+                />
+              ) : (
+                // Never a labelled field with a Copy button beside nothing —
+                // that is what made this look like the username had loaded.
+                <p className="text-body-sm text-text-tertiary">
+                  No username set. Reset the password to issue sign-in credentials.
+                </p>
+              )}
               {revealed.password ? (
                 <CopyField label="Password" value={revealed.password} />
               ) : (

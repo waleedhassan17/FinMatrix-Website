@@ -498,14 +498,39 @@ export const RIDER_STATUS_OPTIONS: ReadonlyArray<{ value: RiderStatus; label: st
 export const riderLabel = (r: Pick<Rider, 'name' | 'username'> | null | undefined): string =>
   r ? r.name || r.username || 'Rider' : 'Unassigned';
 
-/** The server's own threshold: a location ping in the last two minutes. */
-export const ONLINE_WINDOW_MS = 2 * 60 * 1000;
+/**
+ * Two different questions, kept apart on purpose.
+ *
+ * `isLocationLive` asks whether the HANDSET is reporting GPS. `isRiderOnDuty`
+ * asks whether the PERSON is working. They used to be conflated under the name
+ * `isRiderOnline`, which is why the Delivery Monitor showed every rider offline
+ * while the Riders page showed them available: going on duty writes
+ * `isAvailable` and never touches `locationUpdatedAt`, so a rider on duty with
+ * an empty queue reported no location and vanished from the monitor.
+ *
+ * A rider in a basement is still on duty. The dispatcher must not lose them.
+ * The rename is what stops the two meanings merging back together.
+ */
 
-export const isRiderOnline = (
+/** Mirrors LOCATION_LIVE_WINDOW_MS in the backend's deliveries/presence.constants.ts. */
+export const LOCATION_LIVE_WINDOW_MS = 2 * 60 * 1000;
+
+/** Is the phone reporting its position right now? NOT "is the rider working". */
+export const isLocationLive = (
   r: Pick<Rider, 'locationUpdatedAt'>,
   now: number = Date.now(),
 ): boolean =>
-  !!r.locationUpdatedAt && now - new Date(r.locationUpdatedAt).getTime() < ONLINE_WINDOW_MS;
+  !!r.locationUpdatedAt &&
+  now - new Date(r.locationUpdatedAt).getTime() < LOCATION_LIVE_WINDOW_MS;
+
+/**
+ * Is this rider working and able to take a job?
+ *
+ * The same predicate the server's auto-assign uses, so a monitor built on it
+ * agrees with the dispatcher instead of contradicting it.
+ */
+export const isRiderOnDuty = (r: Pick<Rider, 'status' | 'isAvailable'>): boolean =>
+  canTakeWork(r);
 
 /** One word for a badge: why this rider can or cannot take work right now. */
 export const riderAvailability = (
