@@ -334,7 +334,15 @@ export default function RiderDetailPage() {
             </div>
           ) : (
             <p className="text-body-sm text-text-secondary">
-              Username <span className="font-mono text-text-primary">{rider.username}</span>.
+              {rider.username ? (
+                <>
+                  Username <span className="font-mono text-text-primary">{rider.username}</span>.{' '}
+                </>
+              ) : (
+                // Same rule as the revealed branch above: never present a blank
+                // as though it were a handle the rider could type.
+                <>No username set — reset the password to issue one. </>
+              )}
               Showing the password is recorded in the audit log.
             </p>
           )}
