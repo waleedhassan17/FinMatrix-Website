@@ -141,4 +141,35 @@ describe('PartySummaryPanel', () => {
     expect(await screen.findByText(/not available from the server yet/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
   });
+
+  it('pays the summary from the panel: the payment page, every invoice ticked', async () => {
+    vi.mocked(getArPartySummary).mockResolvedValue(summaryFixture());
+    renderPanel({ type: 'customer', record: customer });
+
+    const pay = await screen.findByRole('link', { name: /Receive payment/ });
+    expect(pay.getAttribute('href')).toBe('/payments/new?customerId=c1&from=summary');
+  });
+
+  it('pays a vendor\'s bills the same way', async () => {
+    vi.mocked(getApPartySummary).mockResolvedValue(
+      summaryFixture({
+        partyType: 'vendor',
+        documents: summaryFixture().documents.map((d) => ({ ...d, documentType: 'bill' })),
+      }),
+    );
+    renderPanel({ type: 'vendor', record: vendor });
+
+    const pay = await screen.findByRole('link', { name: /Pay bills/ });
+    expect(pay.getAttribute('href')).toBe('/bills/pay?vendorId=v1&from=summary');
+  });
+
+  it('offers no payment when nothing is open', async () => {
+    vi.mocked(getArPartySummary).mockResolvedValue(
+      summaryFixture({ documents: [], credits: { total: 0, items: [] } }),
+    );
+    renderPanel({ type: 'customer', record: customer });
+
+    await screen.findByText('Nothing outstanding');
+    expect(screen.queryByRole('link', { name: /Receive payment/ })).toBeNull();
+  });
 });

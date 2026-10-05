@@ -20,12 +20,12 @@ const range = { startDate: '2026-01-01', endDate: '2026-09-13' };
 
 describe('customerStatementDocument', () => {
   const statement: CustomerStatement = {
-    customer: { id: 'c1', name: 'Madina Wholesale', email: 'cust4@example.com' },
+    customer: { id: 'c1', code: '', name: 'Madina Wholesale', email: 'cust4@example.com' },
     period: { startDate: '', endDate: '' },
     openingBalance: 500,
     lines: [
-      { id: 'i1', date: '2026-02-01', kind: 'invoice', reference: 'INV-1', amount: 1200, runningBalance: 1700 },
-      { id: 'p1', date: '2026-02-10', kind: 'payment', reference: 'PAY-1', amount: -700, runningBalance: 1000 },
+      { id: 'i1', date: '2026-02-01', kind: 'invoice', reference: 'INV-1', amount: 1200, runningBalance: 1700, documentType: null, documentId: null },
+      { id: 'p1', date: '2026-02-10', kind: 'payment', reference: 'PAY-1', amount: -700, runningBalance: 1000, documentType: null, documentId: null },
     ],
     totals: { invoiced: 1200, received: 700, credited: 0, refunded: 0 },
     closingBalance: 1000,
@@ -62,10 +62,10 @@ describe('customerStatementDocument', () => {
 describe('vendorStatementDocument', () => {
   it('speaks of bills and what is owed', () => {
     const statement: VendorStatement = {
-      vendor: { id: 'v1', name: 'Habib Oil Mills', email: '' },
+      vendor: { id: 'v1', code: '', name: 'Habib Oil Mills', email: '' },
       period: { startDate: '2026-03-01', endDate: '2026-03-31' },
       openingBalance: 0,
-      lines: [{ id: 'b1', date: '2026-03-02', kind: 'bill', reference: 'B-9', amount: 5000, runningBalance: 5000 }],
+      lines: [{ id: 'b1', date: '2026-03-02', kind: 'bill', reference: 'B-9', amount: 5000, runningBalance: 5000, documentType: null, documentId: null }],
       totals: { billed: 5000, paid: 0, credited: 0 },
       closingBalance: 5000,
     };
@@ -80,12 +80,12 @@ describe('vendorStatementDocument', () => {
 
   it('names a vendor credit, and totals it', () => {
     const statement: VendorStatement = {
-      vendor: { id: 'v1', name: 'Habib Oil Mills', email: '' },
+      vendor: { id: 'v1', code: '', name: 'Habib Oil Mills', email: '' },
       period: { startDate: '2026-03-01', endDate: '2026-03-31' },
       openingBalance: 0,
       lines: [
-        { id: 'b1', date: '2026-03-02', kind: 'bill', reference: 'B-9', amount: 5000, runningBalance: 5000 },
-        { id: 'c1', date: '2026-03-09', kind: 'vendor_credit', reference: 'VC-3', amount: -800, runningBalance: 4200 },
+        { id: 'b1', date: '2026-03-02', kind: 'bill', reference: 'B-9', amount: 5000, runningBalance: 5000, documentType: null, documentId: null },
+        { id: 'c1', date: '2026-03-09', kind: 'vendor_credit', reference: 'VC-3', amount: -800, runningBalance: 4200, documentType: null, documentId: null },
       ],
       totals: { billed: 5000, paid: 0, credited: 800 },
       closingBalance: 4200,
@@ -99,13 +99,13 @@ describe('vendorStatementDocument', () => {
 describe('customerStatementDocument — credits and refunds', () => {
   it('names credit memos and their refunds, and totals both', () => {
     const statement: CustomerStatement = {
-      customer: { id: 'c1', name: 'Madina Wholesale', email: '' },
+      customer: { id: 'c1', code: '', name: 'Madina Wholesale', email: '' },
       period: { startDate: '2026-02-01', endDate: '2026-02-28' },
       openingBalance: 0,
       lines: [
-        { id: 'i1', date: '2026-02-01', kind: 'invoice', reference: 'INV-1', amount: 1200, runningBalance: 1200 },
-        { id: 'm1', date: '2026-02-05', kind: 'credit_memo', reference: 'CM-1', amount: -200, runningBalance: 1000 },
-        { id: 'r1', date: '2026-02-06', kind: 'refund', reference: 'CM-1', amount: 50, runningBalance: 1050 },
+        { id: 'i1', date: '2026-02-01', kind: 'invoice', reference: 'INV-1', amount: 1200, runningBalance: 1200, documentType: null, documentId: null },
+        { id: 'm1', date: '2026-02-05', kind: 'credit_memo', reference: 'CM-1', amount: -200, runningBalance: 1000, documentType: null, documentId: null },
+        { id: 'r1', date: '2026-02-06', kind: 'refund', reference: 'CM-1', amount: 50, runningBalance: 1050, documentType: null, documentId: null },
       ],
       totals: { invoiced: 1200, received: 0, credited: 200, refunded: 50 },
       closingBalance: 1050,

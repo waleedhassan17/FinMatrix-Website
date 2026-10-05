@@ -29,6 +29,7 @@ import {
 // ═══════════════════════════════════════════════════════
 
 const vendorForm = (over: Partial<VendorFormData> = {}): VendorFormData => ({
+  code: '',
   name: 'Acme Supplies',
   contactPerson: 'A. Khan',
   email: 'ap@acme.example',

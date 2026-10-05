@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Banknote, FileClock, FilePlus2, Pencil } from 'lucide-react';
+import { Banknote, BookOpen, FileClock, FilePlus2, Pencil } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -15,6 +15,7 @@ import { PartySummaryPanel } from '@/features/documents/PartySummaryPanel';
 import { customerStatementDocument } from '@/features/documents/statementBuilders';
 import { useDocumentCompany } from '@/features/documents/useDocumentContext';
 import { DocumentActions } from '@/features/share/DocumentActions';
+import { PartyHistoryTab } from '@/features/parties/PartyHistoryTab';
 import { useAdminOnly } from '@/hooks/useCapability';
 import { cn } from '@/lib/cn';
 import { PAYMENT_TERMS_LABELS, type Customer, type CustomerAddress } from '@/models/customer';
@@ -31,6 +32,14 @@ import { formatMoney } from '@/utils/money';
 import { LIST_PAGE_SIZE, pageOfRows } from '@/models/documentList';
 import { usePagedList } from '@/hooks/usePagedList';
 import { LoadMore } from '@/components/ui/LoadMore';
+
+/** Where a statement line's document opens. */
+const STATEMENT_DOCUMENT_PATHS: Record<string, string> = {
+  invoice: '/invoices',
+  payment: '/payments',
+  credit_memo: '/credit-memos',
+  delivery: '/deliveries',
+};
 
 const iso = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
@@ -90,6 +99,11 @@ export default function CustomerDetailPage() {
         title={customer.name}
         status={<StatusBadge status={customer.isActive ? 'active' : 'inactive'} />}
         meta={[
+          customer.code ? (
+            <span key="code" className="tabular" title="Customer ID">
+              {customer.code}
+            </span>
+          ) : null,
           customer.company && customer.company !== customer.name ? customer.company : null,
           customer.email ? (
             <a key="email" href={`mailto:${customer.email}`} className="hover:text-primary hover:underline">
@@ -115,6 +129,14 @@ export default function CustomerDetailPage() {
             <Button variant="secondary" size="sm" onClick={() => setSummaryOpen(true)}>
               <FileClock className="size-4" />
               Outstanding summary
+            </Button>
+            {/* The customer's ledger is the General Ledger read by customer —
+                one ledger, this customer selected. */}
+            <Button asChild variant="secondary" size="sm">
+              <Link to={`/reports/general-ledger?view=customers&customer=${customer.id}`}>
+                <BookOpen className="size-4" />
+                Ledger
+              </Link>
             </Button>
             <Button asChild size="sm">
               <Link to={`/invoices/new?customerId=${customer.id}`}>
@@ -174,6 +196,7 @@ export default function CustomerDetailPage() {
           <TabsTrigger value="invoices">Invoices</TabsTrigger>
           <TabsTrigger value="payments">Payments</TabsTrigger>
           <TabsTrigger value="statement">Statement</TabsTrigger>
+          <TabsTrigger value="history">History</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -195,6 +218,10 @@ export default function CustomerDetailPage() {
 
         <TabsContent value="statement">
           <StatementTab customer={customer} />
+        </TabsContent>
+
+        <TabsContent value="history">
+          <PartyHistoryTab type="customer" partyId={customerId} />
         </TabsContent>
       </Tabs>
     </div>
@@ -501,7 +528,16 @@ function StatementTab({ customer }: { customer: Customer }) {
                     <tr key={`${l.kind}-${l.id}`} className="border-b border-border-light">
                       <td className="py-sm text-body-sm text-text-primary">{l.date}</td>
                       <td className="py-sm text-body-sm text-text-primary">
-                        {l.reference}
+                        {l.documentId && STATEMENT_DOCUMENT_PATHS[l.documentType ?? ''] ? (
+                          <Link
+                            to={`${STATEMENT_DOCUMENT_PATHS[l.documentType ?? '']}/${l.documentId}`}
+                            className="hover:text-primary hover:underline"
+                          >
+                            {l.reference}
+                          </Link>
+                        ) : (
+                          l.reference
+                        )}
                         <span className="ml-xs text-caption text-text-tertiary">
                           {STATEMENT_KIND_LABELS[l.kind]}
                         </span>

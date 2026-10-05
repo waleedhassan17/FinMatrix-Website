@@ -13,6 +13,7 @@
 import { isPathAllowedForRole } from '@/config/routeAccess';
 import type { UserRole } from '@/types';
 import { formatMoney } from '@/utils/money';
+import { partyLabel } from '@/models/partyCode';
 
 /** Shortest query that is sent. The server returns nothing below it anyway. */
 export const MIN_SEARCH_LENGTH = 2;
@@ -107,12 +108,12 @@ const MAPPERS: Record<SearchKind, (row: Raw, id: string) => Omit<SearchHit, 'id'
     to: `/bills/${id}`,
   }),
   customers: (row, id) => ({
-    title: text(row.name) || text(row.company) || 'Customer',
+    title: partyLabel(text(row.code), text(row.name) || text(row.company) || 'Customer'),
     subtitle: line(text(row.email) || text(row.phone), `Balance ${amount(row.balance)}`),
     to: `/customers/${id}`,
   }),
   vendors: (row, id) => ({
-    title: text(row.companyName) || text(row.contactPerson) || 'Vendor',
+    title: partyLabel(text(row.code), text(row.companyName) || text(row.contactPerson) || 'Vendor'),
     subtitle: line(text(row.email) || text(row.phone), `Balance ${amount(row.balance)}`),
     to: `/vendors/${id}`,
   }),

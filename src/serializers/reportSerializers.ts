@@ -367,6 +367,169 @@ export const ledgerAccountsSerializer = (payload: unknown): LedgerAccountsReport
 };
 
 // ═══════════════════════════════════════════════════════
+// General Ledger — by customer or vendor
+// ═══════════════════════════════════════════════════════
+// The same ledger read by party: a customer's postings on 1100 Accounts
+// Receivable and 2400 Customer Advances, a vendor's on 2000 Accounts Payable,
+// each linked to the customer or vendor through the document that posted it.
+// `GET /ledger?party=customer|vendor[&partyId=]` answers in the account view's
+// shape, with the document and party on every line.
+
+export type LedgerPartyType = 'customer' | 'vendor';
+
+export interface PartyLedgerEntry extends LedgerEntry {
+  /** The posting's own kind — `invoice`, `invoice_void`, `payment`, `bill`… */
+  postingType: string;
+  /** What the line is, in words: "Invoice", "Receipt", "Bill voided". */
+  label: string;
+  /** The document behind it, when it still exists. */
+  documentType: string | null;
+  documentId: string | null;
+  documentNumber: string;
+  partyId: string;
+  partyCode: string;
+  partyName: string;
+}
+
+export interface PartyLedgerBalance {
+  partyId: string;
+  partyCode: string;
+  partyName: string;
+  /** Debit-positive, like the running balance. */
+  balance: number;
+}
+
+export interface PartyLedgerReport {
+  range: ReportRangeMeta;
+  party: { type: LedgerPartyType; id: string | null; code: string; name: string };
+  /** **Oldest first.** The running balance per party depends on that order. */
+  entries: PartyLedgerEntry[];
+  openingBalances: PartyLedgerBalance[];
+  closingBalances: PartyLedgerBalance[];
+  totals: { debit: number; credit: number };
+  /**
+   * With every party in view: the control accounts' balance at the end of the
+   * period, what belongs to a party, and what does not (a journal posted
+   * straight to the account). Null for one party.
+   */
+  control: {
+    accounts: { code: string; name: string }[];
+    balance: number;
+    linked: number;
+    unlinked: number;
+  } | null;
+}
+
+const mapPartyBalances = (value: unknown): PartyLedgerBalance[] =>
+  lines(value).map((raw) => {
+    const b = asRaw(raw);
+    return {
+      partyId: str(b.partyId),
+      partyCode: str(b.partyCode),
+      partyName: str(b.partyName),
+      balance: toNumber(b.balance as never),
+    };
+  });
+
+export const partyLedgerSerializer = (payload: unknown): PartyLedgerReport => {
+  const r = asRaw(payload);
+  const party = asRaw(r.party);
+  const totals = asRaw(r.totals);
+  const control = r.control ? asRaw(r.control) : null;
+  return {
+    range: mapRange(r.range),
+    party: {
+      type: str(party.type) === 'vendor' ? 'vendor' : 'customer',
+      id: party.id ? str(party.id) : null,
+      code: str(party.code),
+      name: str(party.name),
+    },
+    entries: lines(r.entries).map((raw) => {
+      const e = asRaw(raw);
+      return {
+        date: str(e.date),
+        postedAt: str(e.postedAt),
+        reference: str(e.reference),
+        accountCode: str(e.accountCode),
+        accountName: str(e.accountName),
+        memo: str(e.memo),
+        debit: toNumber(e.debit as never),
+        credit: toNumber(e.credit as never),
+        balance: toNumber(e.balance as never),
+        sourceType: str(e.sourceType),
+        sourceId: str(e.sourceId),
+        voided: e.voided === true,
+        postingType: str(e.postingType),
+        label: str(e.label),
+        documentType: e.documentType ? str(e.documentType) : null,
+        documentId: e.documentId ? str(e.documentId) : null,
+        documentNumber: str(e.documentNumber),
+        partyId: str(e.partyId),
+        partyCode: str(e.partyCode),
+        partyName: str(e.partyName),
+      };
+    }),
+    openingBalances: mapPartyBalances(r.openingBalances),
+    closingBalances: mapPartyBalances(r.closingBalances),
+    totals: {
+      debit: toNumber(totals.debit as never),
+      credit: toNumber(totals.credit as never),
+    },
+    control: control
+      ? {
+          accounts: lines(control.accounts).map((raw) => {
+            const a = asRaw(raw);
+            return { code: str(a.code), name: str(a.name) };
+          }),
+          balance: toNumber(control.balance as never),
+          linked: toNumber(control.linked as never),
+          unlinked: toNumber(control.unlinked as never),
+        }
+      : null,
+  };
+};
+
+export interface LedgerPartySummary {
+  partyId: string;
+  partyCode: string;
+  partyName: string;
+  isActive: boolean;
+  opening: number;
+  debit: number;
+  credit: number;
+  closing: number;
+  /** A COUNT of postings in the period, not a list. */
+  entries: number;
+}
+
+export interface LedgerPartiesReport {
+  range: ReportRangeMeta;
+  parties: LedgerPartySummary[];
+}
+
+/** `GET /ledger/parties?type=` — every customer or vendor, for the ledger's picker. */
+export const ledgerPartiesSerializer = (payload: unknown): LedgerPartiesReport => {
+  const r = asRaw(payload);
+  return {
+    range: mapRange(r.range),
+    parties: lines(r.parties).map((raw) => {
+      const p = asRaw(raw);
+      return {
+        partyId: str(p.partyId),
+        partyCode: str(p.partyCode),
+        partyName: str(p.partyName),
+        isActive: p.isActive !== false,
+        opening: toNumber(p.opening as never),
+        debit: toNumber(p.debit as never),
+        credit: toNumber(p.credit as never),
+        closing: toNumber(p.closing as never),
+        entries: toNumber(p.entries as never),
+      };
+    }),
+  };
+};
+
+// ═══════════════════════════════════════════════════════
 // Aging (AR and AP share one shape)
 // ═══════════════════════════════════════════════════════
 
@@ -708,6 +871,8 @@ export interface PartySummary {
   partyType: 'customer' | 'vendor';
   party: {
     id: string;
+    /** The customer or vendor ID (C-0007); empty from a server that predates IDs. */
+    code: string;
     name: string;
     contactPerson: string;
     email: string;
@@ -751,6 +916,7 @@ export const partySummarySerializer = (payload: unknown): PartySummary => {
     partyType: str(r.partyType) === 'vendor' ? 'vendor' : 'customer',
     party: {
       id: str(party.id),
+      code: str(party.code),
       name: str(party.name, 'Unknown'),
       contactPerson: str(party.contactPerson),
       email: str(party.email),

@@ -18,11 +18,13 @@ import { AllocationTable } from '@/features/payments/AllocationTable';
 import { CreditsOnAccount } from '@/features/payments/CreditsOnAccount';
 import { useCapability } from '@/hooks/useCapability';
 import {
+  autoDistribute,
   fillCredits,
   fillToBalance,
   overAppliedRows,
   spreadCredits,
   totalAllocated,
+  type AllocationRow,
   type CreditSource,
 } from '@/models/allocation';
 import type { PayBillsFormData } from '@/models/bill';
@@ -32,7 +34,7 @@ import { getDepositAccounts } from '@/networks/accounting/accountNetwork';
 import { getPayableBills, payBills, settleBills } from '@/networks/purchases/billNetwork';
 import { getApPartySummary } from '@/networks/reports/agingNetwork';
 import { payBillsFormToPayload, settleBillsPayload } from '@/serializers/billSerializer';
-import { formatMoney } from '@/utils/money';
+import { formatMoney, lakhCroreWords } from '@/utils/money';
 import { invalidateAfterPosting } from '@/features/documents/invalidateAfterPosting';
 
 const emptyForm = (): PayBillsFormData => ({
@@ -58,6 +60,17 @@ export default function PayBillsPage() {
 
   const [form, setForm] = useState<PayBillsFormData>(emptyForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // Opened from the payables summary ("Pay bills" there): every open bill is
+  // ticked, so typing what is being paid spreads it across them.
+  const fromSummary = searchParams.get('from') === 'summary';
+  /**
+   * The cash being paid, when typed. Empty, each ticked bill is paid in full,
+   * as it always was. Typed, vendor credit is used first and the cash is spread
+   * over the ticked bills oldest first — 30 lakh and 20 lakh in full, 10 on the
+   * third. A vendor has no advance account here, so it cannot be more than the
+   * ticked bills owe after credit.
+   */
+  const [payAmount, setPayAmount] = useState('');
   // One key per form instance: a double-click or a retry replays the stored
   // answer instead of settling twice.
   const idempotencyKey = useRef(crypto.randomUUID());
@@ -109,12 +122,12 @@ export default function PayBillsPage() {
     setForm((f) => ({
       ...f,
       rows: payable.map((r) =>
-        r.documentId === preselect
+        r.documentId === preselect || fromSummary
           ? { ...r, checked: true, applied: String(r.balance) }
           : r,
       ),
     }));
-  }, [payable, searchParams]);
+  }, [payable, searchParams, fromSummary]);
 
   useEffect(() => {
     const preset = searchParams.get('vendorId');
@@ -122,6 +135,34 @@ export default function PayBillsPage() {
     const v = vendorsById.get(preset);
     if (v) setForm((f) => ({ ...f, vendorId: v.id, vendorName: v.name }));
   }, [searchParams, vendorsById]);
+
+  /** The credit a typed payment can lean on: what is set to be used, at most what the ticked bills owe. */
+  const creditCapacity = (rows: AllocationRow[], on: boolean, list: CreditSource[]): number => {
+    if (!on) return 0;
+    const owed = rows.filter((r) => r.checked).reduce((t, r) => t + r.balance, 0);
+    const credit = list.reduce((t, c) => t + (parseFloat(c.use) || 0), 0);
+    return round2(Math.min(owed, credit));
+  };
+  /** The ticked bills' figures for a typed cash amount: credit plus cash, oldest first. */
+  const spreadPayment = (rows: AllocationRow[], amount: string, on: boolean, list: CreditSource[]) =>
+    amount.trim()
+      ? autoDistribute(rows, String(round2((parseFloat(amount) || 0) + creditCapacity(rows, on, list))))
+      : // Cleared: back to paying each ticked bill in full.
+        rows.map((r) => (r.checked ? { ...r, applied: String(r.balance) } : r));
+  const setPaymentAmount = (value: string) => {
+    const amount = value.replace(/[^0-9.]/g, '');
+    setPayAmount(amount);
+    setErrors((e) => ({ ...e, payAmount: '' }));
+    setForm((f) => ({ ...f, rows: spreadPayment(f.rows, amount, useCredits, credits) }));
+  };
+  // Credit switched on or off, or its figures changed: a typed payment is
+  // spread again, so the cash stays what was typed.
+  useEffect(() => {
+    if (!payAmount.trim()) return;
+    setForm((f) => ({ ...f, rows: spreadPayment(f.rows, payAmount, useCredits, credits) }));
+    // spreadPayment is a pure helper; the credit state is what changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [credits, useCredits]);
 
   // Each ticked row's figure is what that bill is settled by. Credit covers
   // the first of it, oldest bill first; the rest is cash.
@@ -166,9 +207,19 @@ export default function PayBillsPage() {
   // Money only needs an account and a proof when some of it leaves the bank.
   const needsCash = cash > 0.004;
 
+  // The most a typed payment can be: what the ticked bills owe after credit.
+  const capacity = creditCapacity(form.rows, useCredits, credits);
+  const maxCash = round2(
+    Math.max(form.rows.filter((r) => r.checked).reduce((t, r) => t + r.balance, 0) - capacity, 0),
+  );
+  const payAmountTooBig = payAmount.trim() !== '' && (parseFloat(payAmount) || 0) > maxCash + 0.004;
+
   const validate = (): boolean => {
     const errs: Record<string, string> = {};
     if (!form.vendorId) errs.vendorId = 'Select a vendor';
+    if (payAmountTooBig) {
+      errs.payAmount = `More than the ticked bills owe after credit (${formatMoney(maxCash)}). A vendor payment cannot be more than the bills it pays.`;
+    }
     if (!form.paymentDate) errs.paymentDate = 'Payment date is required';
     if (needsCash && !form.bankAccountId) errs.bankAccountId = 'Choose the account to pay from';
     if (needsCash && !form.proofId) errs.proofId = 'A payment proof is required';
@@ -253,7 +304,9 @@ export default function PayBillsPage() {
       <div>
         <h1 className="text-h2 text-text-primary">Pay bills</h1>
         <p className="text-body-sm text-text-secondary">
-          Settle what you owe a supplier — from their credit, from your bank, or both.
+          {fromSummary && summary
+            ? `Against the payables summary: ${formatMoney(summary.netDue)} owed on ${summary.totals.count} bill${summary.totals.count === 1 ? '' : 's'}. Type what you are paying — it is applied oldest first, and every amount can be changed.`
+            : 'Settle what you owe a supplier — from their credit, from your bank, or both.'}
         </p>
       </div>
 
@@ -274,13 +327,14 @@ export default function PayBillsPage() {
           <Combobox
             label="Vendor *"
             value={form.vendorId}
-            onChange={(vendorId) =>
+            onChange={(vendorId) => {
+              setPayAmount('');
               patch({
                 vendorId,
                 vendorName: vendorsById.get(vendorId)?.name ?? '',
                 rows: [],
-              })
-            }
+              });
+            }}
             options={vendorOptions}
             placeholder="Select a vendor…"
             searchPlaceholder="Search vendors…"
@@ -340,16 +394,44 @@ export default function PayBillsPage() {
           ) : loadingRows ? (
             <p className="text-body-sm text-text-secondary">Loading bills…</p>
           ) : (
-            <AllocationTable
-              rows={form.rows}
-              onChange={(rows) => patch({ rows })}
-              documentLabel="Bill"
-              // No `amount` prop: this side has no typed total to spread.
-              onFillAll={() => patch({ rows: fillToBalance(form.rows) })}
-              fillAllLabel="Pay all in full"
-              emptyText="This vendor has no posted bills owing. A draft bill has to be posted before it can be paid."
-              disabled={busy}
-            />
+            <>
+              {form.rows.length > 0 && (
+                <Input
+                  label="Amount to pay"
+                  value={payAmount}
+                  onChange={(e) => setPaymentAmount(e.target.value)}
+                  inputMode="decimal"
+                  placeholder="Each ticked bill in full"
+                  error={errors.payAmount || (payAmountTooBig ? `At most ${formatMoney(maxCash)} for the ticked bills` : undefined)}
+                  hint={
+                    lakhCroreWords(payAmount)
+                      ? `= ${lakhCroreWords(payAmount)}`
+                      : 'Optional: type a sum and it is spread over the ticked bills, oldest first.'
+                  }
+                  containerClassName="mb-md max-w-sm"
+                  disabled={busy}
+                />
+              )}
+              <AllocationTable
+                rows={form.rows}
+                onChange={(rows) => patch({ rows })}
+                documentLabel="Bill"
+                // With a typed amount, ticking a bill spreads that amount again
+                // (credit plus cash); without one, a ticked bill is paid in full.
+                amount={
+                  payAmount.trim()
+                    ? String(round2((parseFloat(payAmount) || 0) + capacity))
+                    : undefined
+                }
+                onFillAll={() => {
+                  setPayAmount('');
+                  patch({ rows: fillToBalance(form.rows) });
+                }}
+                fillAllLabel="Pay all in full"
+                emptyText="This vendor has no posted bills owing. A draft bill has to be posted before it can be paid."
+                disabled={busy}
+              />
+            </>
           )}
         </div>
         {errors.rows && (

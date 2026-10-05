@@ -16,8 +16,10 @@ import { customerSchema, type CustomerSchema } from '@/features/customers/custom
 import {
   createCustomer,
   getCustomerById,
+  getNextCustomerCode,
   updateCustomer,
 } from '@/networks/sales/customerNetwork';
+import { ApiError } from '@/networks/network/apiHelpers';
 import {
   EMPTY_CUSTOMER_FORM,
   PAYMENT_TERMS_OPTIONS,
@@ -43,6 +45,15 @@ export default function CustomerFormPage() {
     enabled: isEditing,
   });
 
+  // The ID a new customer will get if the field is left empty. A suggestion:
+  // someone else may save first, and the server assigns at save time.
+  const nextCode = useQuery({
+    queryKey: ['customers', 'next-code'],
+    queryFn: getNextCustomerCode,
+    enabled: !isEditing,
+    staleTime: 0,
+  });
+
   const form = useForm<CustomerSchema>({
     resolver: zodResolver(customerSchema),
     defaultValues: EMPTY_CUSTOMER_FORM,
@@ -56,6 +67,7 @@ export default function CustomerFormPage() {
     watch,
     setValue,
     getValues,
+    setError,
     formState: { errors, isSubmitting },
   } = form;
 
@@ -82,9 +94,14 @@ export default function CustomerFormPage() {
       });
       leave(`/customers/${customer.id}`);
     },
-    onError: (e: Error) => toast.error('Could not save customer', {
-      description: e.message,
-    }),
+    onError: (e: Error) => {
+      // A taken or malformed ID belongs on its field, where it can be fixed.
+      if (e instanceof ApiError && /CUSTOMER_CODE/.test(e.code ?? '')) {
+        setError('code', { message: e.message });
+        return;
+      }
+      toast.error('Could not save customer', { description: e.message });
+    },
   });
 
   if (isEditing && isLoading) {
@@ -112,11 +129,19 @@ export default function CustomerFormPage() {
         <SectionHeader title="Basic information" />
         <div className="mt-md grid gap-md sm:grid-cols-2">
           <Input
-            label="Name *"
-            error={errors.name?.message}
-            containerClassName="sm:col-span-2"
-            {...register('name')}
+            label="Customer ID"
+            placeholder={isEditing ? undefined : nextCode.data ? `${nextCode.data} (next)` : 'Next in the series'}
+            hint={
+              isEditing
+                ? 'Searchable everywhere. Must stay unique.'
+                : 'Leave empty for the next ID, or type your own (e.g. a Peachtree ID).'
+            }
+            autoCapitalize="characters"
+            maxLength={20}
+            error={errors.code?.message}
+            {...register('code')}
           />
+          <Input label="Name *" error={errors.name?.message} {...register('name')} />
           <Input label="Company" error={errors.company?.message} {...register('company')} />
           <Input
             label="Email *"

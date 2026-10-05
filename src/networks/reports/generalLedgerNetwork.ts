@@ -9,8 +9,13 @@ import type { ReportRange } from '@/models/reportPeriod';
 import {
   generalLedgerSerializer,
   ledgerAccountsSerializer,
+  ledgerPartiesSerializer,
+  partyLedgerSerializer,
   type GeneralLedgerReport,
   type LedgerAccountsReport,
+  type LedgerPartiesReport,
+  type LedgerPartyType,
+  type PartyLedgerReport,
 } from '@/serializers/reportSerializers';
 
 /**
@@ -66,6 +71,50 @@ export const getLedgerAccounts = async (
       params: { startDate: range.startDate, endDate: range.endDate },
     });
     return ledgerAccountsSerializer(unwrapEnvelope(response.data));
+  } catch (e) {
+    throw toApiError(e);
+  }
+};
+
+/**
+ * The same ledger read by customer or vendor — one party's postings on its
+ * control accounts, or every party's (no `partyId`), each line carrying the
+ * document that posted it. Whole period, oldest first, like the account view.
+ */
+export const getPartyLedger = async (
+  range: ReportRange,
+  type: LedgerPartyType,
+  partyId?: string,
+): Promise<PartyLedgerReport> => {
+  try {
+    const response = await api.get('/ledger', {
+      params: {
+        startDate: range.startDate,
+        endDate: range.endDate,
+        party: type,
+        ...(partyId ? { partyId } : {}),
+      },
+    });
+    return partyLedgerSerializer(unwrapEnvelope(response.data));
+  } catch (e) {
+    throw toApiError(e);
+  }
+};
+
+/**
+ * Every customer or vendor with its figures for the period — the picker's
+ * source, the party twin of getLedgerAccounts. Parties with no postings are
+ * listed too, so anyone can be found by ID or name.
+ */
+export const getLedgerParties = async (
+  range: ReportRange,
+  type: LedgerPartyType,
+): Promise<LedgerPartiesReport> => {
+  try {
+    const response = await api.get('/ledger/parties', {
+      params: { type, startDate: range.startDate, endDate: range.endDate },
+    });
+    return ledgerPartiesSerializer(unwrapEnvelope(response.data));
   } catch (e) {
     throw toApiError(e);
   }

@@ -179,6 +179,8 @@ const termsLabel = (recordTerms: PaymentTerms | '' | undefined, apiTerms: string
 /** The party block from the summary itself, for when the full record is not to hand. */
 const summaryPartySource = (s: PartySummary): PartySource => ({
   name: s.party.name,
+  code: s.party.code || undefined,
+  codeLabel: s.partyType === 'customer' ? 'Customer ID' : 'Vendor ID',
   contactPerson: s.party.contactPerson || undefined,
   email: s.party.email || undefined,
   phone: s.party.phone || undefined,

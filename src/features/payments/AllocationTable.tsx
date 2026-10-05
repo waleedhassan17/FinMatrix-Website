@@ -28,6 +28,10 @@ import { formatMoney } from '@/utils/money';
  * Either way every figure stays editable afterwards, and both servers refuse
  * the whole request if one row exceeds what that document owes — which is why
  * that case is caught here rather than on the way back.
+ *
+ * Under each amount, what it leaves: "Paid in full" or "Rs 10,00,000 left" —
+ * so a payment split across a summary (two invoices in full, the third in
+ * part) reads at a glance before it is saved.
  */
 export function AllocationTable({
   rows,
@@ -148,7 +152,7 @@ export function AllocationTable({
                   <td className="px-sm py-sm text-right text-body-sm text-text-primary tabular">
                     {formatMoney(row.balance)}
                   </td>
-                  <td className="px-sm py-sm text-right">
+                  <td className="px-sm py-sm text-right align-top">
                     <input
                       value={row.checked ? row.applied : ''}
                       onChange={(e) => setApplied(row.documentId, e.target.value)}
@@ -164,6 +168,9 @@ export function AllocationTable({
                         over ? 'border-danger' : 'border-border',
                       )}
                     />
+                    {row.checked && !over && outcomeOf(row) && (
+                      <p className="mt-xxs text-caption text-text-tertiary tabular">{outcomeOf(row)}</p>
+                    )}
                   </td>
                 </tr>
               );
@@ -186,5 +193,13 @@ export function AllocationTable({
     </div>
   );
 }
+
+/** What a ticked row's amount leaves on the document, or null when nothing is applied. */
+const outcomeOf = (row: AllocationRow): string | null => {
+  const applied = parseFloat(row.applied) || 0;
+  if (applied <= 0) return null;
+  const left = Math.round((row.balance - applied) * 100) / 100;
+  return left <= 0.004 ? 'Paid in full' : `${formatMoney(left)} left`;
+};
 
 export default AllocationTable;

@@ -2,6 +2,7 @@
 // FinMatrix Web — Vendor Serializer
 // ═══════════════════════════════════════════════════════
 
+import { normalizePartyCode } from '@/models/partyCode';
 import {
   paymentTermsFromApi,
   PAYMENT_TERMS_TO_API,
@@ -29,6 +30,7 @@ export const mapVendor = (raw: unknown): Vendor => {
   return {
     id: str(r.id),
     companyId: str(r.companyId),
+    code: str(r.code),
     // The wire calls it companyName; there is no separate `name`.
     name: str(r.companyName ?? r.name),
     contactPerson: str(r.contactPerson),
@@ -189,13 +191,25 @@ export const vendorPaymentsSerializer = (
 
 // ─── Statement ───────────────────────────────────────
 
-export type VendorStatementLineKind = 'bill' | 'payment' | 'vendor_credit';
+/** What a vendor statement line is. Read from the books, so a void is a line of its own. */
+export type VendorStatementLineKind =
+  | 'bill'
+  | 'bill_void'
+  | 'payment'
+  | 'vendor_credit'
+  | 'vendor_credit_void'
+  | 'other';
 
 export const VENDOR_STATEMENT_KIND_LABELS: Record<VendorStatementLineKind, string> = {
   bill: 'Bill',
+  bill_void: 'Bill voided',
   payment: 'Payment',
   vendor_credit: 'Vendor credit',
+  vendor_credit_void: 'Vendor credit voided',
+  other: 'Adjustment',
 };
+
+const VENDOR_STATEMENT_KINDS = new Set<string>(Object.keys(VENDOR_STATEMENT_KIND_LABELS));
 
 export interface VendorStatementLine {
   id: string;
@@ -205,77 +219,47 @@ export interface VendorStatementLine {
   /** Positive increases what we owe; negative reduces it. */
   amount: number;
   runningBalance: number;
+  documentType: string | null;
+  documentId: string | null;
 }
 
 export interface VendorStatement {
-  vendor: { id: string; name: string; email: string };
+  vendor: { id: string; code: string; name: string; email: string };
   period: { startDate: string; endDate: string };
   openingBalance: number;
   lines: VendorStatementLine[];
-  /** `credited` is 0 from a server that predates it. */
   totals: { billed: number; paid: number; credited: number };
   closingBalance: number;
 }
 
 /**
- * The statement returns bills and payments as two arrays. A statement reads as
- * one chronological ledger, so they are merged here and a running balance
- * accumulated — the server sends opening and closing figures but nothing
- * per row. Same treatment as the customer statement.
+ * `GET /vendors/:id/ledger-statement` — the statement read from the books,
+ * one line per transaction with its running balance (see the customer twin).
  */
 export const vendorStatementSerializer = (payload: unknown): VendorStatement => {
   const d = asRaw(payload);
-  const v = asRaw(d.vendor);
+  const v = asRaw(d.party ?? d.vendor);
   const period = asRaw(d.period);
   const totals = asRaw(d.totals);
-  const openingBalance = toNumber(d.openingBalance as never);
-
-  const bills = (Array.isArray(d.bills) ? d.bills : []) as Record<string, unknown>[];
-  const payments = (Array.isArray(d.payments) ? d.payments : []) as Record<
-    string,
-    unknown
-  >[];
-  // Vendor credits bring what we owe down.
-  const vendorCredits = (Array.isArray(d.vendorCredits) ? d.vendorCredits : []) as Record<
-    string,
-    unknown
-  >[];
-
-  const merged: Omit<VendorStatementLine, 'runningBalance'>[] = [
-    ...bills.map((raw) => ({
-      id: str(raw.id),
-      date: str(raw.billDate ?? raw.date),
-      kind: 'bill' as const,
-      reference: str(raw.billNumber) || '—',
-      amount: toNumber(raw.total as never),
-    })),
-    ...payments.map((raw) => ({
-      id: str(raw.id),
-      date: str(raw.paymentDate ?? raw.date),
-      kind: 'payment' as const,
-      reference: str(raw.reference) || '—',
-      amount: -toNumber((raw.totalAmount ?? raw.amount) as never),
-    })),
-    ...vendorCredits.map((raw) => ({
+  const lines = (Array.isArray(d.lines) ? d.lines : []).map((item): VendorStatementLine => {
+    const raw = asRaw(item);
+    const kind = str(raw.kind);
+    return {
       id: str(raw.id),
       date: str(raw.date),
-      kind: 'vendor_credit' as const,
-      reference: str(raw.vendorCreditNumber) || '—',
-      amount: -toNumber(raw.total as never),
-    })),
-  ].sort((a, b) => a.date.localeCompare(b.date));
-
-  let running = openingBalance;
-  const lines: VendorStatementLine[] = merged.map((line) => {
-    running += line.amount;
-    return { ...line, runningBalance: running };
+      kind: (VENDOR_STATEMENT_KINDS.has(kind) ? kind : 'other') as VendorStatementLineKind,
+      reference: str(raw.reference) || '—',
+      amount: toNumber(raw.amount as never),
+      runningBalance: toNumber(raw.balance as never),
+      documentType: str(raw.documentType) || null,
+      documentId: str(raw.documentId) || null,
+    };
   });
 
   return {
-    // The server labels it `name`, sourced from companyName.
-    vendor: { id: str(v.id), name: str(v.name), email: str(v.email) },
+    vendor: { id: str(v.id), code: str(v.code), name: str(v.name), email: str(v.email) },
     period: { startDate: str(period.startDate), endDate: str(period.endDate) },
-    openingBalance,
+    openingBalance: toNumber(d.openingBalance as never),
     lines,
     totals: {
       billed: toNumber(totals.billed as never),
@@ -291,6 +275,7 @@ export const vendorStatementSerializer = (payload: unknown): VendorStatement => 
 // ═══════════════════════════════════════════════════════
 
 export const vendorToFormData = (vendor: Vendor): VendorFormData => ({
+  code: vendor.code,
   name: vendor.name,
   contactPerson: vendor.contactPerson,
   email: vendor.email,
@@ -307,6 +292,8 @@ export const vendorToFormData = (vendor: Vendor): VendorFormData => ({
 });
 
 export interface VendorWritePayload {
+  /** Omitted: the server assigns the next ID on create, and keeps the current one on an edit. */
+  code?: string;
   companyName: string;
   contactPerson?: string;
   email?: string;
@@ -328,6 +315,7 @@ export interface VendorWritePayload {
  *     `''` would fail validation rather than clear the field
  */
 export const vendorFormToPayload = (form: VendorFormData): VendorWritePayload => ({
+  code: normalizePartyCode(form.code) || undefined,
   companyName: form.name.trim(),
   contactPerson: form.contactPerson.trim() || undefined,
   email: form.email.trim() || undefined,

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { CircleCheck } from 'lucide-react';
+import { Banknote, CircleCheck } from 'lucide-react';
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 
@@ -38,6 +38,17 @@ export interface PartySummaryPanelProps {
 }
 
 const DOCUMENT_PATH = { invoice: '/invoices', bill: '/bills' } as const;
+
+/**
+ * Where paying the summary goes: the payment page with this party chosen,
+ * every open document ticked and credits switched on (`from=summary`), so a
+ * typed amount is spread oldest first — two invoices in full, the third in
+ * part — and every figure can still be changed before it is saved.
+ */
+const PAY_FROM_SUMMARY = {
+  customer: { label: 'Receive payment', to: (id: string) => `/payments/new?customerId=${id}&from=summary` },
+  vendor: { label: 'Pay bills', to: (id: string) => `/bills/pay?vendorId=${id}&from=summary` },
+} as const;
 
 /**
  * A bucket's amount in the narrow strip: whole rupees, compact only past a
@@ -85,6 +96,8 @@ export function PartySummaryPanel({ open, onOpenChange, party }: PartySummaryPan
   }, [summary, company, party]);
 
   const sendable = summary ? hasAnythingOpen(summary) : false;
+  const pay = PAY_FROM_SUMMARY[type];
+  const payable = Boolean(summary && summary.documents.length > 0);
 
   return (
     <SidePanel
@@ -97,9 +110,18 @@ export function PartySummaryPanel({ open, onOpenChange, party }: PartySummaryPan
       footer={
         doc && summary ? (
           <div className="flex flex-wrap items-center justify-between gap-sm">
-            <span className="text-caption text-text-tertiary">
-              {sendable ? 'Print, save or send it' : 'Nothing to send'}
-            </span>
+            {payable ? (
+              <Button asChild size="sm">
+                <Link to={pay.to(record.id)}>
+                  <Banknote className="size-4" />
+                  {pay.label}
+                </Link>
+              </Button>
+            ) : (
+              <span className="text-caption text-text-tertiary">
+                {sendable ? 'Print, save or send it' : 'Nothing to send'}
+              </span>
+            )}
             <DocumentActions
               document={doc.share}
               getPdf={() => reportPdfBlob(doc.pdf)}

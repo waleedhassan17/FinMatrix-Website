@@ -22,6 +22,7 @@ export const summaryDoc = (n: number, daysOverdue: number, balance: number): Agi
 export const summaryFixture = (over: Partial<PartySummary> = {}): PartySummary => ({
   partyType: 'customer',
   party: {
+    code: 'C-0007',
     id: 'c1',
     name: 'Acme Traders',
     contactPerson: '',

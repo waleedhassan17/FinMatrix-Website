@@ -16,12 +16,15 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { PAYMENT_TERMS_OPTIONS, type PaymentTerms } from '@/models/customer';
 import { EMPTY_VENDOR_FORM, VENDOR_MAX_LENGTHS } from '@/models/vendor';
+import { partyCodeProblem } from '@/models/partyCode';
 import { getBillableAccounts } from '@/networks/accounting/accountNetwork';
 import {
   createVendor,
+  getNextVendorCode,
   getVendorById,
   updateVendor,
 } from '@/networks/purchases/vendorNetwork';
+import { ApiError } from '@/networks/network/apiHelpers';
 import {
   vendorFormToPayload,
   vendorToFormData,
@@ -40,6 +43,14 @@ const M = VENDOR_MAX_LENGTHS;
  * an overlong value is a 500 rather than a message a form can show.
  */
 const vendorSchema = z.object({
+  // Optional: left empty, the server gives the next ID in the series.
+  code: z
+    .string()
+    .trim()
+    .superRefine((v, ctx) => {
+      const problem = partyCodeProblem(v, 'Vendor');
+      if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem });
+    }),
   name: z
     .string()
     .trim()
@@ -104,11 +115,20 @@ export default function VendorFormPage() {
     [accounts],
   );
 
+  // The ID a new vendor will get if the field is left empty — a suggestion.
+  const nextCode = useQuery({
+    queryKey: ['vendors', 'next-code'],
+    queryFn: getNextVendorCode,
+    enabled: !isEditing,
+    staleTime: 0,
+  });
+
   const {
     register,
     control,
     handleSubmit,
     reset,
+    setError,
     formState: { errors, isSubmitting },
   } = useForm<VendorSchema>({
     resolver: zodResolver(vendorSchema),
@@ -134,8 +154,14 @@ export default function VendorFormPage() {
       });
       leave(`/vendors/${saved.id}`);
     },
-    onError: (e: Error) =>
-      toast.error('Could not save vendor', { description: e.message }),
+    onError: (e: Error) => {
+      // A taken or malformed ID belongs on its field, where it can be fixed.
+      if (e instanceof ApiError && /VENDOR_CODE/.test(e.code ?? '')) {
+        setError('code', { message: e.message });
+        return;
+      }
+      toast.error('Could not save vendor', { description: e.message });
+    },
   });
 
   if (isEditing && isLoading) {
@@ -177,11 +203,19 @@ export default function VendorFormPage() {
           {/* One name field — the vendor IS the company. There is no
               name + company pair as there is on a customer. */}
           <Input
-            label="Company name *"
-            error={errors.name?.message}
-            containerClassName="sm:col-span-2"
-            {...register('name')}
+            label="Vendor ID"
+            placeholder={isEditing ? undefined : nextCode.data ? `${nextCode.data} (next)` : 'Next in the series'}
+            hint={
+              isEditing
+                ? 'Searchable everywhere. Must stay unique.'
+                : 'Leave empty for the next ID, or type your own (e.g. a Peachtree ID).'
+            }
+            autoCapitalize="characters"
+            maxLength={20}
+            error={errors.code?.message}
+            {...register('code')}
           />
+          <Input label="Company name *" error={errors.name?.message} {...register('name')} />
           <Input
             label="Contact person"
             error={errors.contactPerson?.message}

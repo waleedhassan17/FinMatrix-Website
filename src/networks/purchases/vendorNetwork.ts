@@ -18,10 +18,16 @@ import {
   type VendorWritePayload,
 } from '@/serializers/vendorSerializer';
 import type { Vendor } from '@/models/vendor';
+import type { PartyHistory } from '@/models/partyHistory';
+import { partyHistorySerializer } from '@/serializers/partyHistorySerializer';
+import type { PartyListSort } from '@/networks/sales/customerNetwork';
 
+/** Filtered, searched (ID, company, contact, email, phone) and sorted by the server. */
 export interface VendorQueryParams {
   search?: string;
   isActive?: boolean;
+  /** Server order; `code` is natural (V-2 before V-10). Default newest first. */
+  sort?: PartyListSort;
   page?: number;
   limit?: number;
 }
@@ -32,6 +38,16 @@ export const getVendors = async (
   try {
     const response = await api.get('/vendors', { params });
     return vendorListSerializer(unwrapEnvelope(response.data));
+  } catch (e) {
+    throw toApiError(e);
+  }
+};
+
+/** The ID the next new vendor would get — for the form's placeholder, not a reservation. */
+export const getNextVendorCode = async (): Promise<string> => {
+  try {
+    const response = await api.get('/vendors/next-code');
+    return String((unwrapEnvelope(response.data) as { code?: string })?.code ?? '');
   } catch (e) {
     throw toApiError(e);
   }
@@ -103,13 +119,17 @@ export const getVendorPayments = async (
   }
 };
 
-/** Both dates are required `@IsDateString()` — omitting either is a 400. */
+/**
+ * The statement, read from the books — the same postings as the vendor's view
+ * in the General Ledger. Both dates are required `@IsDateString()` — omitting
+ * either is a 400.
+ */
 export const getVendorStatement = async (
   vendorId: string,
   params: { startDate: string; endDate: string },
 ): Promise<VendorStatement> => {
   try {
-    const response = await api.get(`/vendors/${vendorId}/statement`, { params });
+    const response = await api.get(`/vendors/${vendorId}/ledger-statement`, { params });
     return vendorStatementSerializer(unwrapEnvelope(response.data));
   } catch (e) {
     throw toApiError(e);
@@ -124,6 +144,16 @@ export const getVendorStatement = async (
 export const deleteVendor = async (id: string): Promise<void> => {
   try {
     await api.delete(`/vendors/${id}`);
+  } catch (e) {
+    throw toApiError(e);
+  }
+};
+
+/** The vendor's History — see getCustomerHistory. */
+export const getVendorHistory = async (vendorId: string, year?: number): Promise<PartyHistory> => {
+  try {
+    const response = await api.get(`/vendors/${vendorId}/history`, { params: year ? { year } : {} });
+    return partyHistorySerializer(unwrapEnvelope(response.data), 'vendor');
   } catch (e) {
     throw toApiError(e);
   }

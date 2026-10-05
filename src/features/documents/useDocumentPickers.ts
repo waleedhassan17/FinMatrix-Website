@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 
 import { useFeature } from '@/hooks/useCapability';
 import type { Customer } from '@/models/customer';
+import { partyLabel } from '@/models/partyCode';
 import { getInventoryItems } from '@/networks/inventory/inventoryNetwork';
 import { getCustomers } from '@/networks/sales/customerNetwork';
 import { getVendors } from '@/networks/purchases/vendorNetwork';
@@ -24,7 +25,10 @@ export function useCustomerOptions() {
     queryKey: ['customers', 'picker'],
     queryFn: () =>
       fetchAllPages((page, limit) =>
-        getCustomers({ page, limit }).then((r) => ({ rows: r.customers, totalPages: r.pagination.totalPages })),
+        getCustomers({ page, limit, sort: 'name' }).then((r) => ({
+          rows: r.customers,
+          totalPages: r.pagination.totalPages,
+        })),
       ),
   });
 
@@ -37,7 +41,9 @@ export function useCustomerOptions() {
         .filter((c) => c.isActive)
         .map((c) => ({
           value: c.id,
-          label: c.company ? `${c.name} — ${c.company}` : c.name,
+          // `C-0007 · Name — Company`: the picker filters on its label, so the
+          // ID makes every customer picker searchable by it.
+          label: partyLabel(c.code, c.company ? `${c.name} — ${c.company}` : c.name),
         })),
     [customers],
   );
@@ -87,14 +93,20 @@ export function useVendorOptions() {
     queryKey: ['vendors', 'picker'],
     queryFn: () =>
       fetchAllPages((page, limit) =>
-        getVendors({ page, limit }).then((r) => ({ rows: r.vendors, totalPages: r.pagination.totalPages })),
+        getVendors({ page, limit, sort: 'name' }).then((r) => ({
+          rows: r.vendors,
+          totalPages: r.pagination.totalPages,
+        })),
       ),
   });
 
   const vendors = useMemo(() => data ?? [], [data]);
 
   const options = useMemo(
-    () => vendors.filter((v) => v.isActive).map((v) => ({ value: v.id, label: v.name })),
+    () =>
+      vendors
+        .filter((v) => v.isActive)
+        .map((v) => ({ value: v.id, label: partyLabel(v.code, v.name) })),
     [vendors],
   );
 

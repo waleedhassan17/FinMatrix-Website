@@ -25,6 +25,8 @@ export interface CustomerAddress {
 export interface Customer {
   id: string;
   companyId: string;
+  /** The customer ID people search and print — C-0007. Empty only on a record that predates IDs. */
+  code: string;
   name: string;
   company: string;
   email: string;
@@ -130,6 +132,8 @@ export const PAYMENT_TERMS_DAYS: Record<PaymentTerms, number> = {
 // library and a validation schema both want.
 
 export interface CustomerFormData {
+  /** Empty means "give it the next ID" on create, and "keep it" on an edit. */
+  code: string;
   name: string;
   company: string;
   email: string;
@@ -153,6 +157,7 @@ export interface CustomerFormData {
 }
 
 export const EMPTY_CUSTOMER_FORM: CustomerFormData = {
+  code: '',
   name: '',
   company: '',
   email: '',
@@ -184,6 +189,7 @@ export const EMPTY_CUSTOMER_FORM: CustomerFormData = {
  * only thing standing between a long company name and an unexplained crash.
  */
 export const CUSTOMER_MAX_LENGTHS = {
+  code: 20,
   name: 200,
   company: 200,
   contactPerson: 200,

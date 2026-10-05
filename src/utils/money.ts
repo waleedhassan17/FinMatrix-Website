@@ -118,4 +118,26 @@ export const sumMoney = (values: MoneyInput[]): Decimal =>
 export const isBalanced = (debits: MoneyInput[], credits: MoneyInput[]): boolean =>
   sumMoney(debits).equals(sumMoney(credits));
 
+/**
+ * A large amount in the words people here count in — "60 lakh", "1 crore 25
+ * lakh", "2 lakh 50 thousand" — shown beside an amount box so a missing or
+ * extra zero is caught before it is saved. Null below a thousand, where the
+ * figure speaks for itself.
+ */
+export const lakhCroreWords = (amount: MoneyInput): string | null => {
+  const value = toDecimal(amount).abs();
+  if (value.lessThan(1000)) return null;
+  const crore = value.dividedToIntegerBy(10_000_000);
+  const lakh = value.mod(10_000_000).dividedToIntegerBy(100_000);
+  const thousand = value.mod(100_000).dividedToIntegerBy(1000);
+  const rest = value.mod(1000);
+  const parts = [
+    crore.isZero() ? '' : `${crore.toFixed(0)} crore`,
+    lakh.isZero() ? '' : `${lakh.toFixed(0)} lakh`,
+    thousand.isZero() ? '' : `${thousand.toFixed(0)} thousand`,
+    rest.isZero() ? '' : rest.toDecimalPlaces(2).toString(),
+  ].filter(Boolean);
+  return parts.join(' ');
+};
+
 export { Decimal };

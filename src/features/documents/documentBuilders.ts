@@ -30,6 +30,8 @@ export const customerPartySource = (c: Customer | null | undefined): PartySource
   c
     ? {
         name: c.name,
+        code: c.code,
+        codeLabel: 'Customer ID',
         company: c.company,
         contactPerson: c.contactPerson,
         email: c.email,
@@ -43,6 +45,8 @@ export const vendorPartySource = (v: Vendor | null | undefined): PartySource | n
   v
     ? {
         name: v.name,
+        code: v.code,
+        codeLabel: 'Vendor ID',
         contactPerson: v.contactPerson,
         email: v.email,
         phone: v.phone,

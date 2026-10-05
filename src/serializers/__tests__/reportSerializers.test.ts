@@ -600,6 +600,7 @@ describe('partySummarySerializer', () => {
   const payload = {
     partyType: 'customer',
     party: {
+      code: 'C-0007',
       id: 'c1', name: 'Acme Traders', contactPerson: null, email: 'a@acme.pk', phone: '0300 1234567',
       address: '12 Mall Road, Lahore', paymentTerms: 'net30', taxId: null,
     },
@@ -628,7 +629,7 @@ describe('partySummarySerializer', () => {
   it('reads the whole summary, numbers as numbers', () => {
     const s = partySummarySerializer(payload);
     expect(s.party).toEqual({
-      id: 'c1', name: 'Acme Traders', contactPerson: '', email: 'a@acme.pk', phone: '0300 1234567',
+      id: 'c1', code: 'C-0007', name: 'Acme Traders', contactPerson: '', email: 'a@acme.pk', phone: '0300 1234567',
       address: '12 Mall Road, Lahore', paymentTerms: 'net30', taxId: '',
     });
     expect(s.buckets[0]).toEqual({ key: 'current', label: 'Current', minDays: 0, maxDays: 0, amount: 300, count: 1 });

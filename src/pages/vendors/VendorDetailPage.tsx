@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Banknote, FileClock, FilePlus2, Pencil } from 'lucide-react';
+import { Banknote, BookOpen, FileClock, FilePlus2, Pencil } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -16,6 +16,7 @@ import { PartySummaryPanel } from '@/features/documents/PartySummaryPanel';
 import { vendorStatementDocument } from '@/features/documents/statementBuilders';
 import { useDocumentCompany } from '@/features/documents/useDocumentContext';
 import { DocumentActions } from '@/features/share/DocumentActions';
+import { PartyHistoryTab } from '@/features/parties/PartyHistoryTab';
 import { useAdminOnly } from '@/hooks/useCapability';
 import { cn } from '@/lib/cn';
 import { PAYMENT_TERMS_LABELS } from '@/models/customer';
@@ -38,6 +39,12 @@ const iso = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
     d.getDate(),
   ).padStart(2, '0')}`;
+
+/** Where a statement line's document opens. A bill payment has no page of its own. */
+const STATEMENT_DOCUMENT_PATHS: Record<string, string> = {
+  bill: '/bills',
+  vendor_credit: '/vendor-credits',
+};
 
 export default function VendorDetailPage() {
   const { vendorId = '' } = useParams<{ vendorId: string }>();
@@ -100,6 +107,11 @@ export default function VendorDetailPage() {
         title={vendor.name}
         status={<StatusBadge status={vendor.isActive ? 'active' : 'inactive'} />}
         meta={[
+          vendor.code ? (
+            <span key="code" className="tabular" title="Vendor ID">
+              {vendor.code}
+            </span>
+          ) : null,
           vendor.contactPerson || null,
           vendor.email ? (
             <a key="email" href={`mailto:${vendor.email}`} className="hover:text-primary hover:underline">
@@ -127,6 +139,13 @@ export default function VendorDetailPage() {
             <Button variant="secondary" size="sm" onClick={() => setSummaryOpen(true)}>
               <FileClock className="size-4" />
               Payables summary
+            </Button>
+            {/* The vendor's ledger is the General Ledger read by vendor. */}
+            <Button asChild variant="secondary" size="sm">
+              <Link to={`/reports/general-ledger?view=vendors&vendor=${vendor.id}`}>
+                <BookOpen className="size-4" />
+                Ledger
+              </Link>
             </Button>
             <Button asChild size="sm">
               <Link to={`/bills/new?vendorId=${vendor.id}`}>
@@ -179,6 +198,7 @@ export default function VendorDetailPage() {
           <TabsTrigger value="bills">Bills</TabsTrigger>
           <TabsTrigger value="payments">Payments</TabsTrigger>
           <TabsTrigger value="statement">Statement</TabsTrigger>
+          <TabsTrigger value="history">History</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -202,6 +222,10 @@ export default function VendorDetailPage() {
 
         <TabsContent value="statement">
           <StatementTab vendor={vendor} />
+        </TabsContent>
+
+        <TabsContent value="history">
+          <PartyHistoryTab type="vendor" partyId={vendor.id} />
         </TabsContent>
       </Tabs>
 
@@ -528,7 +552,16 @@ function StatementTab({ vendor }: { vendor: Vendor }) {
                     <tr key={`${l.kind}-${l.id}`} className="border-b border-border-light">
                       <td className="py-sm text-body-sm text-text-primary">{l.date}</td>
                       <td className="py-sm text-body-sm text-text-primary">
-                        {l.reference}
+                        {l.documentId && STATEMENT_DOCUMENT_PATHS[l.documentType ?? ''] ? (
+                          <Link
+                            to={`${STATEMENT_DOCUMENT_PATHS[l.documentType ?? '']}/${l.documentId}`}
+                            className="hover:text-primary hover:underline"
+                          >
+                            {l.reference}
+                          </Link>
+                        ) : (
+                          l.reference
+                        )}
                         <span className="ml-xs text-caption text-text-tertiary">
                           {VENDOR_STATEMENT_KIND_LABELS[l.kind]}
                         </span>

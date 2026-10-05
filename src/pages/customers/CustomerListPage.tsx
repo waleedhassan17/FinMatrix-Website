@@ -12,12 +12,11 @@ import { SearchInput } from '@/components/ui/SearchInput';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { cn } from '@/lib/cn';
 import { PAYMENT_TERMS_LABELS, type Customer } from '@/models/customer';
-import { getCustomers } from '@/networks/sales/customerNetwork';
+import { getCustomers, type PartyListSort } from '@/networks/sales/customerNetwork';
 import { colors } from '@/theme/tokens';
 import { formatMoney } from '@/utils/money';
 
 type StatusFilter = 'all' | 'active' | 'inactive';
-type SortField = 'name' | 'balance' | 'recent';
 
 const PAGE_SIZE = 50;
 
@@ -42,7 +41,7 @@ export default function CustomerListPage() {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<StatusFilter>('all');
-  const [sort, setSort] = useState<SortField>('name');
+  const [sort, setSort] = useState<PartyListSort>('name');
   const [page, setPage] = useState(1);
 
   // Debounced so a search runs on the pause, not on every keystroke — the app
@@ -55,33 +54,44 @@ export default function CustomerListPage() {
     return () => clearTimeout(t);
   }, [searchInput]);
 
+  // Status and order are the server's, so they cover every customer — they
+  // used to act on the 50 rows of the page on screen. Searching by ID puts
+  // that customer first.
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['customers', 'list', { search, page }],
+    queryKey: ['customers', 'list', { search, status, sort, page }],
     queryFn: () =>
-      getCustomers({ search: search || undefined, page, limit: PAGE_SIZE }),
+      getCustomers({
+        search: search || undefined,
+        isActive: status === 'all' ? undefined : status === 'active',
+        sort,
+        page,
+        limit: PAGE_SIZE,
+      }),
     // Keeps the previous page on screen while the next one loads, instead of
     // flashing an empty table on every page change.
     placeholderData: keepPreviousData,
   });
+  const rows = data?.customers ?? [];
 
-  // Status and sort are client-side: the server offers `isActive` but no
-  // `sortBy` at all (ordering is fixed createdAt DESC), and mixing a
-  // server-filtered subset with a client sort reads as arbitrary. The app
-  // does both client-side for the same reason.
-  const rows = useMemo(() => {
-    let list = data?.customers ?? [];
-    if (status !== 'all') {
-      list = list.filter((c) => (status === 'active' ? c.isActive : !c.isActive));
-    }
-    return [...list].sort((a, b) => {
-      if (sort === 'name') return a.name.localeCompare(b.name);
-      if (sort === 'balance') return b.balance - a.balance;
-      return b.createdAt.localeCompare(a.createdAt);
-    });
-  }, [data?.customers, status, sort]);
+  const changeStatus = (next: StatusFilter) => {
+    setStatus(next);
+    setPage(1);
+  };
+  const changeSort = (next: PartyListSort) => {
+    setSort(next);
+    setPage(1);
+  };
 
   const columns = useMemo(
     () => [
+      columnHelper.accessor('code', {
+        header: 'ID',
+        cell: (ctx) => (
+          <span className="whitespace-nowrap text-label-md text-text-primary tabular">
+            {ctx.getValue() || '—'}
+          </span>
+        ),
+      }),
       columnHelper.accessor('name', {
         header: 'Customer',
         cell: (ctx) => (
@@ -197,7 +207,7 @@ export default function CustomerListPage() {
             <SearchInput
               value={searchInput}
               onValueChange={setSearchInput}
-              placeholder="Search by name, company, email or phone…"
+              placeholder="Search by ID, name, company, email or phone…"
               aria-label="Search customers"
               tone="background"
               containerClassName="min-w-56 flex-1"
@@ -205,7 +215,7 @@ export default function CustomerListPage() {
 
             <FilterChips
               value={status}
-              onChange={setStatus}
+              onChange={changeStatus}
               options={[
                 ['all', 'All'],
                 ['active', 'Active'],
@@ -214,9 +224,10 @@ export default function CustomerListPage() {
             />
             <FilterChips
               value={sort}
-              onChange={setSort}
+              onChange={changeSort}
               options={[
                 ['name', 'A–Z'],
+                ['code', 'ID'],
                 ['balance', 'Balance'],
                 ['recent', 'Recent'],
               ]}

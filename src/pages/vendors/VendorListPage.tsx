@@ -14,10 +14,10 @@ import { cn } from '@/lib/cn';
 import { PAYMENT_TERMS_LABELS } from '@/models/customer';
 import { vendorBalanceTone, type Vendor } from '@/models/vendor';
 import { getVendors } from '@/networks/purchases/vendorNetwork';
+import type { PartyListSort } from '@/networks/sales/customerNetwork';
 import { formatMoney } from '@/utils/money';
 
 type StatusFilter = 'all' | 'active' | 'inactive';
-type SortField = 'name' | 'balance' | 'recent';
 
 const PAGE_SIZE = 50;
 
@@ -28,7 +28,7 @@ export default function VendorListPage() {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<StatusFilter>('all');
-  const [sort, setSort] = useState<SortField>('name');
+  const [sort, setSort] = useState<PartyListSort>('name');
   const [page, setPage] = useState(1);
 
   useEffect(() => {
@@ -40,25 +40,30 @@ export default function VendorListPage() {
   }, [searchInput]);
 
   // `GET /vendors` nests one level deeper than the flat lists, so the envelope
-  // leaves pagination intact and this can be a real server-side pager.
+  // leaves pagination intact and this can be a real server-side pager. Status
+  // and order are the server's too, so they cover every vendor, not the page.
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['vendors', 'list', { search, page }],
+    queryKey: ['vendors', 'list', { search, status, sort, page }],
     queryFn: () =>
-      getVendors({ search: search || undefined, page, limit: PAGE_SIZE }),
+      getVendors({
+        search: search || undefined,
+        isActive: status === 'all' ? undefined : status === 'active',
+        sort,
+        page,
+        limit: PAGE_SIZE,
+      }),
     placeholderData: keepPreviousData,
   });
+  const rows = useMemo(() => data?.vendors ?? [], [data?.vendors]);
 
-  const rows = useMemo(() => {
-    let list = data?.vendors ?? [];
-    if (status !== 'all') {
-      list = list.filter((v) => (status === 'active' ? v.isActive : !v.isActive));
-    }
-    return [...list].sort((a, b) => {
-      if (sort === 'name') return a.name.localeCompare(b.name);
-      if (sort === 'balance') return b.balance - a.balance;
-      return b.createdAt.localeCompare(a.createdAt);
-    });
-  }, [data?.vendors, status, sort]);
+  const changeStatus = (next: StatusFilter) => {
+    setStatus(next);
+    setPage(1);
+  };
+  const changeSort = (next: PartyListSort) => {
+    setSort(next);
+    setPage(1);
+  };
 
   // There is no server-side summary on this route (customers have one, vendors
   // do not), so this is explicitly the loaded page, not a company-wide total.
@@ -69,6 +74,14 @@ export default function VendorListPage() {
 
   const columns = useMemo(
     () => [
+      columnHelper.accessor('code', {
+        header: 'ID',
+        cell: (ctx) => (
+          <span className="whitespace-nowrap text-label-md text-text-primary tabular">
+            {ctx.getValue() || '—'}
+          </span>
+        ),
+      }),
       columnHelper.accessor('name', {
         header: 'Vendor',
         cell: (ctx) => (
@@ -179,7 +192,7 @@ export default function VendorListPage() {
             <SearchInput
               value={searchInput}
               onValueChange={setSearchInput}
-              placeholder="Search by company, contact, email or phone…"
+              placeholder="Search by ID, company, contact, email or phone…"
               aria-label="Search vendors"
               tone="background"
               containerClassName="min-w-56 flex-1"
@@ -187,7 +200,7 @@ export default function VendorListPage() {
 
             <FilterChips
               value={status}
-              onChange={setStatus}
+              onChange={changeStatus}
               options={[
                 ['all', 'All'],
                 ['active', 'Active'],
@@ -196,9 +209,10 @@ export default function VendorListPage() {
             />
             <FilterChips
               value={sort}
-              onChange={setSort}
+              onChange={changeSort}
               options={[
                 ['name', 'A–Z'],
+                ['code', 'ID'],
                 ['balance', 'Owed'],
                 ['recent', 'Recent'],
               ]}

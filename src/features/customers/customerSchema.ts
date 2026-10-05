@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { CUSTOMER_MAX_LENGTHS } from '@/models/customer';
+import { partyCodeProblem } from '@/models/partyCode';
 
 const M = CUSTOMER_MAX_LENGTHS;
 
@@ -21,6 +22,14 @@ const M = CUSTOMER_MAX_LENGTHS;
  */
 export const customerSchema = z
   .object({
+    // Optional: left empty, the server gives the next ID in the series.
+    code: z
+      .string()
+      .trim()
+      .superRefine((v, ctx) => {
+        const problem = partyCodeProblem(v, 'Customer');
+        if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem });
+      }),
     name: z
       .string()
       .trim()

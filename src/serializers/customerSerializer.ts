@@ -16,6 +16,7 @@ import {
   type PaymentTerms,
 } from '@/models/customer';
 import { PAYMENT_TERMS_TO_API } from '@/models/customer';
+import { normalizePartyCode } from '@/models/partyCode';
 import { paymentMethodLabel } from '@/models/payment';
 import { toNumber } from '@/utils/money';
 
@@ -47,6 +48,7 @@ export const mapCustomer = (raw: unknown): Customer => {
   return {
     id: str(r.id),
     companyId: str(r.companyId),
+    code: str(r.code),
     name: str(r.name),
     company: str(r.company),
     email: str(r.email),
@@ -239,15 +241,36 @@ export const customerPaymentsSerializer = (
 
 // ─── Statement ───────────────────────────────────────
 
-export type StatementLineKind = 'invoice' | 'payment' | 'credit_memo' | 'refund';
+/**
+ * What a statement line is. Read from the books, so a void is a line of its own
+ * on the day it was voided, and an advance paid with a delivery (before
+ * receipts existed for it) counts as money received.
+ */
+export type StatementLineKind =
+  | 'invoice'
+  | 'invoice_void'
+  | 'payment'
+  | 'payment_void'
+  | 'credit_memo'
+  | 'credit_memo_void'
+  | 'refund'
+  | 'advance'
+  | 'other';
 
 /** What each line is, as the statement names it. */
 export const STATEMENT_KIND_LABELS: Record<StatementLineKind, string> = {
   invoice: 'Invoice',
+  invoice_void: 'Invoice voided',
   payment: 'Payment',
+  payment_void: 'Payment reversed',
   credit_memo: 'Credit memo',
+  credit_memo_void: 'Credit memo voided',
   refund: 'Refund',
+  advance: 'Advance received',
+  other: 'Adjustment',
 };
+
+const STATEMENT_KINDS = new Set<string>(Object.keys(STATEMENT_KIND_LABELS));
 
 export interface StatementLine {
   id: string;
@@ -257,78 +280,54 @@ export interface StatementLine {
   /** Positive increases what they owe, negative reduces it. */
   amount: number;
   runningBalance: number;
+  /** The document behind the line, when it still exists — `invoice`, `payment`, … */
+  documentType: string | null;
+  documentId: string | null;
 }
 
 export interface CustomerStatement {
-  customer: { id: string; name: string; email: string };
+  customer: { id: string; code: string; name: string; email: string };
   period: { startDate: string; endDate: string };
   openingBalance: number;
   lines: StatementLine[];
-  /** `credited` and `refunded` are 0 from a server that predates them. */
   totals: { invoiced: number; received: number; credited: number; refunded: number };
   closingBalance: number;
 }
 
 /**
- * `GET /customers/:id/statement` returns invoices, payments, credit memos and
- * credit-memo refunds as separate arrays. A statement is read as one chronological ledger, so they are merged
- * and a running balance is accumulated here — the server sends opening and
- * closing balances but nothing per row.
+ * `GET /customers/:id/ledger-statement` — the statement read from the books.
+ *
+ * The server builds it from the same postings as the customer's view in the
+ * General Ledger and sends it ready to print: one line per transaction, in
+ * date order, each with its running balance. (The old `/statement` sent four
+ * document arrays to merge here, and missed what was posted without a
+ * document — a legacy prepaid delivery's advance — so it overstated some
+ * balances.)
  */
 export const customerStatementSerializer = (payload: unknown): CustomerStatement => {
   const d = asRaw(payload);
-  const c = asRaw(d.customer);
+  const c = asRaw(d.party ?? d.customer);
   const period = asRaw(d.period);
   const totals = asRaw(d.totals);
-  const openingBalance = toNumber(d.openingBalance as never);
-
-  const invoices = (Array.isArray(d.invoices) ? d.invoices : []) as Raw[];
-  const payments = (Array.isArray(d.payments) ? d.payments : []) as Raw[];
-  // Credit memos bring the balance down; a cash refund of one puts it back.
-  const creditMemos = (Array.isArray(d.creditMemos) ? d.creditMemos : []) as Raw[];
-  const refunds = (Array.isArray(d.refunds) ? d.refunds : []) as Raw[];
-
-  const merged: Omit<StatementLine, 'runningBalance'>[] = [
-    ...invoices.map((raw) => ({
-      id: str(raw.id),
-      date: str(raw.invoiceDate ?? raw.date),
-      kind: 'invoice' as const,
-      reference: str(raw.invoiceNumber) || '—',
-      amount: toNumber(raw.total as never),
-    })),
-    ...payments.map((raw) => ({
-      id: str(raw.id),
-      date: str(raw.paymentDate ?? raw.date),
-      kind: 'payment' as const,
-      reference: str(raw.paymentNumber ?? raw.reference) || '—',
-      amount: -toNumber(raw.amount as never),
-    })),
-    ...creditMemos.map((raw) => ({
+  const lines = (Array.isArray(d.lines) ? d.lines : []).map((item): StatementLine => {
+    const raw = asRaw(item);
+    const kind = str(raw.kind);
+    return {
       id: str(raw.id),
       date: str(raw.date),
-      kind: 'credit_memo' as const,
-      reference: str(raw.creditMemoNumber) || '—',
-      amount: -toNumber(raw.total as never),
-    })),
-    ...refunds.map((raw) => ({
-      id: str(raw.id),
-      date: str(raw.date),
-      kind: 'refund' as const,
-      reference: str(raw.creditMemoNumber) || '—',
+      kind: (STATEMENT_KINDS.has(kind) ? kind : 'other') as StatementLineKind,
+      reference: str(raw.reference) || '—',
       amount: toNumber(raw.amount as never),
-    })),
-  ].sort((a, b) => a.date.localeCompare(b.date));
-
-  let running = openingBalance;
-  const lines: StatementLine[] = merged.map((line) => {
-    running += line.amount;
-    return { ...line, runningBalance: running };
+      runningBalance: toNumber(raw.balance as never),
+      documentType: str(raw.documentType) || null,
+      documentId: str(raw.documentId) || null,
+    };
   });
 
   return {
-    customer: { id: str(c.id), name: str(c.name), email: str(c.email) },
+    customer: { id: str(c.id), code: str(c.code), name: str(c.name), email: str(c.email) },
     period: { startDate: str(period.startDate), endDate: str(period.endDate) },
-    openingBalance,
+    openingBalance: toNumber(d.openingBalance as never),
     lines,
     totals: {
       invoiced: toNumber(totals.invoiced as never),
@@ -358,6 +357,7 @@ export const customerToFormData = (customer: Customer): CustomerFormData => {
     b.country === s.country;
 
   return {
+    code: customer.code,
     name: customer.name,
     company: customer.company,
     email: customer.email,
@@ -382,6 +382,8 @@ export const customerToFormData = (customer: Customer): CustomerFormData => {
 };
 
 export interface CustomerWritePayload {
+  /** Omitted: the server assigns the next ID on create, and keeps the current one on an edit. */
+  code?: string;
   name: string;
   company?: string;
   email?: string;
@@ -430,6 +432,7 @@ export const formDataToCustomerPayload = (
       };
 
   return {
+    code: normalizePartyCode(form.code) || undefined,
     name: form.name.trim(),
     company: form.company.trim() || undefined,
     email: form.email.trim() || undefined,

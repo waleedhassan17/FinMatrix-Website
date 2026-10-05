@@ -118,6 +118,9 @@ export const companyForDocument = (
 
 export interface PartySource {
   name: string;
+  /** The party's ID and what to call it — "Customer ID C-0007" on the document. */
+  code?: string;
+  codeLabel?: string;
   company?: string;
   contactPerson?: string;
   email?: string;
@@ -134,6 +137,7 @@ export const partyForDocument = (
   label,
   name: source?.name || fallbackName || '—',
   lines: [
+    source?.code ? `${source.codeLabel ?? 'ID'} ${source.code}` : '',
     source?.company && source.company !== source.name ? source.company : '',
     source?.contactPerson ? `Attn: ${source.contactPerson}` : '',
     ...addressLines(source?.address),

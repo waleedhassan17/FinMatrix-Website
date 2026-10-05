@@ -24,6 +24,8 @@ export interface VendorAddress {
 export interface Vendor {
   id: string;
   companyId: string;
+  /** The vendor ID people search and print — V-0003. Empty only on a record that predates IDs. */
+  code: string;
   /** The wire field is `companyName`. */
   name: string;
   contactPerson: string;
@@ -43,6 +45,8 @@ export interface Vendor {
 }
 
 export interface VendorFormData {
+  /** Empty means "give it the next ID" on create, and "keep it" on an edit. */
+  code: string;
   name: string;
   contactPerson: string;
   email: string;
@@ -59,6 +63,7 @@ export interface VendorFormData {
 }
 
 export const EMPTY_VENDOR_FORM: VendorFormData = {
+  code: '',
   name: '',
   contactPerson: '',
   email: '',
@@ -80,6 +85,7 @@ export const EMPTY_VENDOR_FORM: VendorFormData = {
  * database and returns a 500 rather than a message a form can show.
  */
 export const VENDOR_MAX_LENGTHS = {
+  code: 20,
   name: 200,
   contactPerson: 200,
   email: 255,

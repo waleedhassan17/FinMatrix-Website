@@ -46,7 +46,7 @@ import {
   receivePayment,
   settleInvoices,
 } from '@/networks/sales/paymentNetwork';
-import { formatMoney } from '@/utils/money';
+import { formatMoney, lakhCroreWords } from '@/utils/money';
 import { paymentFormToPayload, settleInvoicesPayload } from '@/serializers/paymentSerializer';
 
 /** What each kind of credit on account is called. */
@@ -130,9 +130,14 @@ export default function ReceivePaymentPage() {
     staleTime: 0,
   });
   const [credits, setCredits] = useState<CreditSource[]>([]);
-  // Off until asked for — "Use credit" from an invoice turns it on — so a plain
-  // receipt never quietly spends an advance the user did not mean to.
-  const [useCredits, setUseCredits] = useState(searchParams.get('useCredits') === '1');
+  // Opened from the outstanding summary ("Receive payment" there): the summary's
+  // total is what is due after credits, so the credits are switched on and every
+  // open invoice is ticked — type what the customer paid and it is spread
+  // oldest first, every row still editable.
+  const fromSummary = searchParams.get('from') === 'summary';
+  // Otherwise off until asked for — "Use credit" from an invoice turns it on —
+  // so a plain receipt never quietly spends an advance the user did not mean to.
+  const [useCredits, setUseCredits] = useState(searchParams.get('useCredits') === '1' || fromSummary);
   useEffect(() => {
     setCredits(
       fillCredits(
@@ -177,7 +182,7 @@ export default function ReceivePaymentPage() {
     if (!outstanding) return;
     const preselect = searchParams.get('invoiceId');
     const rows = outstanding.map((r) =>
-      r.documentId === preselect ? { ...r, checked: true } : r,
+      r.documentId === preselect || fromSummary ? { ...r, checked: true } : r,
     );
     // An amount handed over (e.g. "record the advance a credit limit needs").
     // Not when credit is to be used: that is what settles the invoice.
@@ -190,7 +195,7 @@ export default function ReceivePaymentPage() {
       amount: f.amount || seedAmount,
       rows: autoDistribute(rows, f.amount || seedAmount),
     }));
-  }, [outstanding, searchParams]);
+  }, [outstanding, searchParams, fromSummary]);
 
   // Customer handed over from an invoice or a customer page.
   useEffect(() => {
@@ -218,6 +223,10 @@ export default function ReceivePaymentPage() {
   const hasOverApplied = overAppliedRows(cashRows).length > 0;
   const amountNumber = parseFloat(form.amount) || 0;
   const creditUsed = useCredits ? spread.used : 0;
+  // What the open invoices will still owe once this payment and its credit land.
+  const stillDue = round2(
+    Math.max(form.rows.reduce((t, r) => t + r.balance, 0) - creditUsed - allocated, 0),
+  );
   const creditOverUse = useCredits && credits.some((c) => (parseFloat(c.use) || 0) > c.available + 0.004);
 
   const accountOptions = useMemo(
@@ -327,7 +336,9 @@ export default function ReceivePaymentPage() {
       <div>
         <h1 className="text-h2 text-text-primary">Receive payment</h1>
         <p className="text-body-sm text-text-secondary">
-          Bank money a customer has paid you and apply it to their invoices.
+          {fromSummary && summary
+            ? `Against the outstanding summary: ${formatMoney(summary.netDue)} due on ${summary.totals.count} invoice${summary.totals.count === 1 ? '' : 's'}. Type what was paid — it is applied oldest first, and every amount can be changed.`
+            : 'Bank money a customer has paid you and apply it to their invoices.'}
         </p>
       </div>
 
@@ -398,7 +409,14 @@ export default function ReceivePaymentPage() {
             inputMode="decimal"
             placeholder="0.00"
             error={errors.amount}
-            hint={creditUsed > 0 ? 'Leave empty if credit on account covers what is being settled.' : undefined}
+            hint={
+              [
+                lakhCroreWords(form.amount) ? `= ${lakhCroreWords(form.amount)}` : '',
+                creditUsed > 0 ? 'Leave empty if credit on account covers what is being settled.' : '',
+              ]
+                .filter(Boolean)
+                .join(' · ') || undefined
+            }
           />
           <Input
             label="Reference"
@@ -557,6 +575,9 @@ export default function ReceivePaymentPage() {
               value={allocated - amountNumber}
               tone="negative"
             />
+          )}
+          {form.mode === 'manual' && form.rows.length > 0 && (
+            <SummaryRow label="Still due after this payment" value={stillDue} />
           )}
         </SummaryPanel>
       )}
