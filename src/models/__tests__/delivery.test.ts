@@ -8,6 +8,7 @@ import {
   completionSettlement,
   completionUnits,
   creditMemoReversalFields,
+  reversalRefunds,
   deliveryPayload,
   deliveryValue,
   draftAdvance,
@@ -264,6 +265,36 @@ describe('completion capability split', () => {
       refundRemainderToCash: true,
       reversesDeliveryRequestId: 'r1',
     });
+  });
+
+  it('names the account a refund comes out of, and only when there is a refund', () => {
+    const draft = {
+      deliveryRequestId: 'r1',
+      deliveryId: 'd1',
+      deliveryReference: 'DLV-1',
+      customerId: 'c1',
+      customerName: 'Ali',
+      originalInvoiceId: 'inv-1',
+      invoiceNumber: 'INV-1',
+      invoiceBalance: 0,
+      settlement: 'refund_cash' as 'apply_to_invoice' | 'refund_cash' | 'apply_then_refund',
+      settlementAmount: 0,
+      refundAmount: 1200,
+      date: '2026-09-11',
+      reason: '',
+      lines: [],
+    };
+    expect(creditMemoReversalFields(draft, 'acct-mcb')).toMatchObject({
+      refundRemainderToCash: true,
+      refundAccountId: 'acct-mcb',
+    });
+    // Nothing goes back to the customer, so no account is sent.
+    expect(
+      creditMemoReversalFields({ ...draft, settlement: 'apply_to_invoice' }, 'acct-mcb'),
+    ).not.toHaveProperty('refundAccountId');
+    expect(reversalRefunds({ settlement: 'apply_to_invoice', originalInvoiceId: 'inv-1' })).toBe(false);
+    expect(reversalRefunds({ settlement: 'apply_to_invoice', originalInvoiceId: null })).toBe(true);
+    expect(reversalRefunds({ settlement: 'apply_then_refund', originalInvoiceId: 'inv-1' })).toBe(true);
   });
 
   it('settles a completion from the advance, the cash and what is left', () => {

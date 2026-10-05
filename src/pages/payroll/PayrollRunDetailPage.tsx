@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { MoneyAccountPicker } from '@/features/accounts/MoneyAccountPicker';
+import { useChartAccounts } from '@/features/accounts/useChartAccounts';
 import { payslipShare } from '@/features/documents/operationsDocuments';
 import { useDocumentCompany } from '@/features/documents/useDocumentContext';
 import { invalidatePayroll } from '@/features/payroll/invalidatePayroll';
@@ -17,6 +19,7 @@ import { KpiTile } from '@/features/reports/KpiTile';
 import { DocumentActions } from '@/features/share/DocumentActions';
 import { FeatureUnavailable } from '@/features/shell/FeatureUnavailable';
 import { useFeature } from '@/hooks/useCapability';
+import { moneyAccountLabel } from '@/models/account';
 import { RUN_STATUS_LABEL, runActions } from '@/models/payroll';
 import { formatReportDate } from '@/models/reportPeriod';
 import {
@@ -38,6 +41,9 @@ export default function PayrollRunDetailPage() {
   const queryClient = useQueryClient();
   const company = useDocumentCompany();
   const [confirm, setConfirm] = useState<'process' | 'delete' | null>(null);
+  // The account net pay leaves from — Cash unless a bank is chosen.
+  const [payFrom, setPayFrom] = useState('');
+  const chart = useChartAccounts();
 
   const query = useQuery({
     queryKey: ['payroll', 'runs', runId],
@@ -46,12 +52,14 @@ export default function PayrollRunDetailPage() {
   });
 
   const process = useMutation({
-    mutationFn: () => processPayrollRun(runId),
-    onSuccess: () => {
+    mutationFn: () => processPayrollRun(runId, payFrom || undefined),
+    onSuccess: (paid) => {
       invalidatePayroll(queryClient);
+      // Net pay moved an account's balance.
+      queryClient.invalidateQueries({ queryKey: ['accounts'] });
       setConfirm(null);
       toast.success('Payroll processed', {
-        description: 'The journal entry is posted and the run is marked paid.',
+        description: `The journal entry is posted and net pay was paid from ${moneyAccountLabel(chart, paid.bankAccountId)}.`,
       });
     },
     onError: (e: Error) => toast.error('Could not process payroll', { description: e.message }),
@@ -134,7 +142,15 @@ export default function PayrollRunDetailPage() {
       <div className="grid gap-md sm:grid-cols-3">
         <KpiTile label="Gross wages" value={run.totalGross} hint="Salary Expense (6200)" />
         <KpiTile label="Deductions withheld" value={run.totalDeductions} hint="Payroll Liabilities (2310)" />
-        <KpiTile label="Net pay" value={run.totalNet} hint="Paid from Cash (1000)" />
+        <KpiTile
+          label="Net pay"
+          value={run.totalNet}
+          hint={
+            run.status === 'draft'
+              ? 'Paid from the account you choose when you process it'
+              : `Paid from ${moneyAccountLabel(chart, run.bankAccountId)}`
+          }
+        />
       </div>
 
       <Card className="p-lg">
@@ -192,13 +208,22 @@ export default function PayrollRunDetailPage() {
         title={`Process payroll for ${run.payPeriod}?`}
         description={`Posts one journal entry dated ${formatReportDate(run.payDate)}: Dr Salary Expense (6200) ${formatMoney(
           run.totalGross,
-        )}, Cr Cash (1000) ${formatMoney(run.totalNet)}${
+        )}, Cr ${moneyAccountLabel(chart, payFrom)} ${formatMoney(run.totalNet)}${
           hasDeductions ? `, Cr Payroll Liabilities (2310) ${formatMoney(run.totalDeductions)}` : ''
         }. The run is marked paid and can no longer be edited or deleted.`}
         confirmLabel="Process and post"
         busy={process.isPending}
+        confirmDisabled={!payFrom}
         onConfirm={() => process.mutate()}
-      />
+      >
+        <MoneyAccountPicker
+          label="Pay salaries from"
+          value={payFrom}
+          onChange={setPayFrom}
+          defaultToCash
+          allowCreate={false}
+        />
+      </ConfirmDialog>
 
       <ConfirmDialog
         open={confirm === 'delete'}

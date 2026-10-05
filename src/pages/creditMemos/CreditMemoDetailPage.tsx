@@ -11,6 +11,8 @@ import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { KeyValueList } from '@/components/ui/KeyValueList';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { MoneyAccountPicker } from '@/features/accounts/MoneyAccountPicker';
+import { useChartAccounts } from '@/features/accounts/useChartAccounts';
 import { ApplyCreditDialog } from '@/features/creditMemos/ApplyCreditDialog';
 import { AmountSummary } from '@/features/documents/AmountSummary';
 import { creditMemoDocument } from '@/features/documents/documentBuilders';
@@ -21,6 +23,7 @@ import { PartyCard } from '@/features/documents/PartyCard';
 import { useDocumentCompany, useDocumentCustomer } from '@/features/documents/useDocumentContext';
 import { DocumentActions } from '@/features/share/DocumentActions';
 import { useAdminOnly, useCapability } from '@/hooks/useCapability';
+import { moneyAccountLabel } from '@/models/account';
 import { canApply, canDelete, canRefund, canVoid } from '@/models/creditMemo';
 import {
   applyCreditMemo,
@@ -43,6 +46,9 @@ export default function CreditMemoDetailPage() {
 
   const [applyOpen, setApplyOpen] = useState(false);
   const [refundOpen, setRefundOpen] = useState(false);
+  // The cash or bank account the refund is paid from — Cash unless chosen.
+  const [refundFrom, setRefundFrom] = useState('');
+  const chart = useChartAccounts();
   const [voidOpen, setVoidOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -96,7 +102,7 @@ export default function CreditMemoDetailPage() {
   });
 
   const refund = useMutation({
-    mutationFn: () => refundCreditMemo(creditMemoId),
+    mutationFn: () => refundCreditMemo(creditMemoId, refundFrom || undefined),
     onSuccess: (r) =>
       settle(r, 'Refund recorded', 'No cash leaves until the owner approves.', () =>
         setRefundOpen(false),
@@ -185,7 +191,9 @@ export default function CreditMemoDetailPage() {
                     hidden: !memo.originalInvoiceId,
                   },
                   {
-                    label: cap.submitLabel('Refund remaining credit'),
+                    // Named for staff too: "Send for approval" twice in one
+                    // menu would not say which of the two it sends.
+                    label: cap.needsApproval ? 'Request a refund' : 'Refund remaining credit',
                     icon: Banknote,
                     onSelect: () => setRefundOpen(true),
                     hidden: !canRefund(memo),
@@ -194,7 +202,7 @@ export default function CreditMemoDetailPage() {
                   {
                     // Disappears the moment any of the credit has been consumed —
                     // the server refuses with ALREADY_APPLIED.
-                    label: cap.submitLabel('Void credit memo'),
+                    label: cap.needsApproval ? 'Request a void' : 'Void credit memo',
                     icon: Ban,
                     destructive: true,
                     onSelect: () => setVoidOpen(true),
@@ -253,6 +261,11 @@ export default function CreditMemoDetailPage() {
                   ),
                   hidden: !memo.originalInvoiceId,
                 },
+                {
+                  label: 'Refunded from',
+                  value: moneyAccountLabel(chart, memo.refundAccountId),
+                  hidden: memo.status !== 'refunded',
+                },
                 { label: 'Created', value: docDate(memo.createdAt), hidden: !memo.createdAt },
                 { label: 'Last updated', value: docDate(memo.updatedAt), hidden: !memo.updatedAt },
               ]}
@@ -286,14 +299,24 @@ export default function CreditMemoDetailPage() {
         description={
           <>
             This pays <strong>{formatMoney(memo.balance)}</strong> — the whole remaining balance —
-            back to the customer in cash. There is no partial refund, the money comes out of account
-            1000 Cash, and it posts dated today rather than the memo&rsquo;s date.
+            back to the customer, from{' '}
+            <strong>{moneyAccountLabel(chart, refundFrom)}</strong>. There is no partial refund,
+            and it posts dated today rather than the memo&rsquo;s date.
           </>
         }
         confirmLabel={cap.submitLabel('Refund in full')}
         busy={refund.isPending}
+        confirmDisabled={!refundFrom}
         onConfirm={() => refund.mutate()}
-      />
+      >
+        <MoneyAccountPicker
+          label="Refund from"
+          value={refundFrom}
+          onChange={setRefundFrom}
+          defaultToCash
+          allowCreate={false}
+        />
+      </ConfirmDialog>
 
       <ConfirmDialog
         open={voidOpen}

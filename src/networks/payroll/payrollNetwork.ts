@@ -100,9 +100,19 @@ export const createPayrollRun = async (body: {
 };
 
 /** Post the run's journal entry and mark it paid. Row-locked server-side, so it can never post twice. */
-export const processPayrollRun = async (id: string): Promise<PayrollRun> => {
+/**
+ * Post the run and mark it paid. Net pay leaves from `bankAccountId` — any
+ * active cash or bank account — and from 1000 Cash when none is given.
+ */
+export const processPayrollRun = async (
+  id: string,
+  bankAccountId?: string,
+): Promise<PayrollRun> => {
   try {
-    const response = await api.post(`/payroll/runs/${id}/process`, {});
+    const response = await api.post(
+      `/payroll/runs/${id}/process`,
+      bankAccountId ? { bankAccountId } : {},
+    );
     return mapPayrollRun(unwrapEnvelope(response.data));
   } catch (e) {
     throw toApiError(e);

@@ -12,6 +12,8 @@ import { DateField } from '@/components/ui/Field';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { SummaryPanel, SummaryRow } from '@/components/ui/SummaryPanel';
+import { MoneyAccountPicker } from '@/features/accounts/MoneyAccountPicker';
+import { useMoneyAccounts } from '@/features/accounts/useMoneyAccounts';
 import { PaymentProofField } from '@/features/bills/PaymentProofField';
 import { useVendorOptions } from '@/features/documents/useDocumentPickers';
 import { AllocationTable } from '@/features/payments/AllocationTable';
@@ -30,7 +32,6 @@ import {
 import type { PayBillsFormData } from '@/models/bill';
 import { isoToday } from '@/models/document';
 import { PAYMENT_METHOD_OPTIONS, type ApiPaymentMethod } from '@/models/payment';
-import { getDepositAccounts } from '@/networks/accounting/accountNetwork';
 import { getPayableBills, payBills, settleBills } from '@/networks/purchases/billNetwork';
 import { getApPartySummary } from '@/networks/reports/agingNetwork';
 import { payBillsFormToPayload, settleBillsPayload } from '@/serializers/billSerializer';
@@ -78,10 +79,9 @@ export default function PayBillsPage() {
   const patch = (p: Partial<PayBillsFormData>) =>
     setForm((f) => ({ ...f, ...p }));
 
-  const { data: accounts = [] } = useQuery({
-    queryKey: ['accounts', 'deposit'],
-    queryFn: getDepositAccounts,
-  });
+  // Every cash and bank account — MCB, Allied, Meezan — not just the two
+  // seeded ones.
+  const { money: accounts } = useMoneyAccounts();
 
   const { data: payable, isFetching: loadingRows } = useQuery({
     queryKey: ['bills', 'payable', form.vendorId],
@@ -185,27 +185,13 @@ export default function PayBillsPage() {
     (r) => r.checked && parseFloat(r.applied) > 0,
   ).length;
 
-  /**
-   * Pay-from accounts, with their balances.
-   *
-   * **No "Automatic" option.** `bankAccountId` is required by the DTO and there
-   * is no server-side fallback — the AR side falls back to 1000/1010, this one
-   * does not. Offering Automatic here would produce a 400 on submit.
-   */
-  const accountOptions = useMemo(
-    () =>
-      accounts.map((a) => ({
-        value: a.id,
-        label: `${a.accountNumber} · ${a.name}`,
-      })),
-    [accounts],
-  );
-
   const payFrom = accounts.find((a) => a.id === form.bankAccountId);
   const balanceAfter = payFrom ? payFrom.balance - cash : null;
   const overdrawn = balanceAfter !== null && balanceAfter < 0;
   // Money only needs an account and a proof when some of it leaves the bank.
   const needsCash = cash > 0.004;
+  // Bills being settled by vendor credit alone — not merely nothing ticked yet.
+  const creditOnly = creditUsed > 0 && !needsCash;
 
   // The most a typed payment can be: what the ticked bills owe after credit.
   const capacity = creditCapacity(form.rows, useCredits, credits);
@@ -355,20 +341,23 @@ export default function PayBillsPage() {
             options={PAYMENT_METHOD_OPTIONS}
           />
 
-          <Combobox
+          {/* No "Automatic" option: `bankAccountId` is required by the DTO and
+              there is no server-side fallback for money going out — the AR
+              side falls back to 1000/1010, this one does not. */}
+          <MoneyAccountPicker
             label={needsCash ? 'Pay from *' : 'Pay from'}
             value={form.bankAccountId}
-            onChange={(bankAccountId) => patch({ bankAccountId })}
-            options={accountOptions}
-            placeholder="Choose an account…"
-            searchPlaceholder="Search accounts…"
+            onChange={(bankAccountId) => {
+              patch({ bankAccountId });
+              setErrors((e) => ({ ...e, bankAccountId: '' }));
+            }}
             error={errors.bankAccountId}
             hint={
               payFrom
                 ? `Balance ${formatMoney(payFrom.balance)}`
-                : needsCash
-                  ? 'Required — there is no default account for money going out.'
-                  : 'Not needed: vendor credit covers what is being settled.'
+                : creditOnly
+                  ? 'Not needed: vendor credit covers what is being settled.'
+                  : 'The bank or cash account the money leaves from.'
             }
             containerClassName="sm:col-span-2"
           />
@@ -408,7 +397,7 @@ export default function PayBillsPage() {
                       ? `= ${lakhCroreWords(payAmount)}`
                       : 'Optional: type a sum and it is spread over the ticked bills, oldest first.'
                   }
-                  containerClassName="mb-md max-w-sm"
+                  containerClassName="mb-md sm:max-w-[22rem]"
                   disabled={busy}
                 />
               )}
@@ -518,7 +507,7 @@ export default function PayBillsPage() {
         >
           {busy
             ? 'Submitting…'
-            : cap.submitLabel(needsCash ? 'Record payment' : 'Apply vendor credit')}
+            : cap.submitLabel(creditOnly ? 'Apply vendor credit' : 'Record payment')}
         </Button>
       </div>
     </div>

@@ -8,7 +8,9 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { DataTable, TablePager } from '@/components/ui/DataTable';
+import { useChartAccounts } from '@/features/accounts/useChartAccounts';
 import { TaxTabs } from '@/features/tax/TaxTabs';
+import { moneyAccountLabel } from '@/models/account';
 import { formatReportDate } from '@/models/reportPeriod';
 import type { TaxPayment } from '@/models/tax';
 import { deleteTaxPayment, getTaxPayments, getTaxRates } from '@/networks/tax/taxNetwork';
@@ -16,7 +18,7 @@ import { formatMoney } from '@/utils/money';
 
 const PAGE_SIZE = 20;
 
-type Row = TaxPayment & { rateName: string };
+type Row = TaxPayment & { rateName: string; paidFrom: string };
 
 const columnHelper = createColumnHelper<Row>();
 
@@ -37,14 +39,17 @@ export default function TaxPaymentsPage() {
     queryKey: ['tax', 'rates', 'all'],
     queryFn: () => getTaxRates(),
   });
+  // The whole chart, inactive included: an account paid from may since be closed.
+  const chart = useChartAccounts();
 
   const rows = useMemo<Row[]>(() => {
     const byId = new Map((rates.data ?? []).map((r) => [r.id, r]));
     return (payments.data?.rows ?? []).map((p) => ({
       ...p,
       rateName: byId.get(p.taxRateId)?.name ?? '—',
+      paidFrom: moneyAccountLabel(chart, p.bankAccountId),
     }));
-  }, [payments.data, rates.data]);
+  }, [payments.data, rates.data, chart]);
 
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   // A reversal can shrink the list under the current page; stay on a real one.
@@ -59,7 +64,7 @@ export default function TaxPaymentsPage() {
         queryClient.invalidateQueries({ queryKey: [key] });
       }
       toast.success('Payment reversed', {
-        description: 'The liability is restored and the money returned to Cash.',
+        description: 'The liability is restored and the money returned to the account it was paid from.',
       });
     },
     onError: (e: Error) => toast.error('Could not reverse the payment', { description: e.message }),
@@ -77,6 +82,7 @@ export default function TaxPaymentsPage() {
         header: 'Reference',
         cell: (c) => c.getValue() || '—',
       }),
+      columnHelper.accessor('paidFrom', { header: 'Paid from' }),
       columnHelper.accessor('amount', {
         header: 'Amount',
         meta: { align: 'right' },
@@ -105,7 +111,7 @@ export default function TaxPaymentsPage() {
           <h1 className="text-h2 text-text-primary">Tax payments</h1>
           <p className="text-body-sm text-text-secondary">
             Remittances to the tax authority. Each one debits Sales Tax Payable (2300)
-            and credits Cash (1000).
+            and credits the cash or bank account it was paid from.
           </p>
         </div>
         <Button asChild>
@@ -145,7 +151,7 @@ export default function TaxPaymentsPage() {
         title="Reverse this tax payment?"
         description={
           reversing
-            ? `A reversing entry for ${formatMoney(reversing.amount)} is posted — Cash goes back up and the liability is restored. The original entry stays on file. This is refused if the payment has been reconciled against a bank statement.`
+            ? `A reversing entry for ${formatMoney(reversing.amount)} is posted — ${reversing.paidFrom} goes back up and the liability is restored. The original entry stays on file. This is refused if the payment has been reconciled against a bank statement.`
             : undefined
         }
         confirmLabel="Reverse payment"

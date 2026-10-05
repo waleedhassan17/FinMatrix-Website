@@ -34,6 +34,11 @@ export interface CreditMemo {
   amountApplied: number;
   /** What is left. The invariant is `balance = total - amountApplied`. */
   balance: number;
+  /**
+   * The cash or bank account a refund was paid from. Null until refunded, and
+   * on refunds made before there was a choice — which came out of Cash.
+   */
+  refundAccountId: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -11,7 +11,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { cn } from '@/lib/cn';
 import {
   APPROVAL_FILTERS,
-  APPROVAL_TYPE_EFFECTS,
+  approvalEffect,
   APPROVAL_TYPE_LABELS,
   approvalAmount,
   statusDisplay,
@@ -122,7 +122,7 @@ export default function MyRequestsPage() {
                     {/* The ledger effect, stated plainly — the point of the queue is
                         that somebody understands what approving does. */}
                     <p className="mt-xxs text-caption text-text-tertiary">
-                      {APPROVAL_TYPE_EFFECTS[req.type] ?? ''}
+                      {approvalEffect(req)}
                     </p>
 
                     <p className="mt-xs flex items-center gap-xs text-caption text-text-tertiary">

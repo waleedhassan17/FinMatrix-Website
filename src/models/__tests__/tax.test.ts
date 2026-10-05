@@ -23,6 +23,7 @@ const payment = (over: Partial<TaxPaymentForm> = {}): TaxPaymentForm => ({
   amount: '12500',
   paymentDate: '2026-09-11',
   reference: '',
+  bankAccountId: '',
   ...over,
 });
 
@@ -99,6 +100,11 @@ describe('taxPaymentPayload', () => {
     expect('reference' in p).toBe(false);
     expect('date' in p).toBe(false);
     expect('notes' in p).toBe(false);
+  });
+
+  it('names the account it is paid from, and leaves Cash to the server when none is chosen', () => {
+    expect(taxPaymentPayload(payment({ bankAccountId: 'acct-mcb' })).bankAccountId).toBe('acct-mcb');
+    expect('bankAccountId' in taxPaymentPayload(payment())).toBe(false);
   });
 });
 

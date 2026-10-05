@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { Combobox } from '@/components/ui/Combobox';
 import { DateField } from '@/components/ui/Field';
+import { MoneyAccountPicker } from '@/features/accounts/MoneyAccountPicker';
 import { invalidateDeliveries } from '@/features/delivery/invalidateDeliveries';
 import { DocumentFormSections } from '@/features/documents/DocumentFormSections';
 import {
@@ -17,7 +18,7 @@ import {
   useInventoryOptions,
 } from '@/features/documents/useDocumentPickers';
 import { useCapability } from '@/hooks/useCapability';
-import { creditMemoReversalFields } from '@/models/delivery';
+import { creditMemoReversalFields, reversalRefunds } from '@/models/delivery';
 import {
   computeTotals,
   freshLine,
@@ -68,6 +69,8 @@ export default function CreditMemoFormPage() {
 
   const [form, setForm] = useState<CreditMemoFormData>(emptyForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // Where a reversal's refund comes out of — Cash unless a bank is chosen.
+  const [refundFrom, setRefundFrom] = useState('');
   const idempotencyKey = useRef(crypto.randomUUID());
 
   // Fetched by id rather than handed over in the URL, so the figures are
@@ -143,7 +146,7 @@ export default function CreditMemoFormPage() {
       createCreditMemo(
         {
           ...creditMemoFormToPayload(form),
-          ...(reversal ? creditMemoReversalFields(reversal) : {}),
+          ...(reversal ? creditMemoReversalFields(reversal, refundFrom || undefined) : {}),
         },
         idempotencyKey.current,
       ),
@@ -209,8 +212,8 @@ export default function CreditMemoFormPage() {
                 : reversal.settlement === 'apply_then_refund'
                   ? `The credit clears the ${formatMoney(reversal.invoiceBalance)} still owing on invoice ${
                       reversal.invoiceNumber || ''
-                    } and refunds the ${formatMoney(reversal.refundAmount)} the customer already paid in cash.`
-                  : 'That invoice is already paid, so this refunds the customer in cash.'}{' '}
+                    } and refunds the ${formatMoney(reversal.refundAmount)} the customer already paid, from the account below.`
+                  : 'That invoice is already paid, so this refunds the customer from the account below.'}{' '}
               Lines linked to an item put the goods back on the shelf and reverse their cost.
               Remove or reduce a line if the customer kept part of the delivery.
             </p>
@@ -256,6 +259,16 @@ export default function CreditMemoFormPage() {
             error={errors.date}
             containerClassName="sm:col-span-2"
           />
+
+          {reversal && reversalRefunds(reversal) && (
+            <MoneyAccountPicker
+              label="Refund from"
+              value={refundFrom}
+              onChange={setRefundFrom}
+              defaultToCash
+              containerClassName="sm:col-span-2"
+            />
+          )}
         </div>
 
         <p className="mt-sm text-caption text-text-tertiary">

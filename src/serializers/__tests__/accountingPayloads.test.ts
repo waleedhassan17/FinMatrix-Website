@@ -334,15 +334,26 @@ describe('accountFormToCreatePayload', () => {
 });
 
 describe('accountFormToUpdatePayload', () => {
-  it('leaves out the fields update() ignores', () => {
-    // PartialType would ACCEPT all three, but update() never reads them — so
-    // sending them looks like an edit that silently does nothing.
+  it('leaves out the opening balance, and the type and number when nothing changed', () => {
+    // The opening balance already posted its journal entry; the type and
+    // number are refused once the account is in use, so an untouched value
+    // must not travel as though it were an edit.
     const payload = accountFormToUpdatePayload(
       accountForm({ openingBalance: '999' }),
+      { type: 'expense', accountNumber: '6500' },
     ) as unknown as Record<string, unknown>;
     expect('accountNumber' in payload).toBe(false);
     expect('type' in payload).toBe(false);
     expect('openingBalance' in payload).toBe(false);
+  });
+
+  it('sends the type and number when an unused account is put right', () => {
+    // "MEEZAN BANK" saved as 5010 Other Expense, made Asset / Bank 1020.
+    const payload = accountFormToUpdatePayload(
+      accountForm({ type: 'asset', subType: 'Bank', accountNumber: ' 1020 ', name: 'Meezan Bank' }),
+      { type: 'expense', accountNumber: '5010' },
+    );
+    expect(payload).toMatchObject({ type: 'asset', subType: 'Bank', accountNumber: '1020' });
   });
 
   it('sends the mutable fields', () => {
@@ -483,6 +494,21 @@ describe('accountDetailSerializer', () => {
 
   it('reads a bare account with no wrapper', () => {
     expect(accountDetailSerializer({ id: 'a-1' }).account?.id).toBe('a-1');
+  });
+
+  it('reads whether the type and number may still change, and why not', () => {
+    expect(
+      accountDetailSerializer({ account: { id: 'a-1' }, structure: { editable: true, reason: null } })
+        .structure,
+    ).toEqual({ editable: true, reason: null });
+    expect(
+      accountDetailSerializer({
+        account: { id: 'a-1' },
+        structure: { editable: false, reason: 'Already in use (3 postings), so its type and number are fixed.' },
+      }).structure,
+    ).toEqual({ editable: false, reason: 'Already in use (3 postings), so its type and number are fixed.' });
+    // An older server sends no structure: treat the account as locked.
+    expect(accountDetailSerializer({ account: { id: 'a-1' } }).structure.editable).toBe(false);
   });
 
   it('is null with no entries for an empty payload', () => {

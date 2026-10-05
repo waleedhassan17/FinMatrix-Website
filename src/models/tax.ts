@@ -76,6 +76,8 @@ export interface TaxPayment {
   paymentDate: string;
   reference: string;
   journalEntryId: string | null;
+  /** The cash or bank account it was paid from; null on payments made before the choice (Cash). */
+  bankAccountId: string | null;
   createdAt: string;
 }
 
@@ -114,6 +116,8 @@ export interface TaxPaymentForm {
   amount: string;
   paymentDate: string;
   reference: string;
+  /** The cash or bank account it is paid from. Empty: the server uses 1000 Cash. */
+  bankAccountId: string;
 }
 
 /** Field errors, keyed by field. Empty means valid. Mirrors `CreateTaxPaymentDto`. */
@@ -141,6 +145,7 @@ export interface TaxPaymentPayload {
   amount: string;
   paymentDate: string;
   reference?: string;
+  bankAccountId?: string;
 }
 
 /**
@@ -159,6 +164,7 @@ export const taxPaymentPayload = (form: TaxPaymentForm): TaxPaymentPayload => {
   };
   const reference = form.reference.trim();
   if (reference) payload.reference = reference;
+  if (form.bankAccountId) payload.bankAccountId = form.bankAccountId;
   return payload;
 };
 

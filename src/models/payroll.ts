@@ -63,6 +63,11 @@ export interface PayrollRun {
   totalNet: number;
   status: PayrollRunStatus;
   journalEntryId: string | null;
+  /**
+   * The cash or bank account net pay left from. Null on a draft, and on runs
+   * processed before there was a choice — which were paid from Cash.
+   */
+  bankAccountId: string | null;
   createdAt: string;
   items: PayrollItem[];
 }

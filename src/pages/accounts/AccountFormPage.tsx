@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Info, Lock } from 'lucide-react';
+import { Info, Landmark, Lock } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { BackButton, CancelButton } from '@/components/layout/BackLink';
@@ -20,13 +20,16 @@ import {
   ACCOUNT_TYPE_ORDER,
   ACCOUNT_TYPE_SINGULAR,
   accountToFormData,
+  describeAccountKind,
   emptyAccountForm,
   normalBalanceFor,
   parentOptionsFor,
   subTypeOptions,
+  suggestedMoneyKind,
   validateAccountForm,
   type AccountFormData,
   type AccountType,
+  type MoneyKind,
 } from '@/models/account';
 import {
   createAccount,
@@ -41,13 +44,25 @@ const TYPE_OPTIONS = ACCOUNT_TYPE_ORDER.map((t) => ({
   label: ACCOUNT_TYPE_SINGULAR[t],
 }));
 
+/** `?preset=bank` / `?preset=cash`: a new account that starts as one. */
+const presetKind = (value: string | null): MoneyKind | null =>
+  value === 'bank' ? 'Bank' : value === 'cash' ? 'Cash' : null;
+
 export default function AccountFormPage() {
   const { accountId } = useParams<{ accountId: string }>();
+  const [searchParams] = useSearchParams();
   const isEditing = Boolean(accountId);
   const leave = useLeaveForm();
   const queryClient = useQueryClient();
 
-  const [form, setForm] = useState<AccountFormData>(() => emptyAccountForm());
+  const [form, setForm] = useState<AccountFormData>(() => {
+    // "New bank account" lands here already an asset of kind Bank, so there is
+    // no type to get wrong. Otherwise it starts as an expense, the usual case.
+    const preset = isEditing ? null : presetKind(searchParams.get('preset'));
+    return preset
+      ? { ...emptyAccountForm('asset'), subType: preset }
+      : emptyAccountForm();
+  });
   const [errors, setErrors] = useState<Record<string, string>>({});
   /** Whether the user has typed over the suggested number. */
   const [numberTouched, setNumberTouched] = useState(false);
@@ -73,6 +88,16 @@ export default function AccountFormPage() {
     }
   }, [existing]);
 
+  /**
+   * Whether this account's type and number may still change. They may while
+   * nothing refers to it — the server says so in `structure` — which is what
+   * lets "Meezan Bank", saved by mistake as an Other Expense, be made the bank
+   * account it was meant to be instead of abandoned.
+   */
+  const structureEditable = isEditing && (existing?.structure.editable ?? false);
+  const structureLocked = isEditing && !structureEditable;
+  const isSystem = isEditing && (existing?.account?.isSystemAccount ?? false);
+
   const number = useAccountNumber(
     form.type,
     form.subType,
@@ -85,9 +110,9 @@ export default function AccountFormPage() {
   // user has not taken it over. Auto-assigning into a LOCKED field is what the
   // app does, and it is the reason a user cannot put 6150 beside their 6100.
   useEffect(() => {
-    if (isEditing || numberTouched || !number.suggested) return;
+    if (structureLocked || numberTouched || !number.suggested) return;
     setForm((f) => ({ ...f, accountNumber: number.suggested }));
-  }, [isEditing, numberTouched, number.suggested]);
+  }, [structureLocked, numberTouched, number.suggested]);
 
   const parentOptions = useMemo(
     () => [
@@ -105,19 +130,44 @@ export default function AccountFormPage() {
    * INVALID_SUB_TYPE. Clearing them is honest; carrying them over is not.
    */
   const changeType = (type: AccountType) => {
+    // On edit the old number sits in the old type's range, so it is
+    // re-suggested for the new one rather than carried over.
+    const renumber = isEditing || !numberTouched;
     setForm((f) => ({
       ...f,
       type,
       subType: '',
       parentId: '',
-      accountNumber: numberTouched ? f.accountNumber : '',
+      accountNumber: renumber ? '' : f.accountNumber,
     }));
+    if (renumber) setNumberTouched(false);
     setErrors({});
   };
 
+  /** One click from "MEEZAN BANK" as an expense to an asset of kind Bank. */
+  const makeMoneyAccount = (kind: MoneyKind) => {
+    setForm((f) => ({
+      ...f,
+      type: 'asset',
+      subType: kind,
+      parentId: f.type === 'asset' ? f.parentId : '',
+      accountNumber: f.type === 'asset' ? f.accountNumber : '',
+    }));
+    if (form.type !== 'asset') setNumberTouched(false);
+    setErrors({});
+  };
+
+  // A name that reads like a bank or cash account on an account that is not
+  // one: say so before it is saved, and offer the fix.
+  const moneyKind = suggestedMoneyKind(form.name);
+  const misfiled =
+    moneyKind !== null && !(form.type === 'asset' && form.subType === moneyKind);
+
   const save = useMutation({
     mutationFn: () =>
-      isEditing ? updateAccount(accountId!, form) : createAccount(form),
+      isEditing
+        ? updateAccount(accountId!, form, existing?.account ?? undefined)
+        : createAccount(form),
     onSuccess: (account) => {
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
       // A new account changes every picker that reads the chart, and an opening
@@ -140,6 +190,7 @@ export default function AccountFormPage() {
     const errs = validateAccountForm(form, accounts, {
       isEditing,
       editingId: accountId,
+      structureEditable,
     });
     setErrors(errs);
     if (Object.keys(errs).length === 0) save.mutate();
@@ -162,11 +213,42 @@ export default function AccountFormPage() {
           {isEditing ? 'Edit account' : 'New account'}
         </h1>
         <p className="text-body-sm text-text-secondary">
-          {isEditing
-            ? 'The account number and type are fixed once an account exists — postings already reference them.'
-            : 'Accounts are grouped by what they represent, and numbered by convention within each group.'}
+          {!isEditing
+            ? 'Accounts are grouped by what they represent, and numbered by convention within each group.'
+            : structureEditable
+              ? 'Nothing refers to this account yet, so its type and number can still change.'
+              : 'Its type and number are fixed — something already refers to this account.'}
         </p>
       </div>
+
+      {misfiled && !structureLocked && (
+        <div className="flex flex-wrap items-start gap-sm rounded-md border border-primary-light bg-primary-tint p-md">
+          <Landmark className="mt-[2px] size-4 shrink-0 text-primary" />
+          <div className="min-w-0 flex-1 text-body-sm text-text-primary">
+            <p className="text-label-md">
+              Is this a {moneyKind === 'Cash' ? 'cash' : 'bank'} account?
+            </p>
+            <p className="mt-xxs text-text-secondary">
+              To pay from it and deposit into it, it has to be an Asset of kind{' '}
+              {moneyKind}. Set up as {describeAccountKind(form)}, it will never appear
+              where money is paid or received.
+            </p>
+          </div>
+          <Button size="sm" onClick={() => moneyKind && makeMoneyAccount(moneyKind)}>
+            Make it a {moneyKind === 'Cash' ? 'cash' : 'bank'} account
+          </Button>
+        </div>
+      )}
+      {misfiled && structureLocked && !isSystem && (
+        <div className="flex items-start gap-sm rounded-md bg-surface-2 p-md">
+          <Info className="mt-[2px] size-4 shrink-0 text-text-secondary" />
+          <p className="text-body-sm text-text-secondary">
+            This looks like a {moneyKind === 'Cash' ? 'cash' : 'bank'} account, but it is set up as{' '}
+            {describeAccountKind(form)} and is already in use, so it can’t be changed. <Link to="/accounts/new?preset=bank" className="text-primary underline underline-offset-2">Create a bank account</Link>{' '}
+            and move anything on this one across with a journal entry.
+          </p>
+        </div>
+      )}
 
       <Card className="p-lg">
         <SectionHeader title="What kind of account" />
@@ -177,10 +259,10 @@ export default function AccountFormPage() {
             value={form.type}
             onChange={(v) => changeType(v as AccountType)}
             options={TYPE_OPTIONS}
-            disabled={isEditing}
+            disabled={structureLocked}
             hint={
-              isEditing
-                ? 'Fixed — postings already reference it.'
+              structureLocked
+                ? (existing?.structure.reason ?? 'Fixed — postings already reference it.')
                 : ACCOUNT_TYPE_HINTS[form.type]
             }
           />
@@ -195,6 +277,14 @@ export default function AccountFormPage() {
             options={subTypeOptions(form.type)}
             placeholder={`Choose a kind of ${ACCOUNT_TYPE_SINGULAR[form.type].toLowerCase()}…`}
             error={errors.subType}
+            disabled={isSystem}
+            hint={
+              isSystem
+                ? 'Fixed — automatic posting relies on it.'
+                : form.type === 'asset' && (form.subType === 'Bank' || form.subType === 'Cash')
+                  ? 'Offered wherever money is paid or received.'
+                  : undefined
+            }
           />
         </div>
       </Card>
@@ -212,14 +302,14 @@ export default function AccountFormPage() {
               setErrors((er) => ({ ...er, accountNumber: '' }));
             }}
             inputMode="numeric"
-            disabled={isEditing}
+            disabled={structureLocked}
             className="tabular"
             error={errors.accountNumber}
             hint={
-              isEditing ? (
+              structureLocked ? (
                 <span className="flex items-center gap-xxs">
                   <Lock className="size-3" />
-                  Fixed after creation
+                  Fixed — in use
                 </span>
               ) : (
                 number.rangeError ||
@@ -242,7 +332,7 @@ export default function AccountFormPage() {
 
         {/* Free numbers to take in one click, rather than a locked field or a
             guess at what is already used. */}
-        {!isEditing && number.options.length > 0 && (
+        {!structureLocked && number.options.length > 0 && (
           <div className="mt-md flex flex-wrap items-center gap-xs">
             <span className="text-caption text-text-secondary">Free numbers:</span>
             {number.options.map((option) => (

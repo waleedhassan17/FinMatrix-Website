@@ -12,6 +12,7 @@ import {
   useVendorOptions,
 } from '@/features/documents/useDocumentPickers';
 import { useRiders } from '@/features/delivery/useRiders';
+import { moneyAccountLabel } from '@/models/account';
 import { voidTargetLink, type ApprovalRequest } from '@/models/approval';
 import { computeBillTotals } from '@/models/bill';
 import { computeTotals, type DiscountType } from '@/models/document';
@@ -145,12 +146,23 @@ function SalesDocumentPreview({ request, title }: { request: ApprovalRequest; ti
     (p.discountValue ?? 0) as never,
   );
 
+  // A credit memo that refunds its remainder says which account pays it.
+  const refunds = p.refundRemainderToCash === true;
+  const { data: moneyAccounts = [] } = useQuery({
+    queryKey: ['accounts', 'deposit'],
+    queryFn: getDepositAccounts,
+    enabled: refunds,
+  });
+
   const meta: [string, string][] = [];
   // An invoice sends `invoiceDate`; a credit memo sends plain `date`.
   const docDate = p.invoiceDate ?? p.date ?? p.creditMemoDate;
   if (docDate) meta.push(['Date', date(docDate)]);
   if (p.dueDate) meta.push(['Due', date(p.dueDate)]);
   if (p.status) meta.push(['On approval', p.status === 'draft' ? 'Saved as a draft — posts nothing yet' : 'Posted']);
+  if (refunds) {
+    meta.push(['Refunds from', moneyAccountLabel(moneyAccounts, text(p.refundAccountId) || null)]);
+  }
 
   return (
     <DocumentView
@@ -313,13 +325,24 @@ function ApplyPreview({
 
 function RefundPreview({ request }: { request: ApprovalRequest }) {
   const id = text(request.payload.creditMemoId);
+  const { data: accounts = [] } = useQuery({
+    queryKey: ['accounts', 'deposit'],
+    queryFn: getDepositAccounts,
+  });
+  // No account on the request means one raised before there was a choice: Cash.
+  const from = moneyAccountLabel(accounts, text(request.payload.bankAccountId) || null);
   return (
-    <PreviewCard title="Refund a credit memo in cash">
+    <PreviewCard title="Refund a credit memo">
       <p className="mb-md text-body-sm text-text-secondary">
-        Pays the credit memo’s remaining balance back to the customer. Cash leaves the
-        business.
+        Pays the credit memo’s remaining balance back to the customer. The money leaves{' '}
+        {from}.
       </p>
-      <Facts items={[['Credit memo', id ? <DocLink key="memo" to={`/credit-memos/${id}`}>Open credit memo</DocLink> : '—']]} />
+      <Facts
+        items={[
+          ['Credit memo', id ? <DocLink key="memo" to={`/credit-memos/${id}`}>Open credit memo</DocLink> : '—'],
+          ['Refund from', from],
+        ]}
+      />
     </PreviewCard>
   );
 }

@@ -134,9 +134,14 @@ export const applyCreditMemo = async (
  */
 export const refundCreditMemo = async (
   id: string,
+  /** The cash or bank account the refund is paid from; 1000 Cash when omitted. */
+  bankAccountId?: string,
 ): Promise<CreditMemoWriteResult> => {
   try {
-    const response = await api.post(`/credit-memos/${id}/refund`, {});
+    const response = await api.post(
+      `/credit-memos/${id}/refund`,
+      bankAccountId ? { bankAccountId } : {},
+    );
     return narrow(unwrapEnvelope(response.data));
   } catch (e) {
     throw toApiError(e);

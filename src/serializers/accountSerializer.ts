@@ -2,10 +2,12 @@
 // FinMatrix Web — Chart of Accounts Serializer
 // ═══════════════════════════════════════════════════════
 
-import type {
-  Account,
-  AccountFormData,
-  AccountType,
+import {
+  LOCKED_STRUCTURE,
+  type Account,
+  type AccountFormData,
+  type AccountStructure,
+  type AccountType,
 } from '@/models/account';
 import { asRaw, str } from '@/serializers/documentLines';
 import { toDecimal, toNumber } from '@/utils/money';
@@ -130,14 +132,27 @@ export const mapAccountLedgerRow = (raw: unknown): AccountLedgerRow => {
 /** `GET /accounts/:id` → `{account, recentEntries}` — the last 10 GL rows. */
 export const accountDetailSerializer = (
   payload: unknown,
-): { account: Account | null; recentEntries: AccountLedgerRow[] } => {
+): {
+  account: Account | null;
+  recentEntries: AccountLedgerRow[];
+  structure: AccountStructure;
+} => {
   const d = asRaw(payload);
   const rawAccount = d.account ?? (d.id ? d : null);
+  const structure = asRaw(d.structure);
   return {
     account: rawAccount ? mapAccount(rawAccount) : null,
     recentEntries: Array.isArray(d.recentEntries)
       ? d.recentEntries.map(mapAccountLedgerRow)
       : [],
+    // No `structure` means a server from before the type could change: locked.
+    structure:
+      typeof structure.editable === 'boolean'
+        ? {
+            editable: structure.editable,
+            reason: typeof structure.reason === 'string' ? structure.reason : null,
+          }
+        : LOCKED_STRUCTURE,
   };
 };
 
@@ -204,11 +219,11 @@ export const accountFormToCreatePayload = (
 /**
  * Form → update payload.
  *
- * `accountNumber`, `type` and `openingBalance` are left out entirely.
- * `PartialType(CreateAccountDto)` means the DTO would ACCEPT all three, but
- * `update()` never reads them — so sending them looks like an edit that
- * silently does nothing. The opening balance especially: it already posted its
- * journal entry at creation, and changing the field would not move it.
+ * `type` and `accountNumber` are sent only when they changed. The server lets
+ * them change while nothing refers to the account and refuses otherwise
+ * (ACCOUNT_IN_USE, SYSTEM_ACCOUNT_FIXED), so an untouched value must not be
+ * sent as though it were an edit. `openingBalance` is never sent: it posted
+ * its journal entry at creation, and changing the field would not move it.
  *
  * Blank strings ARE sent here, unlike on create: `description: ''` is how the
  * user clears a description, and the service distinguishes undefined (leave
@@ -222,10 +237,20 @@ export const accountFormToCreatePayload = (
  */
 export const accountFormToUpdatePayload = (
   form: AccountFormData,
-): AccountWritePayload => ({
-  name: form.name.trim(),
-  subType: form.subType,
-  parentId: form.parentId || null,
-  description: form.description.trim(),
-  isActive: form.isActive,
-});
+  /** The account as it was loaded, to tell what changed. */
+  original?: Pick<Account, 'type' | 'accountNumber'>,
+): AccountWritePayload => {
+  const payload: AccountWritePayload = {
+    name: form.name.trim(),
+    subType: form.subType,
+    parentId: form.parentId || null,
+    description: form.description.trim(),
+    isActive: form.isActive,
+  };
+  if (original && form.type !== original.type) payload.type = form.type;
+  const number = form.accountNumber.trim();
+  if (original && number && number !== original.accountNumber) {
+    payload.accountNumber = number;
+  }
+  return payload;
+};

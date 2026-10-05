@@ -13,6 +13,7 @@ import {
   type ApprovalRequest,
   type ApprovalType,
 } from '@/models/approval';
+import { approvalEffect } from '@/models/approval';
 import { computeTotals } from '@/models/document';
 import { approvalListSerializer, mapApproval } from '@/serializers/approvalSerializer';
 
@@ -266,5 +267,22 @@ describe('approval serializer', () => {
     expect(approvalListSerializer([{ id: 'a' }])).toHaveLength(1);
     expect(approvalListSerializer({ data: [{ id: 'a' }, { id: 'b' }] })).toHaveLength(2);
     expect(approvalListSerializer(null)).toEqual([]);
+  });
+});
+
+describe('approvalEffect — what approving this request does', () => {
+  it('says a refund pays money back, not that it issues a credit', () => {
+    expect(approvalEffect({ type: 'credit_memo', payload: { action: 'refund', creditMemoId: 'cm' } })).toBe(
+      'Pays the memo’s remaining credit back to the customer.',
+    );
+    expect(approvalEffect({ type: 'credit_memo', payload: { action: 'apply' } })).toMatch(/Settles/);
+    expect(approvalEffect({ type: 'credit_memo', payload: { refundRemainderToCash: true } })).toMatch(
+      /pays back what no invoice absorbs/,
+    );
+    expect(approvalEffect({ type: 'credit_memo', payload: {} })).toBe('Issues a credit against the customer.');
+  });
+
+  it('is the type’s own line for everything else', () => {
+    expect(approvalEffect({ type: 'bill_payment', payload: {} })).toBe('Pays the vendor and reduces cash.');
   });
 });

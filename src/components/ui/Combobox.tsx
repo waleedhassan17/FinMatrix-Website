@@ -6,11 +6,23 @@ import { cn } from '@/lib/cn';
 import { SearchInput } from '@/components/ui/SearchInput';
 import type { SelectOption } from '@/components/ui/Select';
 
+export interface ComboboxOption<V extends string = string> extends SelectOption<V> {
+  /** Shown at the right of the row — a balance. Not searched. */
+  meta?: string;
+}
+
+export interface ComboboxFooterAction {
+  label: string;
+  icon?: ReactNode;
+  /** Called once the list has closed. */
+  onSelect: () => void;
+}
+
 interface ComboboxProps<V extends string = string> {
   label?: ReactNode;
   value: V | '';
   onChange: (value: V) => void;
-  options: readonly SelectOption<V>[];
+  options: readonly ComboboxOption<V>[];
   placeholder?: string;
   searchPlaceholder?: string;
   emptyText?: string;
@@ -19,6 +31,12 @@ interface ComboboxProps<V extends string = string> {
   disabled?: boolean;
   compact?: boolean;
   containerClassName?: string;
+  /**
+   * One action pinned under the list — "New bank account" — for when what is
+   * wanted is not there yet, as a Peachtree lookup's New button. Always shown,
+   * whatever was searched.
+   */
+  footerAction?: ComboboxFooterAction;
 }
 
 /**
@@ -43,6 +61,7 @@ export function Combobox<V extends string = string>({
   disabled,
   compact,
   containerClassName,
+  footerAction,
 }: ComboboxProps<V>) {
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -152,13 +171,37 @@ export function Combobox<V extends string = string>({
                     )}
                   >
                     <span className="truncate">{opt.label}</span>
-                    {opt.value === value && (
-                      <Check className="size-4 shrink-0 text-primary" />
-                    )}
+                    <span className="flex shrink-0 items-center gap-xs">
+                      {opt.meta && (
+                        <span className="text-body-sm tabular text-text-secondary">
+                          {opt.meta}
+                        </span>
+                      )}
+                      {opt.value === value && (
+                        <Check className="size-4 shrink-0 text-primary" />
+                      )}
+                    </span>
                   </button>
                 ))
               )}
             </div>
+
+            {footerAction && (
+              <div className="border-t border-border-light p-xxs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    setQuery('');
+                    footerAction.onSelect();
+                  }}
+                  className="flex w-full items-center gap-xs rounded-sm px-sm py-xs text-left text-body-md text-primary hover:bg-primary-tint"
+                >
+                  {footerAction.icon}
+                  <span className="truncate">{footerAction.label}</span>
+                </button>
+              </div>
+            )}
           </Popover.Content>
         </Popover.Portal>
       </Popover.Root>

@@ -65,6 +65,7 @@ export const mapTaxPayment = (raw: unknown): TaxPayment => {
     paymentDate: str(r.paymentDate).slice(0, 10),
     reference: str(r.reference),
     journalEntryId: r.journalEntryId ? str(r.journalEntryId) : null,
+    bankAccountId: r.bankAccountId ? str(r.bankAccountId) : null,
     createdAt: str(r.createdAt),
   };
 };

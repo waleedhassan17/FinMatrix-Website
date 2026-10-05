@@ -7,7 +7,13 @@
 // document, so there is no approval path here — `chartOfAccounts.manage` is
 // REFUSED for staff rather than REQUEST, and the route is absent from their nav.
 
-import type { Account, AccountFormData, AccountType } from '@/models/account';
+import {
+  isMoneyAccount,
+  type Account,
+  type AccountFormData,
+  type AccountStructure,
+  type AccountType,
+} from '@/models/account';
 import { api, toApiError, unwrapEnvelope } from '@/networks/network/apiHelpers';
 import {
   accountDetailSerializer,
@@ -60,7 +66,11 @@ export const getAccounts = async (
 /** `{account, recentEntries}` — the account plus its last 10 GL rows. */
 export const getAccountById = async (
   accountId: string,
-): Promise<{ account: Account | null; recentEntries: AccountLedgerRow[] }> => {
+): Promise<{
+  account: Account | null;
+  recentEntries: AccountLedgerRow[];
+  structure: AccountStructure;
+}> => {
   try {
     const response = await api.get(`/accounts/${accountId}`);
     return accountDetailSerializer(unwrapEnvelope(response.data));
@@ -81,11 +91,13 @@ export const createAccount = async (form: AccountFormData): Promise<Account> => 
 export const updateAccount = async (
   accountId: string,
   form: AccountFormData,
+  /** The account as loaded: its type and number go only when they changed. */
+  original?: Pick<Account, 'type' | 'accountNumber'>,
 ): Promise<Account> => {
   try {
     const response = await api.patch(
       `/accounts/${accountId}`,
-      accountFormToUpdatePayload(form),
+      accountFormToUpdatePayload(form, original),
     );
     return mapAccount(unwrapEnvelope(response.data));
   } catch (e) {
@@ -175,25 +187,18 @@ export const getAccountTransactions = async (
 // Purpose-built picker lists
 // ═══════════════════════════════════════════════════════
 
-/** The two asset sub-types that represent money on hand. */
-export const MONEY_SUB_TYPES = ['Cash', 'Bank'] as const;
+export { MONEY_SUB_TYPES } from '@/models/account';
 
 /**
- * Accounts a payment can be deposited into.
+ * Accounts money can move through — every active cash and bank account.
  *
  * `subType` is a single exact-match query param, so there is no one call that
- * returns Cash and Bank together — we ask for the assets and filter here.
- *
- * The filtering matters: the server validates an explicit `bankAccountId` for
- * tenant ownership ONLY. It does not check the account is an asset, or active,
- * so an unfiltered picker would happily let someone deposit a receipt into a
- * revenue account.
+ * returns Cash and Bank together — we ask for the assets and filter here, with
+ * the same rule the server's `assertMoneyAccount` applies (`isMoneyAccount`).
  */
 export const getDepositAccounts = async (): Promise<Account[]> => {
   const accounts = await getAccounts({ type: 'asset', isActive: true });
-  return accounts.filter(
-    (a) => a.isActive && (MONEY_SUB_TYPES as readonly string[]).includes(a.subType),
-  );
+  return accounts.filter(isMoneyAccount);
 };
 
 /**

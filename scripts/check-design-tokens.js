@@ -68,6 +68,14 @@ const RULES = [
     re: /fontFamily:\s*['"][^'"]+['"]/g,
     msg: 'hardcoded fontFamily — use FONT_STACK or the font-sans utility',
   },
+  {
+    // Tailwind v4 reads a width's name from --spacing-* before --container-*,
+    // and this theme names its spacing xxs…xxxxl. So `max-w-sm` is 12px, not
+    // 24rem: the Pay bills "Amount to pay" box shipped one word wide. Widths
+    // are written explicitly instead — max-w-[24rem].
+    re: /\b(?:max-w|min-w|w|basis)-(?:xxs|xs|sm|md|lg|xl|xxl|xxxl|xxxxl)\b/g,
+    msg: 'width named after a spacing token (max-w-sm is 12px here) — write the width out, e.g. max-w-[24rem]',
+  },
 ];
 
 function walk(dir, out = []) {
@@ -89,8 +97,8 @@ for (const root of ROOTS) {
     if (ALLOWED.has(file)) continue;
     const lines = fs.readFileSync(file, 'utf8').split('\n');
     lines.forEach((line, i) => {
-      // A commented-out line is not shipped code.
-      if (/^\s*(\/\/|\*|\/\*)/.test(line)) return;
+      // A commented-out line is not shipped code — JSX's {/* … */} included.
+      if (/^\s*(\/\/|\*|\/\*|\{\/\*)/.test(line)) return;
       for (const { re, msg } of RULES) {
         re.lastIndex = 0;
         if (re.test(line)) {

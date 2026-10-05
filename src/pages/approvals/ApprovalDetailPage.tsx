@@ -22,7 +22,7 @@ import { ApprovalPreview } from '@/features/approvals/ApprovalPreview';
 import { useRequesterNames } from '@/features/approvals/useRequesterNames';
 import { useCapability } from '@/hooks/useCapability';
 import {
-  APPROVAL_TYPE_EFFECTS,
+  approvalEffect,
   APPROVAL_TYPE_LABELS,
   approvalAmount,
   canDecide,
@@ -210,7 +210,7 @@ export default function ApprovalDetailPage() {
         <Info className="mt-[2px] size-4 shrink-0 text-text-secondary" />
         <p className="text-body-sm text-text-secondary">
           {request.status === 'approved' ? 'Approving did this: ' : 'Approving will do this: '}
-          <span className="text-text-primary">{APPROVAL_TYPE_EFFECTS[request.type]}</span>
+          <span className="text-text-primary">{approvalEffect(request)}</span>
           {request.status === 'pending' && ' Until then nothing has been posted.'}
         </p>
       </div>
@@ -322,7 +322,7 @@ export default function ApprovalDetailPage() {
         title={`Approve this ${label.toLowerCase()}?`}
         description={
           <>
-            {APPROVAL_TYPE_EFFECTS[request.type]}
+            {approvalEffect(request)}
             {amount !== null && <> Amount: <strong className="tabular">{formatMoney(amount)}</strong>.</>}{' '}
             It posts as soon as you approve, dated today.
           </>

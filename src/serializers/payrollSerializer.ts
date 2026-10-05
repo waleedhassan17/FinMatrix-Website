@@ -76,6 +76,7 @@ export const mapPayrollRun = (raw: unknown): PayrollRun => {
     totalNet: num(r.totalNet),
     status: (status === 'paid' || status === 'processed' ? status : 'draft') as PayrollRunStatus,
     journalEntryId: r.journalEntryId ? String(r.journalEntryId) : null,
+    bankAccountId: r.bankAccountId ? String(r.bankAccountId) : null,
     createdAt: str(r.createdAt),
     items: Array.isArray(r.items) ? r.items.map(mapPayrollItem) : [],
   };

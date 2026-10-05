@@ -108,6 +108,26 @@ export const APPROVAL_TYPE_EFFECTS: Record<ApprovalType, string> = {
     'Creates the delivery and records the advance as a cash receipt, held in Customer Advances until the delivery is approved.',
 };
 
+/**
+ * What approving THIS request does — the type's line, made specific where one
+ * type covers different acts. A credit memo request may issue a memo, apply
+ * one to an invoice, or refund one, and only the last takes money out of a
+ * bank, so it must not read as "issues a credit".
+ */
+export const approvalEffect = (
+  request: Pick<ApprovalRequest, 'type' | 'payload'>,
+): string => {
+  if (request.type === 'credit_memo') {
+    const action = request.payload?.action;
+    if (action === 'refund') return 'Pays the memo’s remaining credit back to the customer.';
+    if (action === 'apply') return 'Settles one of the customer’s invoices with their credit.';
+    if (request.payload?.refundRemainderToCash === true) {
+      return 'Issues a credit against the customer and pays back what no invoice absorbs.';
+    }
+  }
+  return APPROVAL_TYPE_EFFECTS[request.type] ?? '';
+};
+
 export const APPROVAL_FILTERS: readonly [ApprovalFilter, string][] = [
   ['pending', 'Awaiting'],
   ['approved', 'Approved'],

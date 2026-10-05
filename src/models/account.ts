@@ -31,10 +31,13 @@ export type AccountType =
 
 export interface Account {
   id: string;
-  /** The code field is `accountNumber`, not `code`. Immutable after creation. */
+  /**
+   * The code field is `accountNumber`, not `code`. Fixed once anything refers
+   * to the account — see AccountStructure.
+   */
   accountNumber: string;
   name: string;
-  /** The field is `type`, not `accountType`. Immutable after creation. */
+  /** The field is `type`, not `accountType`. Fixed like the number. */
   type: AccountType;
   /** A human label from `ACCOUNT_SUB_TYPES`, not a slug. */
   subType: string;
@@ -412,6 +415,118 @@ export const parentOptionsFor = (
 };
 
 // ═══════════════════════════════════════════════════════
+// Money accounts — what a payment can move money through
+// ═══════════════════════════════════════════════════════
+
+/** The two asset kinds that hold money: the server refuses anything else. */
+export const MONEY_SUB_TYPES = ['Cash', 'Bank'] as const;
+export type MoneyKind = (typeof MONEY_SUB_TYPES)[number];
+
+/**
+ * An account a payment, refund, tax payment or payroll run may move money
+ * through: an active asset of kind Cash or Bank — exactly what the server's
+ * `assertMoneyAccount` accepts, so a picker never offers what it would refuse.
+ */
+export const isMoneyAccount = (
+  a: Pick<Account, 'type' | 'subType' | 'isActive'>,
+): boolean =>
+  a.isActive &&
+  a.type === 'asset' &&
+  (MONEY_SUB_TYPES as readonly string[]).includes(a.subType);
+
+// Bank and wallet names people give their accounts here, plus the generic
+// words. Short names are matched as whole words, so "Abl" in a longer word
+// does not count.
+const BANK_NAME =
+  /\b(banks?|banking|mcb|hbl|ubl|nbp|abl|bahl|bop|jsbl|scb|meezan|alfalah|askari|faysal|soneri|bankislami|silkbank|standard chartered|dubai islamic|al baraka|habib metro|easypaisa|jazzcash|nayapay|sadapay|payoneer|current account|savings? account|checking)\b/i;
+const CASH_NAME = /\b(petty cash|cash in hand|cash on hand|cash box|cash till)\b/i;
+// Accounts that mention a bank without being one: its charges, a loan from it,
+// its card, an Islamic lease from it.
+const NOT_MONEY =
+  /\b(charges?|fees?|commissions?|interest|mark-?up|loans?|overdraft|finance|financing|leases?|ijarah?|profit|expenses?|cards?|guarantees?|margin|payable|receivable)\b/i;
+
+/**
+ * Whether a name reads like a bank or cash account, and which.
+ *
+ * "MEEZAN BANK" saved as an Other Expense is the mistake this exists to catch:
+ * the server will never let a payment use it, so it simply never appears in
+ * Pay from — with nothing to say why. Deliberately conservative: "Bank
+ * Charges" and "MCB Loan" are real expense and liability accounts.
+ */
+export const suggestedMoneyKind = (name: string): MoneyKind | null => {
+  const text = name.trim();
+  if (!text || NOT_MONEY.test(text)) return null;
+  if (BANK_NAME.test(text)) return 'Bank';
+  if (CASH_NAME.test(text)) return 'Cash';
+  return null;
+};
+
+/**
+ * Active accounts named like a bank or cash account that are not set up as
+ * one — which is why no payment picker offers them. The picker names them, so
+ * "where is my Meezan Bank?" has an answer on the screen it is asked from.
+ */
+export const misfiledMoneyAccounts = <
+  A extends Pick<Account, 'name' | 'type' | 'subType' | 'isActive'>,
+>(
+  accounts: readonly A[],
+): A[] =>
+  accounts.filter(
+    (a) => a.isActive && !isMoneyAccount(a) && suggestedMoneyKind(a.name) !== null,
+  );
+
+/**
+ * "1020 · Meezan Bank" — the account a payment, refund or payroll run moved
+ * money through. A record with none stored predates the choice and was paid
+ * from 1000 Cash, so that is what it says.
+ */
+export const moneyAccountLabel = (
+  accounts: readonly Pick<Account, 'id' | 'accountNumber' | 'name'>[],
+  accountId: string | null | undefined,
+): string => {
+  if (!accountId) return '1000 · Cash';
+  const account = accounts.find((a) => a.id === accountId);
+  return account ? `${account.accountNumber} · ${account.name}` : '—';
+};
+
+/** "an Expense (Other Expense)" — how a mis-filed account is set up now. */
+export const describeAccountKind = (a: Pick<Account, 'type' | 'subType'>): string => {
+  const type = ACCOUNT_TYPE_SINGULAR[a.type];
+  const article = /^[AEIOU]/.test(type) ? 'an' : 'a';
+  return a.subType ? `${article} ${type} (${a.subType})` : `${article} ${type}`;
+};
+
+// ═══════════════════════════════════════════════════════
+// Changing an account's type and number
+// ═══════════════════════════════════════════════════════
+
+/** What refers to an account — `usage` on GET /accounts/:id. */
+export interface AccountUsage {
+  postings: number;
+  draftJournalLines: number;
+  documentLines: number;
+  payments: number;
+  other: number;
+  children: number;
+}
+
+/**
+ * Whether the account's type and number may still change, and if not, why.
+ * They may while nothing refers to the account — which is what lets an
+ * account saved as the wrong type be put right instead of abandoned.
+ */
+export interface AccountStructure {
+  editable: boolean;
+  reason: string | null;
+}
+
+/** Locked: what an older server, which sends no `structure`, means. */
+export const LOCKED_STRUCTURE: AccountStructure = {
+  editable: false,
+  reason: 'Fixed once an account exists — postings already reference it.',
+};
+
+// ═══════════════════════════════════════════════════════
 // Deactivation
 // ═══════════════════════════════════════════════════════
 
@@ -462,18 +577,23 @@ export const checkDeactivation = (
 /**
  * Field errors for the account form, keyed by field name. Empty means valid.
  *
- * `isEditing` turns off the two immutable fields' rules: the server ignores
- * `accountNumber` and `type` on update, so validating them would block a save
- * over a value the user cannot change.
+ * `isEditing` turns off the number's rules unless `structureEditable` says
+ * the type and number may still change: a fixed number cannot be wrong in a
+ * way the user could act on, so validating it would only block the save.
  */
 export const validateAccountForm = (
   form: AccountFormData,
   accounts: readonly Pick<Account, 'id' | 'accountNumber'>[],
-  options: { isEditing: boolean; editingId?: string } = { isEditing: false },
+  options: {
+    isEditing: boolean;
+    editingId?: string;
+    /** On edit: the type and number may still change, so check them too. */
+    structureEditable?: boolean;
+  } = { isEditing: false },
 ): Record<string, string> => {
   const errors: Record<string, string> = {};
 
-  if (!options.isEditing) {
+  if (!options.isEditing || options.structureEditable) {
     const number = form.accountNumber.trim();
     if (!number) {
       errors.accountNumber = 'Account number is required';

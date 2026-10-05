@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { ChevronRight, Lock, Plus } from 'lucide-react';
+import { ChevronRight, Landmark, Lock, Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -81,12 +81,22 @@ export default function AccountListPage() {
         title="Chart of accounts"
         description="Every account the business posts to. Invoices, bills and payments all land here."
         actions={
-          <Button asChild>
-            <Link to="/accounts/new">
-              <Plus className="size-4" />
-              New account
-            </Link>
-          </Button>
+          <>
+            {/* The account people most often need and most often mis-file:
+                it opens already an asset of kind Bank, numbered beside 1010. */}
+            <Button asChild variant="secondary">
+              <Link to="/accounts/new?preset=bank">
+                <Landmark className="size-4" />
+                New bank account
+              </Link>
+            </Button>
+            <Button asChild>
+              <Link to="/accounts/new">
+                <Plus className="size-4" />
+                New account
+              </Link>
+            </Button>
+          </>
         }
       />
 

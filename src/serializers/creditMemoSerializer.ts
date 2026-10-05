@@ -38,6 +38,7 @@ export const mapCreditMemo = (raw: unknown): CreditMemo => {
     total: toNumber(r.total as never),
     amountApplied: toNumber(r.amountApplied as never),
     balance: toNumber(r.balance as never),
+    refundAccountId: r.refundAccountId ? str(r.refundAccountId) : null,
     createdAt: str(r.createdAt),
     updatedAt: str(r.updatedAt),
   };
@@ -77,6 +78,8 @@ export interface CreditMemoWritePayload {
   applyToInvoiceId?: string;
   /** Refund what no invoice could absorb — a delivery already paid for. */
   refundRemainderToCash?: boolean;
+  /** The cash or bank account that refund comes out of; 1000 Cash when omitted. */
+  refundAccountId?: string;
   /** Recorded on the delivery so it cannot be reversed twice. */
   reversesDeliveryRequestId?: string;
 }

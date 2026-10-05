@@ -831,16 +831,29 @@ export interface DeliveryCreditMemoDraft {
  * refunded when there is nothing to settle), and recorded on the delivery so
  * it cannot be reversed twice.
  */
-export const creditMemoReversalFields = (draft: DeliveryCreditMemoDraft) => {
+export const creditMemoReversalFields = (
+  draft: DeliveryCreditMemoDraft,
+  /** The cash or bank account a refund comes out of; 1000 Cash when omitted. */
+  refundAccountId?: string,
+) => {
   const applies = draft.settlement !== 'refund_cash' && !!draft.originalInvoiceId;
-  const refunds = draft.settlement !== 'apply_to_invoice' || !draft.originalInvoiceId;
+  const refunds = reversalRefunds(draft);
   return {
     ...(draft.originalInvoiceId ? { originalInvoiceId: draft.originalInvoiceId } : {}),
     ...(applies ? { applyToInvoiceId: draft.originalInvoiceId as string } : {}),
     ...(refunds ? { refundRemainderToCash: true } : {}),
+    ...(refunds && refundAccountId ? { refundAccountId } : {}),
     reversesDeliveryRequestId: draft.deliveryRequestId,
   };
 };
+
+/**
+ * Whether reversing this delivery pays money back — everything, or the part
+ * the customer had already paid. Then the form asks which account it comes from.
+ */
+export const reversalRefunds = (
+  draft: Pick<DeliveryCreditMemoDraft, 'settlement' | 'originalInvoiceId'>,
+): boolean => draft.settlement !== 'apply_to_invoice' || !draft.originalInvoiceId;
 
 /** Who signed it off — which AUTHORITY, not just which person. */
 export const reviewerLabel = (c: Pick<Completion, 'status' | 'reviewerRole'>): string => {

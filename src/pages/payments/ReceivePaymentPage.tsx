@@ -13,6 +13,7 @@ import { Combobox } from '@/components/ui/Combobox';
 import { DateField, Textarea } from '@/components/ui/Field';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
+import { MoneyAccountPicker } from '@/features/accounts/MoneyAccountPicker';
 import { SummaryPanel, SummaryRow } from '@/components/ui/SummaryPanel';
 import { invalidateAfterPosting } from '@/features/documents/invalidateAfterPosting';
 import { AllocationTable } from '@/features/payments/AllocationTable';
@@ -39,7 +40,6 @@ import {
   type ApiPaymentMethod,
   type PaymentFormData,
 } from '@/models/payment';
-import { getDepositAccounts } from '@/networks/accounting/accountNetwork';
 import { getArPartySummary } from '@/networks/reports/agingNetwork';
 import {
   getOutstandingInvoices,
@@ -107,11 +107,6 @@ export default function ReceivePaymentPage() {
   const idempotencyKey = useRef(crypto.randomUUID());
 
   const patch = (p: Partial<PaymentFormData>) => setForm((f) => ({ ...f, ...p }));
-
-  const { data: accounts = [] } = useQuery({
-    queryKey: ['accounts', 'deposit'],
-    queryFn: getDepositAccounts,
-  });
 
   const { data: outstanding, isFetching: loadingRows } = useQuery({
     queryKey: ['payments', 'outstanding', form.customerId],
@@ -228,17 +223,6 @@ export default function ReceivePaymentPage() {
     Math.max(form.rows.reduce((t, r) => t + r.balance, 0) - creditUsed - allocated, 0),
   );
   const creditOverUse = useCredits && credits.some((c) => (parseFloat(c.use) || 0) > c.available + 0.004);
-
-  const accountOptions = useMemo(
-    () => [
-      { value: '', label: 'Automatic — let FinMatrix choose' },
-      ...accounts.map((a) => ({
-        value: a.id,
-        label: `${a.accountNumber} · ${a.name}`,
-      })),
-    ],
-    [accounts],
-  );
 
   const setAmount = (value: string) => {
     const amount = value.replace(/[^0-9.]/g, '');
@@ -426,11 +410,13 @@ export default function ReceivePaymentPage() {
             hint="The cheque or transfer number. The receipt gets its own RCT number."
           />
 
-          <Select
+          {/* Every cash and bank account the money could have gone into — the
+              bank the customer actually paid. Automatic keeps the old rule. */}
+          <MoneyAccountPicker
             label="Deposit to"
             value={form.bankAccountId}
             onChange={(v) => patch({ bankAccountId: v })}
-            options={accountOptions}
+            automaticLabel="Automatic — let FinMatrix choose"
             containerClassName="sm:col-span-2"
             hint={
               form.bankAccountId

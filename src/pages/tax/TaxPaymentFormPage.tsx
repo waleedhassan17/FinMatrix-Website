@@ -11,7 +11,10 @@ import { Card } from '@/components/ui/Card';
 import { DateField } from '@/components/ui/Field';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
+import { MoneyAccountPicker } from '@/features/accounts/MoneyAccountPicker';
+import { useMoneyAccounts } from '@/features/accounts/useMoneyAccounts';
 import { TaxTabs } from '@/features/tax/TaxTabs';
+import { moneyAccountLabel } from '@/models/account';
 import { isoToday } from '@/models/document';
 import { presetRange } from '@/models/reportPeriod';
 import {
@@ -55,8 +58,10 @@ export default function TaxPaymentFormPage() {
     amount: params.get('amount') && Number(params.get('amount')) > 0 ? String(params.get('amount')) : '',
     paymentDate: isoToday(),
     reference: '',
+    bankAccountId: '',
   }));
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const { money } = useMoneyAccounts();
 
   // Until the user picks one, the rate is the company's default, else the first
   // active rate. Derived rather than copied into state by an effect, so it follows
@@ -93,7 +98,7 @@ export default function TaxPaymentFormPage() {
         queryClient.invalidateQueries({ queryKey: [key] });
       }
       toast.success('Tax payment recorded', {
-        description: `${formatMoney(p.amount)} for ${p.period}, paid from Cash.`,
+        description: `${formatMoney(p.amount)} for ${p.period}, paid from ${moneyAccountLabel(money, p.bankAccountId)}.`,
       });
       leave('/tax/payments');
     },
@@ -136,7 +141,7 @@ export default function TaxPaymentFormPage() {
       <div>
         <h1 className="text-h2 text-text-primary">Record a tax payment</h1>
         <p className="text-body-sm text-text-secondary">
-          Money paid to the tax authority. It reduces what is owed and what is in Cash.
+          Money paid to the tax authority. It reduces what is owed and what is in the account it is paid from.
         </p>
       </div>
 
@@ -144,8 +149,8 @@ export default function TaxPaymentFormPage() {
         <Info className="mt-[2px] size-4 shrink-0 text-text-secondary" />
         <p className="text-body-sm text-text-secondary">
           This posts <strong className="text-text-primary">Dr Sales Tax Payable (2300)</strong>{' '}
-          and <strong className="text-text-primary">Cr Cash (1000)</strong>. The paying
-          account can’t be changed — the server always takes remittances from Cash.
+          and <strong className="text-text-primary">Cr {moneyAccountLabel(money, form.bankAccountId)}</strong>{' '}
+          — the cash or bank account you pay from.
         </p>
       </div>
 
@@ -198,6 +203,15 @@ export default function TaxPaymentFormPage() {
           placeholder="Challan or receipt number"
           maxLength={64}
           error={errors.reference}
+        />
+        <MoneyAccountPicker
+          label="Pay from *"
+          value={form.bankAccountId}
+          onChange={(bankAccountId) => patch({ bankAccountId })}
+          // Cash, as every tax payment was before there was a choice — now shown.
+          defaultToCash
+          error={errors.bankAccountId}
+          containerClassName="sm:col-span-2"
         />
       </Card>
 
