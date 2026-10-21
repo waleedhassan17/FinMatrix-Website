@@ -36,6 +36,10 @@ export interface InventoryItem {
   maxStock: number;
   barcodeData: string;
   isActive: boolean;
+  /** Signed link to the photo (≤1600 px), or null. Loads with no token. */
+  imageUrl: string | null;
+  /** Signed link to the ≤480 px rendition, for tables, pickers and PDFs. */
+  thumbnailUrl: string | null;
   createdAt: string;
   updatedAt: string;
 }

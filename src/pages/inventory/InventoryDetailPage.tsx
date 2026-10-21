@@ -28,6 +28,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { StatTile } from '@/components/ui/StatTile';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { invalidateInventory } from '@/features/inventory/invalidateInventory';
+import { ItemPhotoCard } from '@/features/inventory/ItemPhotoCard';
 import { KpiTile } from '@/features/reports/KpiTile';
 import { FeatureUnavailable } from '@/features/shell/FeatureUnavailable';
 import { useAdminOnly, useCapability, useFeature } from '@/hooks/useCapability';
@@ -415,7 +416,9 @@ export default function InventoryDetailPage() {
       {/* grid-cols-1 is minmax(0, 1fr): without it the movements table sizes
           the single phone column and the whole page scrolls sideways. */}
       <div className="grid grid-cols-1 gap-lg lg:grid-cols-3">
-        {/* ── Details ─────────────────────────────────────────────── */}
+        {/* ── Photo and details ───────────────────────────────────── */}
+        <div className="flex flex-col gap-lg">
+        <ItemPhotoCard item={item} canManage={canManage} />
         <Card className="p-lg">
           <SectionHeader title="Details" />
           <div className="mt-md">
@@ -461,6 +464,7 @@ export default function InventoryDetailPage() {
             </div>
           )}
         </Card>
+        </div>
 
         {/* ── Movements and purchase orders ───────────────────────── */}
         <section className="min-w-0 lg:col-span-2">

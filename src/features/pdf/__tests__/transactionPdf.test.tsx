@@ -55,6 +55,45 @@ describe('TransactionPdf', () => {
     expect(buffer.length).toBeGreaterThan(1000);
   });
 
+  it('puts item photos beside their lines, and adds no column without them', async () => {
+    // A 1×1 PNG: the smallest image the renderer will embed.
+    const photo =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+    const invoice = {
+      invoiceNumber: 'INV-2026-0048',
+      customerName: 'Ayesha Interiors',
+      issueDate: '2026-10-21',
+      dueDate: '2026-11-21',
+      status: 'sent',
+      lines: [{ ...manyLines[0], itemId: 'sofa' }, manyLines[1]],
+      subtotal: 300,
+      taxAmount: 51,
+      discountType: 'none',
+      discountValue: 0,
+      discountAmount: 0,
+      total: 351,
+      amountPaid: 0,
+      balance: 351,
+      notes: '',
+    } as unknown as Invoice;
+    const doc = invoiceDocument(invoice, company, null);
+    expect(doc.lines[0].itemId).toBe('sofa');
+    expect(doc.lines[1].itemId).toBeUndefined();
+
+    const images = (buf: Awaited<ReturnType<typeof renderToBuffer>>) => (buf.toString('latin1').match(/\/Subtype\s*\/Image/g) ?? []).length;
+    const withPhoto = await renderToBuffer(
+      <TransactionPdf
+        doc={{ ...doc, lines: doc.lines.map((l, i) => (i === 0 ? { ...l, photo } : l)) }}
+        generatedAt="Oct 21, 2026"
+      />,
+    );
+    const without = await renderToBuffer(<TransactionPdf doc={doc} generatedAt="Oct 21, 2026" />);
+    // A PNG with transparency embeds as two image objects (the picture and
+    // its alpha mask), so "some" against "none" is the assertion.
+    expect(images(withPhoto)).toBeGreaterThan(0);
+    expect(images(without)).toBe(0);
+  });
+
   it('flows a long purchase order onto more pages', async () => {
     const po = {
       poNumber: 'PO-2026-0003',

@@ -115,6 +115,9 @@ export const InventoryDetailPage = lazyWithReload(
   () => import('@/pages/inventory/InventoryDetailPage'),
 );
 export const AdjustStockPage = lazyWithReload(() => import('@/pages/inventory/AdjustStockPage'));
+export const InventoryImportPage = lazyWithReload(
+  () => import('@/pages/inventory/InventoryImportPage'),
+);
 
 // Delivery operations — both roles, behind the `delivery` feature.
 export const DeliveryMonitorPage = lazyWithReload(

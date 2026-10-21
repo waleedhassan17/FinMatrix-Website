@@ -65,6 +65,7 @@ const meta = (...rows: Array<Meta | null | false>): Meta[] =>
 const pricedLine = (l: DocumentLine): DocLine => ({
   description: l.description || l.itemName || '—',
   secondary: l.itemName && l.itemName !== l.description ? l.itemName : undefined,
+  itemId: l.itemId || undefined,
   quantity: l.quantity,
   unitPrice: l.unitPrice,
   taxRate: l.taxRate,

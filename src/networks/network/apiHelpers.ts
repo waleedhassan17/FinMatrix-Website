@@ -406,13 +406,38 @@ export const authedBlobUrl = async (
   config?: AxiosRequestConfig,
 ): Promise<string> => URL.createObjectURL(await authedBlob(path, config));
 
-/** The file itself, for printing, downloading or sharing it. */
+/**
+ * The file itself, for printing, downloading or sharing it.
+ *
+ * A refusal arrives as a Blob too (responseType is fixed before the status is
+ * known), which extractErrorMessage cannot read. It is parsed here so the
+ * caller gets the server's own sentence and code, not "Request failed".
+ */
 export const authedBlob = async (path: string, config?: AxiosRequestConfig): Promise<Blob> => {
-  const response = await api.get<Blob>(path, {
-    ...config,
-    responseType: 'blob',
-  });
-  return response.data;
+  try {
+    const response = await api.get<Blob>(path, {
+      ...config,
+      responseType: 'blob',
+    });
+    return response.data;
+  } catch (e) {
+    const data = axios.isAxiosError(e) ? e.response?.data : undefined;
+    const body =
+      data instanceof Blob && /json/i.test(data.type)
+        ? ((await data
+            .text()
+            .then((t) => JSON.parse(t))
+            .catch(() => null)) as { error?: { message?: string; code?: string }; message?: string } | null)
+        : null;
+    if (body) {
+      throw new ApiError(
+        body.error?.message ?? body.message ?? extractErrorMessage(e),
+        body.error?.code,
+        (e as AxiosError).response?.status,
+      );
+    }
+    throw toApiError(e);
+  }
 };
 
 // ─── Multipart upload ───────────────────────────────
@@ -422,26 +447,42 @@ export const authedBlob = async (path: string, config?: AxiosRequestConfig): Pro
  * Content-Type is deliberately unset: the browser generates the
  * `multipart/form-data; boundary=…` header itself, and setting it by hand drops
  * the boundary so the server's multer parser never finds the file.
+ *
+ * fetch has no interceptor, so the axios 401 path is done here by hand: one
+ * token refresh, one retry. Without it an access token that expired while
+ * someone sat on an import preview signed them out on the spot. Only a
+ * refresh that fails ends the session. A FormData can be sent twice.
  */
 export const postMultipart = async <T = unknown>(
   path: string,
   form: FormData,
+  opts: { headers?: Record<string, string> } = {},
 ): Promise<T> => {
-  const token = getAccessToken();
-  const companyId = getStoredCompanyId();
+  const send = async (): Promise<Response> => {
+    const token = getAccessToken();
+    const companyId = getStoredCompanyId();
+    try {
+      return await fetch(`${API_BASE_URL}${path}`, {
+        method: 'POST',
+        headers: {
+          ...opts.headers,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(companyId ? { 'x-company-id': companyId } : {}),
+        },
+        body: form,
+      });
+    } catch {
+      throw new ApiError('Network error. Please check your connection.');
+    }
+  };
 
-  let res: Response;
-  try {
-    res = await fetch(`${API_BASE_URL}${path}`, {
-      method: 'POST',
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(companyId ? { 'x-company-id': companyId } : {}),
-      },
-      body: form,
-    });
-  } catch {
-    throw new ApiError('Network error. Please check your connection.');
+  let res = await send();
+  if (res.status === 401 && !isIntentionalSignOut()) {
+    if (await refreshSessionTokens()) res = await send();
+    if (res.status === 401) {
+      clearTokens();
+      emitSessionExpired();
+    }
   }
 
   let json: unknown = null;
@@ -450,8 +491,6 @@ export const postMultipart = async <T = unknown>(
   } catch {
     /* non-JSON body */
   }
-
-  if (res.status === 401) emitSessionExpired();
 
   if (!res.ok) {
     const body = json as
@@ -465,6 +504,7 @@ export const postMultipart = async <T = unknown>(
         : `Upload failed (${res.status}). Please try again.`,
       body?.error?.code,
       res.status,
+      (body as { error?: { details?: unknown } } | null)?.error?.details,
     );
   }
 

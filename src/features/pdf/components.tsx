@@ -217,6 +217,8 @@ export interface PdfColumn {
   /** Relative width. */
   flex: number;
   align?: 'left' | 'right';
+  /** Draws each row's `image` instead of text. Its cell text is ignored. */
+  image?: boolean;
 }
 
 export interface PdfTableRow {
@@ -232,7 +234,12 @@ export interface PdfTableRow {
   heading?: boolean;
   /** How far the first cell is indented, in levels. */
   depth?: number;
+  /** The picture for an `image` column: a PNG/JPEG data URI. */
+  image?: string;
 }
+
+/** Item photos on document lines: small, square, cropped to fill. */
+const ROW_IMAGE_SIZE = 30;
 
 /**
  * A ruled table with a tinted header and zebra rows; a row never splits across
@@ -249,6 +256,9 @@ export function PdfTable({
   emphasis?: boolean;
 }) {
   let zebra = 0;
+  // The first column that holds text: where the sub-line and the indent go,
+  // so a leading photo column does not take them.
+  const textCol = Math.max(0, columns.findIndex((c) => !c.image));
   return (
     <View style={{ marginBottom: 14 }}>
       <View
@@ -298,13 +308,25 @@ export function PdfTable({
           >
             {row.cells.map((cell, ci) => {
               const col = columns[ci];
+              if (col?.image) {
+                return (
+                  <View key={ci} style={{ flex: col.flex, paddingHorizontal: 2 }}>
+                    {row.image ? (
+                      <Image
+                        src={row.image}
+                        style={{ width: ROW_IMAGE_SIZE, height: ROW_IMAGE_SIZE, objectFit: 'cover', borderRadius: 2 }}
+                      />
+                    ) : null}
+                  </View>
+                );
+              }
               return (
                 <View
                   key={ci}
                   style={{
                     flex: col?.flex ?? 1,
                     paddingRight: 2,
-                    paddingLeft: ci === 0 ? 2 + (row.depth ?? 0) * 10 : 2,
+                    paddingLeft: ci === textCol ? 2 + (row.depth ?? 0) * 10 : 2,
                   }}
                 >
                   <Text
@@ -316,7 +338,7 @@ export function PdfTable({
                   >
                     {cell}
                   </Text>
-                  {ci === 0 && row.sub ? <Text style={[s.small, s.faint]}>{row.sub}</Text> : null}
+                  {ci === textCol && row.sub ? <Text style={[s.small, s.faint]}>{row.sub}</Text> : null}
                 </View>
               );
             })}

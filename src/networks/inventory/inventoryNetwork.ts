@@ -13,11 +13,16 @@
 
 import {
   api,
+  authedBlob,
   isPendingApproval,
+  postMultipart,
   toApiError,
   unwrapEnvelope,
   type PendingApproval,
 } from '@/networks/network/apiHelpers';
+import { downloadBlob } from '@/features/pdf/renderPdf';
+import type { ImportResult } from '@/models/inventoryImport';
+import { mapImportResult } from '@/serializers/inventoryImportSerializer';
 import type { InventoryItem, StockMovement } from '@/models/inventory';
 import {
   listRows,
@@ -202,4 +207,95 @@ export const getItemMovementPage = async (
   } catch (e) {
     throw toApiError(e);
   }
+};
+
+// ─── Item photo ─────────────────────────────────────────
+// One photo per item. The server straightens it, strips its location data and
+// keeps a large and a small JPEG; the item comes back with signed imageUrl /
+// thumbnailUrl that a plain <img> loads with no token. The field is `image`.
+
+export const uploadItemImage = async (id: string, file: Blob, filename: string): Promise<InventoryItem> => {
+  const form = new FormData();
+  form.append('image', file, filename);
+  return mapInventoryItem(await postMultipart(`/inventory/items/${id}/image`, form));
+};
+
+export const deleteItemImage = async (id: string): Promise<InventoryItem> => {
+  try {
+    const response = await api.delete(`/inventory/items/${id}/image`);
+    return mapInventoryItem(unwrapEnvelope(response.data));
+  } catch (e) {
+    throw toApiError(e);
+  }
+};
+
+/**
+ * Photo links for the items on a document, keyed by item id — for the PDF,
+ * whose lines carry item ids rather than items. Items without a photo are
+ * absent. Asked 200 ids at a time, the server's limit.
+ */
+export const getItemImageUrls = async (
+  itemIds: string[],
+): Promise<Record<string, { thumbnailUrl: string; imageUrl: string }>> => {
+  const ids = [...new Set(itemIds.filter(Boolean))];
+  const out: Record<string, { thumbnailUrl: string; imageUrl: string }> = {};
+  for (let i = 0; i < ids.length; i += 200) {
+    try {
+      const response = await api.get('/inventory/item-images', {
+        params: { ids: ids.slice(i, i + 200).join(',') },
+      });
+      Object.assign(out, unwrapEnvelope<{ images?: typeof out }>(response.data)?.images ?? {});
+    } catch (e) {
+      throw toApiError(e);
+    }
+  }
+  return out;
+};
+
+// ─── Excel import ───────────────────────────────────────
+// Two calls with the SAME file: preview writes nothing; commit applies every
+// valid row in one transaction. The field is `file`.
+
+const importForm = (file: File, fields: Record<string, string> = {}) => {
+  const form = new FormData();
+  form.append('file', file, file.name);
+  for (const [key, value] of Object.entries(fields)) form.append(key, value);
+  return form;
+};
+
+export const previewImport = async (file: File): Promise<ImportResult> =>
+  mapImportResult(await postMultipart('/inventory/import/preview', importForm(file)));
+
+/**
+ * `idempotencyKey`: one per commit attempt of one file. A retry with the same
+ * key replays the first answer rather than importing twice; the server scopes
+ * keys to the company alone, so a different file needs a different key.
+ */
+export const commitImport = async (
+  file: File,
+  opts: { openingStockDate?: string; confirmOpeningStockValue?: string },
+  idempotencyKey: string,
+): Promise<ImportResult> => {
+  const fields: Record<string, string> = {};
+  if (opts.openingStockDate) fields.openingStockDate = opts.openingStockDate;
+  if (opts.confirmOpeningStockValue !== undefined) {
+    fields.confirmOpeningStockValue = opts.confirmOpeningStockValue;
+  }
+  return mapImportResult(
+    await postMultipart('/inventory/import', importForm(file, fields), {
+      headers: { 'Idempotency-Key': idempotencyKey },
+    }),
+  );
+};
+
+/**
+ * The blank template, or (`prefill`) every item in the same columns. The route
+ * is behind auth, so it is fetched with the session and saved from a Blob —
+ * a plain link would 401.
+ */
+export const downloadItemsTemplate = async (prefill: boolean): Promise<string> => {
+  const filename = prefill ? 'inventory-items.xlsx' : 'inventory-import-template.xlsx';
+  const blob = await authedBlob(`/inventory/import/template${prefill ? '?prefill=true' : ''}`);
+  downloadBlob(blob, filename);
+  return filename;
 };

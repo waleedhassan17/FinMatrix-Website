@@ -30,6 +30,11 @@ export interface DocLine {
   description: string;
   /** A second, smaller line: the item or account behind the line. */
   secondary?: string;
+  /** The inventory item behind the line, when there is one. */
+  itemId?: string;
+  /** That item's photo as an image data URI — set by attachLinePhotos, and
+   *  only for the quotation-style documents that show one. */
+  photo?: string;
   quantity: number | null;
   unitPrice: number | null;
   taxRate: number;

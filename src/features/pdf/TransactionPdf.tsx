@@ -16,7 +16,10 @@ const quantity = (n: number | null): string =>
 
 /** Invoices, estimates, orders, bills and credits — any priced document. */
 export function TransactionPdf({ doc, generatedAt }: { doc: DocumentModel; generatedAt: string }) {
+  // A photo column only when some line has a photo — never an empty one.
+  const withPhotos = doc.lines.some((l) => !!l.photo);
   const columns: PdfColumn[] = [
+    ...(withPhotos ? [{ header: '', flex: 0.9, image: true }] : []),
     { header: 'Description', flex: doc.showQuantity ? 4.2 : 6 },
     ...(doc.showQuantity
       ? [
@@ -29,7 +32,9 @@ export function TransactionPdf({ doc, generatedAt }: { doc: DocumentModel; gener
   ];
 
   const rows = doc.lines.map((line) => ({
+    image: line.photo,
     cells: [
+      ...(withPhotos ? [''] : []),
       line.description || '—',
       ...(doc.showQuantity
         ? [quantity(line.quantity), line.unitPrice === null ? '' : formatMoney(line.unitPrice)]

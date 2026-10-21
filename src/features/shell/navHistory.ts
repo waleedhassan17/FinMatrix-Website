@@ -133,6 +133,7 @@ export const navHistory = createNavHistory(sessionStore);
 const LIST_OVERRIDES: Record<string, string> = {
   '/payments': 'Payments',
   '/tax': 'Tax',
+  '/inventory/import': 'Item import',
 };
 
 const listTitles = (() => {

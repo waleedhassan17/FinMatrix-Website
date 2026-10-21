@@ -30,7 +30,7 @@ import { CreditLimitDialog } from '@/features/customers/CreditLimitDialog';
 import { FulfilDialog } from '@/features/salesOrders/FulfilDialog';
 import { creditLimitError, type CreditAssessment } from '@/models/credit';
 import { DocumentActions } from '@/features/share/DocumentActions';
-import { useAdminOnly, useIsOwner } from '@/hooks/useCapability';
+import { useAdminOnly, useFeature, useIsOwner } from '@/hooks/useCapability';
 import { cn } from '@/lib/cn';
 import { addDays, isoToday } from '@/models/document';
 import {
@@ -59,6 +59,8 @@ export default function SalesOrderDetailPage() {
 
   const isOwner = useIsOwner();
   const canDelete = useAdminOnly('salesOrder.delete');
+  // Item photos beside the lines of the PDF the customer receives.
+  const inventoryEnabled = useFeature('inventory');
 
   const [fulfilOpen, setFulfilOpen] = useState(false);
   const [convertOpen, setConvertOpen] = useState(false);
@@ -241,7 +243,7 @@ export default function SalesOrderDetailPage() {
 
               <DocumentActions
                 document={doc.share}
-                getPdf={() => documentPdfBlob(doc)}
+                getPdf={() => documentPdfBlob(doc, { linePhotos: inventoryEnabled })}
                 cacheKey={[order.id, order.updatedAt, order.status, company.name, company.logo, customer?.id].join('|')}
               />
 

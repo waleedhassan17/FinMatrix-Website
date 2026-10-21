@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { createColumnHelper } from '@tanstack/react-table';
-import { Package, Plus } from 'lucide-react';
+import { FileSpreadsheet, Package, Plus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -13,6 +13,7 @@ import { Select } from '@/components/ui/Select';
 import { StatTile } from '@/components/ui/StatTile';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { FeatureUnavailable } from '@/features/shell/FeatureUnavailable';
+import { ItemThumb } from '@/features/inventory/ItemThumb';
 import { KpiTile } from '@/features/reports/KpiTile';
 import { useCapability, useFeature } from '@/hooks/useCapability';
 import { cn } from '@/lib/cn';
@@ -104,11 +105,14 @@ export default function InventoryListPage() {
       columnHelper.accessor('name', {
         header: 'Item',
         cell: (c) => (
-          <div className="min-w-0">
-            <p className="text-body-sm text-text-primary">{c.getValue()}</p>
-            {c.row.original.category && (
-              <p className="text-caption text-text-tertiary">{c.row.original.category}</p>
-            )}
+          <div className="flex min-w-0 items-center gap-sm">
+            <ItemThumb src={c.row.original.thumbnailUrl} alt="" className="size-9 rounded-sm" />
+            <div className="min-w-0">
+              <p className="text-body-sm text-text-primary">{c.getValue()}</p>
+              {c.row.original.category && (
+                <p className="text-caption text-text-tertiary">{c.row.original.category}</p>
+              )}
+            </div>
           </div>
         ),
       }),
@@ -182,12 +186,21 @@ export default function InventoryListPage() {
         description="Stock on hand, valued at weighted-average cost — the same figure the Inventory Valuation report and the balance sheet carry."
         actions={
           canManage && (
-            <Button asChild>
-              <Link to="/inventory/new">
-                <Plus className="size-4" />
-                New item
-              </Link>
-            </Button>
+            <>
+              {/* Importing creates and edits items, so it follows the same permission. */}
+              <Button asChild variant="secondary">
+                <Link to="/inventory/import">
+                  <FileSpreadsheet className="size-4" />
+                  Import
+                </Link>
+              </Button>
+              <Button asChild>
+                <Link to="/inventory/new">
+                  <Plus className="size-4" />
+                  New item
+                </Link>
+              </Button>
+            </>
           )
         }
       />
@@ -286,6 +299,14 @@ export default function InventoryListPage() {
                   ? 'Try a different search, category or filter.'
                   : 'Add the products you stock, then bring in their quantities with opening stock or a purchase-order receipt.'}
               </p>
+              {!narrowed && canManage && (
+                <Button asChild variant="secondary" className="mt-md">
+                  <Link to="/inventory/import">
+                    <FileSpreadsheet className="size-4" />
+                    Import your item list from Excel
+                  </Link>
+                </Button>
+              )}
             </div>
           }
         />

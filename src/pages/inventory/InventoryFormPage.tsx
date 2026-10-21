@@ -11,6 +11,8 @@ import { Card, SectionHeader } from '@/components/ui/Card';
 import { Textarea } from '@/components/ui/Field';
 import { Input } from '@/components/ui/Input';
 import { invalidateInventory } from '@/features/inventory/invalidateInventory';
+import { type PhotoChange } from '@/features/inventory/itemPhoto';
+import { ItemPhotoField } from '@/features/inventory/ItemPhotoField';
 import { FeatureUnavailable } from '@/features/shell/FeatureUnavailable';
 import { useFeature } from '@/hooks/useCapability';
 import {
@@ -22,7 +24,13 @@ import {
   validateItemForm,
   type ItemForm,
 } from '@/models/inventory';
-import { createItem, getItem, updateItem } from '@/networks/inventory/inventoryNetwork';
+import {
+  createItem,
+  deleteItemImage,
+  getItem,
+  updateItem,
+  uploadItemImage,
+} from '@/networks/inventory/inventoryNetwork';
 import { formatMoney } from '@/utils/money';
 
 type Errors = Partial<Record<keyof ItemForm, string>>;
@@ -53,6 +61,7 @@ export default function InventoryFormPage() {
   const [draft, setDraft] = useState<ItemForm | null>(null);
   const form = draft ?? (item ? itemToForm(item) : emptyItemForm());
   const [errors, setErrors] = useState<Errors>({});
+  const [photo, setPhoto] = useState<PhotoChange>({ kind: 'keep' });
 
   const costLocked = editing && isUnitCostLocked(item);
 
@@ -66,15 +75,33 @@ export default function InventoryFormPage() {
   };
 
   const save = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const body = itemPayload(form, { costLocked, editing });
-      return editing ? updateItem(itemId!, body) : createItem(body);
+      const saved = editing ? await updateItem(itemId!, body) : await createItem(body);
+      // The photo goes second: a new item has no id to attach it to before
+      // this. The item is saved either way, so a photo that fails is reported
+      // as a warning pointing at the item page, never as a failed save.
+      if (photo.kind === 'keep') return { saved, photoError: '' };
+      try {
+        const withPhoto =
+          photo.kind === 'set'
+            ? await uploadItemImage(saved.id, photo.file, photo.file.name)
+            : await deleteItemImage(saved.id);
+        return { saved: withPhoto, photoError: '' };
+      } catch (e) {
+        return { saved, photoError: e instanceof Error ? e.message : 'Please try again.' };
+      }
     },
-    onSuccess: (saved) => {
+    onSuccess: ({ saved, photoError }) => {
       invalidateInventory(queryClient);
       toast.success(editing ? 'Item updated' : 'Item created', {
         description: `${saved.name} (${saved.sku}) has been saved.`,
       });
+      if (photoError) {
+        toast.warning(photo.kind === 'remove' ? 'The photo was not removed' : 'The photo was not saved', {
+          description: `${photoError} You can try again from the item page.`,
+        });
+      }
       leave(`/inventory/${saved.id}`);
     },
     onError: (e: Error) => {
@@ -139,6 +166,14 @@ export default function InventoryFormPage() {
 
       <Card className="p-lg">
         <SectionHeader title="Item" />
+        <div className="mt-md">
+          <ItemPhotoField
+            currentUrl={item?.imageUrl ?? null}
+            value={photo}
+            onChange={setPhoto}
+            disabled={save.isPending}
+          />
+        </div>
         <div className="mt-md grid gap-md sm:grid-cols-2">
           <Input
             label="SKU *"

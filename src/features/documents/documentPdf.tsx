@@ -7,11 +7,26 @@ import type { ReportPdfData } from '@/features/reports/reportPdfTable';
 export const generatedStamp = (now: Date = new Date()): string =>
   now.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
 
-/** A priced document or receipt as a PDF. The template and the renderer load on first use. */
-export const documentPdfBlob = (doc: DocumentModel): Promise<Blob> =>
+/**
+ * A priced document or receipt as a PDF. The template and the renderer load on
+ * first use.
+ *
+ * `linePhotos` puts each line's item photo beside it — for the documents a
+ * customer receives (estimate, invoice, sales order), and only where the
+ * company has inventory. The photos are fetched now and embedded.
+ */
+export const documentPdfBlob = (
+  doc: DocumentModel,
+  opts: { linePhotos?: boolean } = {},
+): Promise<Blob> =>
   renderPdfBlob(async () => {
-    const { TransactionPdf } = await import('@/features/pdf/TransactionPdf');
-    return <TransactionPdf doc={doc} generatedAt={generatedStamp()} />;
+    const [{ TransactionPdf }, withPhotos] = await Promise.all([
+      import('@/features/pdf/TransactionPdf'),
+      opts.linePhotos
+        ? import('@/features/documents/lineImages').then((m) => m.attachLinePhotos(doc))
+        : Promise.resolve(doc),
+    ]);
+    return <TransactionPdf doc={withPhotos} generatedAt={generatedStamp()} />;
   });
 
 /** A journal entry as a PDF. */

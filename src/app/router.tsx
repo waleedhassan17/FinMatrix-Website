@@ -55,6 +55,7 @@ import {
   InventoryFormPage,
   InventoryListPage,
   AdjustStockPage,
+  InventoryImportPage,
   BudgetDetailPage,
   BudgetFormPage,
   BudgetListPage,
@@ -438,10 +439,12 @@ export const router = createBrowserRouter([
           },
 
           // ── Module 19: Inventory ────────────────────────────────
-          // `new` precedes `:itemId`. Both roles reach all four; the owner-only
-          // actions (deactivate, opening stock) are gated inside the detail page.
+          // `new` and `import` precede `:itemId`. Both roles reach all of them;
+          // the owner-only actions (deactivate, opening stock — on its own or
+          // in an import) are gated inside the pages and on the server.
           { path: 'inventory', element: <InventoryListPage /> },
           { path: 'inventory/new', element: <InventoryFormPage /> },
+          { path: 'inventory/import', element: <InventoryImportPage /> },
           { path: 'inventory/:itemId', element: <InventoryDetailPage /> },
           { path: 'inventory/:itemId/edit', element: <InventoryFormPage /> },
           { path: 'inventory/:itemId/adjust', element: <AdjustStockPage /> },

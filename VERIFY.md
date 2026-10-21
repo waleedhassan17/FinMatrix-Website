@@ -959,3 +959,80 @@ instead — see the assurance section below.
 - **Pricing is still disabled.** `BILLING_DISABLED_BUILD` is unchanged, and
   `PricingSection` was carried through the container widening so it still
   compiles and still matches the other sections when it is restored.
+
+# Module 19+ — Item photos, Excel item import, photos on quotations
+
+Interior and furniture businesses sell from pictures, and arrive with their
+catalogue in a spreadsheet. Three things ship together, on the web and the app
+alike: **one optional photo per item**, **bulk create/update of items from
+.xlsx / .csv**, and **each line's item photo on the Estimate, Invoice and Sales
+Order PDFs**. Server side: `POST/DELETE /inventory/items/:id/image`,
+`GET /inventory/item-images?ids=`, `GET /inventory/import/template[?prefill=true]`,
+`POST /inventory/import/preview`, `POST /inventory/import`, and the public
+`GET /media/item-images/:id/{thumb|display}.jpg?exp&sig`.
+
+## Already verified
+
+| Check | Evidence |
+|---|---|
+| Gate green | `npm run verify` clean — `tsc -b`, `check:tokens`, **1433 tests** across 88 files |
+| Backend | 59 new unit specs (signer, image processor, cell reading, sheet reading, the import planner, template round trip) and `npm run test:inventory-media` against a local API: **43/43** |
+| Photo links load cross-origin | From `Origin: http://localhost:5173`: `200 image/jpeg`, `Access-Control-Allow-Origin` echoed, `Cross-Origin-Resource-Policy: cross-origin`, `Cache-Control: private, max-age=86400, immutable` |
+| Photos are cleaned | A 1200×800 JPEG tagged EXIF orientation 6 comes back 320×480 (thumb) / 800×1200 (display), upright, with no EXIF |
+| Links are unforgeable | One changed character in `sig` → 403; a thumb signature on the display path → 403; a replaced or removed photo's old link → 404 |
+| Opening stock ties | An owner import of 1 new item × 4 at 8,500 moves GL 1200, Σ movement value and Σ qty × cost by exactly **34,000**, as **one** journal entry |
+| Idempotent | The same file committed twice: the second run creates 0, updates 0, posts nothing; a retried commit with the same `Idempotency-Key` replays |
+| Scale | 1,000 new items with opening stock in one request: **1.4 s** locally; 1,000 updates: **0.4 s** |
+| PDF photo column | `transactionPdf.test.tsx`: a line with a photo embeds an image XObject; no photo, no image and no column |
+
+## Decisions worth knowing before you read the code
+
+- **Photo links are signed, not authenticated.** `<img>` and react-pdf cannot
+  send a bearer token, and 25 thumbnails as 25 authed blob fetches is slow. The
+  API signs `imageId|variant|exp` (key derived from `JWT_SECRET`, or
+  `MEDIA_URL_SECRET`); the expiry is rounded to a UTC day, so a link is
+  identical all day and the browser cache keeps hitting.
+- **Every photo is re-encoded on the server** (sharp): EXIF orientation applied,
+  GPS and all metadata stripped, ≤1600 px display + ≤480 px thumb, both JPEG
+  so react-pdf can embed them. The browser also shrinks anything over 1.5 MB to
+  2048 px first (`downscaleImage.ts`) so slow uploads stay inside Heroku's 30 s.
+- **The form holds the photo until Save.** A new item has no id to attach a
+  photo to; `InventoryFormPage` uploads after create/update, and a failed upload
+  is a warning toast, not a failed save.
+- **Import is preview, then commit — both stateless.** The commit re-sends the
+  file, re-plans it against locked rows and applies every valid row in one
+  transaction; error rows are skipped and listed. A blank cell never clears a
+  value. SKUs match case-insensitively and are never renamed.
+- **Opening quantity is the owner's, and only for items with no stock history**
+  — the same one-time rule as the Opening Stock button. The commit must carry
+  the exact value the owner saw (`confirmOpeningStockValue`); anything else is
+  409 `IMPORT_PREVIEW_STALE` and the page re-runs the preview. Staff rows get a
+  warning instead. The export's on-hand column is named `On hand (read-only)`
+  and is never read as an opening quantity.
+- **`postMultipart` now refreshes once on 401 and retries**, and accepts extra
+  headers (the commit's `Idempotency-Key`). Only a failed refresh ends the
+  session. `authedBlob` now surfaces the server's message from a JSON error blob.
+
+## What needs your login
+
+- [ ] Owner: Inventory → **Import** → *Download template*, fill 3 rows (one with
+      an opening quantity and unit cost), upload → preview shows New/Problems
+      tabs and the opening-stock card → pick a date → **Import** → Journal shows
+      one *Opening stock — N items imported from …* entry; Trial balance balances.
+- [ ] Owner: *Export my items*, change two selling prices in Excel, import the
+      file → those two rows are **Update**, the rest **Unchanged**.
+- [ ] Staff: the same file with an opening quantity → warning on that row, no
+      journal entry after import.
+- [ ] Item page: add a photo, change it, remove it; click it to view full size.
+- [ ] New item form with a photo → the list shows the thumbnail.
+- [ ] Estimate with a photographed item → **PDF** → the photo sits beside the line.
+
+## Known gaps, by design
+
+- **One photo per item.** The table (`inventory_item_images`) already allows a
+  gallery; the UI does not.
+- **Pictures pasted inside the Excel file are not imported.** Photos are added
+  per item.
+- **Item pickers on invoice/PO lines show no thumbnail.**
+- **Import does not move stock on items that already have it.** Counts and
+  corrections stay with Stock Adjustment, which records a reason and reverses.

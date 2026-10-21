@@ -56,6 +56,8 @@ export default function EstimateDetailPage() {
 
   const isOwner = useIsOwner();
   const canDelete = useAdminOnly('estimate.delete');
+  // Item photos beside the lines of the PDF the customer receives.
+  const inventoryEnabled = useFeature('inventory');
   const salesOrdersEnabled = useFeature('salesOrders');
 
   const [convertOpen, setConvertOpen] = useState(false);
@@ -266,7 +268,7 @@ export default function EstimateDetailPage() {
 
               <DocumentActions
                 document={doc.share}
-                getPdf={() => documentPdfBlob(doc)}
+                getPdf={() => documentPdfBlob(doc, { linePhotos: inventoryEnabled })}
                 cacheKey={[estimate.id, estimate.updatedAt, estimate.status, company.name, company.logo, customer?.id].join('|')}
               />
 

@@ -35,6 +35,8 @@ export const mapInventoryItem = (raw: unknown): InventoryItem => {
     barcodeData: str(r.barcodeData),
     // Default true: a missing flag must not hide an item from every list.
     isActive: r.isActive !== false,
+    imageUrl: str(r.imageUrl) || null,
+    thumbnailUrl: str(r.thumbnailUrl) || null,
     createdAt: str(r.createdAt),
     updatedAt: str(r.updatedAt),
   };

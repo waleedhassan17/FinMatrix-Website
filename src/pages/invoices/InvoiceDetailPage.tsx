@@ -25,7 +25,7 @@ import {
   useDocumentCustomer,
 } from '@/features/documents/useDocumentContext';
 import { DocumentActions } from '@/features/share/DocumentActions';
-import { useAdminOnly, useCapability } from '@/hooks/useCapability';
+import { useAdminOnly, useCapability, useFeature } from '@/hooks/useCapability';
 import { cn } from '@/lib/cn';
 import { creditLimitError, type CreditAssessment } from '@/models/credit';
 import { isEditable, type Invoice } from '@/models/invoice';
@@ -47,6 +47,8 @@ export default function InvoiceDetailPage() {
 
   const voidCap = useCapability('transaction.void');
   const canDelete = useAdminOnly('invoice.delete');
+  // Item photos beside the lines of the PDF the customer receives.
+  const inventoryEnabled = useFeature('inventory');
 
   const [voidOpen, setVoidOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -220,7 +222,7 @@ export default function InvoiceDetailPage() {
               )}
               <DocumentActions
                 document={doc.share}
-                getPdf={() => documentPdfBlob(doc)}
+                getPdf={() => documentPdfBlob(doc, { linePhotos: inventoryEnabled })}
                 cacheKey={[invoice.id, invoice.updatedAt, invoice.status, company.name, company.logo, customer?.id].join('|')}
               />
               <MoreActionsMenu
