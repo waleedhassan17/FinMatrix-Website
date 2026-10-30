@@ -190,8 +190,14 @@ export function TabsList({
   className?: string;
 }) {
   return (
+    // Scrolls sideways rather than spilling off a phone. The rule under the
+    // tabs is an inset shadow, not a border, so the active tab's line can sit
+    // on it without a negative margin the scroll box would clip.
     <RadixTabs.List
-      className={cn('flex gap-xs border-b border-border', className)}
+      className={cn(
+        'flex gap-xs overflow-x-auto shadow-[inset_0_-1px_0_var(--color-border)] [scrollbar-width:none]',
+        className,
+      )}
     >
       {children}
     </RadixTabs.List>
@@ -211,7 +217,7 @@ export function TabsTrigger({
     <RadixTabs.Trigger
       value={value}
       className={cn(
-        'relative -mb-px flex items-center gap-xs border-b-2 px-sm py-sm text-label-lg transition-colors',
+        'relative flex shrink-0 items-center gap-xs border-b-2 px-sm py-sm text-label-lg whitespace-nowrap transition-colors',
         'border-transparent text-text-secondary hover:text-text-primary',
         'data-[state=active]:border-primary data-[state=active]:text-primary',
       )}

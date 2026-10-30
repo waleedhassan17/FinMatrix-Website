@@ -1,4 +1,5 @@
-import { AgingReportView, useAgingReport } from '@/features/reports/AgingReportView';
+import { AgingReportView } from '@/features/reports/AgingReportView';
+import { useAgingReport } from '@/features/reports/useAgingReport';
 import { getArAging } from '@/networks/reports/agingNetwork';
 
 export default function ArAgingPage() {

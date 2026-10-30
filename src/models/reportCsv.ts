@@ -121,3 +121,27 @@ export const csvFilename = (
   }
   return report;
 };
+
+/**
+ * The block every exported statement opens with — who, what, which period, on
+ * what basis, compared with what, and when it was produced — so a file found
+ * in a downloads folder months later still says what it is. The same facts
+ * the PDF prints in its header.
+ */
+export const csvHeaderBlock = (header: {
+  company?: string;
+  report: string;
+  period: string;
+  basis?: string;
+  comparison?: string | null;
+  generatedAt?: string;
+}): CsvRow[] => {
+  const out: CsvRow[] = [];
+  if (header.company) out.push([header.company]);
+  out.push([header.report], [header.period]);
+  if (header.basis) out.push([header.basis]);
+  if (header.comparison) out.push([header.comparison]);
+  out.push([`Generated ${header.generatedAt ?? new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}`]);
+  out.push([]);
+  return out;
+};

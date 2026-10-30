@@ -1,44 +1,56 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { ExternalLink, Info, MousePointerClick } from 'lucide-react';
-import { useMemo, type ReactNode } from 'react';
+import { useQuery, type Query } from '@tanstack/react-query';
+import { ExternalLink, Info, Maximize2, MousePointerClick } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
-import { DetailLayout, RailSection } from '@/components/layout/DetailLayout';
+import { DetailLayout } from '@/components/layout/DetailLayout';
 import { PageMessage } from '@/components/layout/PageState';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Combobox } from '@/components/ui/Combobox';
-import { KeyValueList } from '@/components/ui/KeyValueList';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Field';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { isPathAllowedForRole } from '@/config/routeAccess';
 import { PanelHeader } from '@/features/dashboard/PanelHeader';
+import { ItemPhotoDialog } from '@/features/inventory/ItemPhotoDialog';
+import { ItemThumb } from '@/features/inventory/ItemThumb';
 import { ChartTypeToggle, MoreMetricsMenu } from '@/features/reports/ExplorerControls';
-import { Change } from '@/features/reports/FigureStrip';
+import { ItemPriceMargin } from '@/features/reports/ItemPriceMargin';
+import { ItemRevenueBreakdown, type BreakdownView } from '@/features/reports/ItemRevenueBreakdown';
 import { ItemMonthPanel } from '@/features/reports/ItemSalesEntries';
+import { ItemStockPosition } from '@/features/reports/ItemStockPosition';
 import { MetricChart, type ChartType } from '@/features/reports/MetricChart';
 import { MetricTable } from '@/features/reports/MetricTable';
-import { MetricTabs } from '@/features/reports/MetricTabs';
+import { MetricTabs, type MetricTab } from '@/features/reports/MetricTabs';
 import { PeriodMenu } from '@/features/reports/PeriodMenu';
-import { RankedBars } from '@/features/reports/RankedBars';
 import { ReportShell } from '@/features/reports/ReportShell';
 import { useFeature } from '@/hooks/useCapability';
-import { cn } from '@/lib/cn';
-import { STOCK_STATUS_DISPLAY, formatQty } from '@/models/inventory';
+import { formatQty } from '@/models/inventory';
 import { itemExplorerHref } from '@/models/inventoryValuation';
 import {
+  CHANNEL_LABEL,
   EXPLORER_METRICS,
+  STOCK_BADGE,
   buildExplorerMonths,
   changeTone,
-  daysOfCover,
+  comparisonCaption,
+  coverText,
   daysSince,
   defaultMetric,
   explorerCsvRows,
   explorerMetric,
   formatChange,
   formatMetric,
+  hasChannelBreakdown,
   isExplorerMetricKey,
+  itemCover,
   metricChange,
+  monthsWithSales,
+  priceAndMargin,
+  stockBadge,
   summarizeMetric,
+  unitsText,
+  type BreakdownDimension,
   type ExplorerMetricKey,
   type ExplorerMonth,
 } from '@/models/itemExplorer';
@@ -47,7 +59,6 @@ import {
   TREND_PRESETS,
   endOfMonth,
   formatShortDate,
-  monthsSpanned,
   priorWindow,
   rangeLabel,
   trailingMonths,
@@ -62,10 +73,8 @@ import {
 } from '@/networks/reports/inventoryValuationNetwork';
 import { selectRole } from '@/store/authSlice';
 import { useAppSelector } from '@/store/store';
-import { compactMoney, formatMoney } from '@/utils/money';
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
-const PERIOD_START = /^\d{4}-\d{2}-01$/;
 const PERIOD = /^\d{4}-\d{2}$/;
 
 /** The figures across the top — the four a reader asks about first. */
@@ -81,9 +90,6 @@ const WINDOW_LABELS = { last6m: '6M', last12m: '12M', last24m: '24M', ytd: 'YTD'
 const retryUnlessFinal = (count: number, error: unknown) =>
   !(error instanceof ApiError && (error.status === 404 || error.status === 400)) && count < 1;
 
-/** "45 units", "1 unit", "12 kg" — only the generic word takes a plural. */
-const unitWord = (uom: string, qty: number) => (uom === 'unit' && qty !== 1 ? 'units' : uom);
-
 /** One month, clipped to the window — the first and last months may be partial. */
 const monthRange = (period: string, window: ReportRange): ReportRange => {
   const first = `${period}-01`;
@@ -97,17 +103,22 @@ const monthRange = (period: string, window: ReportRange): ReportRange => {
 /**
  * One item, explored.
  *
- * Built as one chart card, the way a dashboard reads: the four headline
- * figures ARE the chart's tabs — choose one and the chart below draws it month
- * by month — with the other six metrics a menu away. Under it, every metric by
- * month in one table; choosing a row charts it, choosing a month opens the
- * documents behind it in a side panel, so the page itself never moves.
+ * Laid out as a record page, the way an enterprise system shows one thing:
+ * who it is across the top — photo, name, one badge for the state of its
+ * stock — then how it is doing, then what surrounds it.
  *
- * The rail says where the stock stands today and who buys it. "Switch item"
- * moves to another item without going back, keeping the window.
+ *   · The figures are the chart's tabs: choose one and the chart below draws
+ *     it month by month; the other six metrics are a menu away. Each figure
+ *     carries its move against the window before, and its shape.
+ *   · Under the chart, two tabs: the revenue broken down — by customer, or by
+ *     channel when the item went out both ways, as a ring or bars — and every
+ *     metric by month in one table.
+ *   · The rail says where the stock stands today and what a unit earns.
  *
- * Everything chosen — window, metric, chart type, month — lives in the URL,
- * so the view can be shared and Back retraces it.
+ * Choosing a month opens the documents behind it in a side panel, so the
+ * page never moves. Everything chosen — window, metric, chart, breakdown,
+ * tab, month — lives in the URL, so the view can be shared and Back retraces
+ * the drill-ins.
  */
 export default function InventoryItemReportPage() {
   const { itemId = '' } = useParams<{ itemId: string }>();
@@ -115,6 +126,7 @@ export default function InventoryItemReportPage() {
   const navigate = useNavigate();
   const role = useAppSelector(selectRole);
   const inventoryOn = useFeature('inventory');
+  const [photoOpen, setPhotoOpen] = useState(false);
 
   const range: ReportRange = useMemo(() => {
     const from = params.get('from');
@@ -127,6 +139,9 @@ export default function InventoryItemReportPage() {
   const chart: ChartType = params.get('chart') === 'line' ? 'line' : 'bar';
   const monthParam = params.get('month');
   const selectedPeriod = monthParam && PERIOD.test(monthParam) ? monthParam : null;
+  const tab = params.get('tab') === 'months' ? 'months' : 'revenue';
+  const mix: BreakdownDimension = params.get('mix') === 'channel' ? 'channel' : 'customer';
+  const mixChart: BreakdownView = params.get('mixChart') === 'bar' ? 'bar' : 'pie';
 
   const update = (patch: Record<string, string | null>, push = false) =>
     setParams(
@@ -141,11 +156,17 @@ export default function InventoryItemReportPage() {
       { replace: !push },
     );
 
+  // The previous figures stay on screen while a new WINDOW loads — dimmed —
+  // but never while a new ITEM does: its name and photo would sit above the
+  // last item's chart at full strength.
+  const sameItem = <T,>(prev: T | undefined, prevQuery: Query<T, Error, T, readonly unknown[]> | undefined) =>
+    prevQuery?.queryKey[2] === itemId ? prev : undefined;
+
   const perfQuery = useQuery({
     queryKey: ['reports', 'item-performance', itemId, range],
     queryFn: () => getItemPerformance(itemId, range),
     enabled: !!itemId,
-    placeholderData: keepPreviousData,
+    placeholderData: sameItem,
     retry: retryUnlessFinal,
   });
   // The window before, for the changes under each figure. Optional.
@@ -153,25 +174,25 @@ export default function InventoryItemReportPage() {
     queryKey: ['reports', 'item-performance', itemId, prior],
     queryFn: () => getItemPerformance(itemId, prior),
     enabled: !!itemId,
-    placeholderData: keepPreviousData,
+    placeholderData: sameItem,
     retry: false,
   });
   const historyQuery = useQuery({
     queryKey: ['reports', 'inventory-item-history', itemId, range],
     queryFn: () => getInventoryItemHistory(itemId, 12, range),
     enabled: !!itemId,
-    placeholderData: keepPreviousData,
+    placeholderData: sameItem,
     retry: retryUnlessFinal,
   });
   // For "Switch item". Usually already cached by the page this was opened from.
   const itemsQuery = useQuery({
     queryKey: ['reports', 'inventory-valuation'],
-    queryFn: getInventoryValuation,
+    queryFn: () => getInventoryValuation(),
     staleTime: 60_000,
   });
 
   const perf = perfQuery.data;
-  const priorPerf = priorQuery.data;
+  const priorPerf = priorQuery.isError ? undefined : priorQuery.data;
   const history = historyQuery.data;
   const months = useMemo(() => buildExplorerMonths(perf, history), [perf, history]);
 
@@ -212,9 +233,12 @@ export default function InventoryItemReportPage() {
     );
   }
 
-  const itemName = perf?.itemName || history?.itemName || 'Item';
-  const sku = perf?.sku || history?.sku || '';
+  // While a newly switched-to item loads, the list it was picked from already knows its name.
+  const listed = itemsQuery.data?.rows.find((r) => r.itemId === itemId);
+  const itemName = perf?.itemName || history?.itemName || listed?.itemName || 'Item';
+  const sku = perf?.sku || history?.sku || listed?.sku || '';
   const facts = perf?.item ?? null;
+  const uom = facts?.unitOfMeasure ?? 'unit';
   const showOpenItem = inventoryOn && isPathAllowedForRole(`/inventory/${itemId}`, role);
   const customersAllowed = isPathAllowedForRole('/customers/x', role);
 
@@ -222,70 +246,36 @@ export default function InventoryItemReportPage() {
     facts?.qtyOnHand ??
     [...months].reverse().find((m) => m.values.closingQty !== null)?.values.closingQty ??
     null;
-
-  const exportCsv = () => {
-    const out: CsvRow[] = [
-      [`${itemName}${sku ? ` (${sku})` : ''}`],
-      [rangeLabel(range.startDate, range.endDate)],
-      ['Revenue net of tax and invoice discounts; stock at each month end'],
-      [],
-      ...explorerCsvRows(months),
-    ];
-    return downloadCsv(
-      csvFilename(`item-${(sku || itemName).toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, range),
-      toCsv(out),
-    );
-  };
-
-  // ── The figure tabs, each against the window before ─────────────────────
-  const priorWords = PERIOD_START.test(range.startDate)
-    ? `prior ${monthsSpanned(range)} month${monthsSpanned(range) === 1 ? '' : 's'}`
-    : 'prior period';
-  const priorEmpty =
-    !!priorPerf && priorPerf.totals.revenue === 0 && priorPerf.totals.unitsSold === 0;
   const t = perf?.totals;
   const p = priorPerf?.totals;
-  const caption = (
-    key: ExplorerMetricKey,
-    current: number | null,
-    before: number | null | undefined,
-  ): ReactNode => {
-    if (current === null) return 'No sales in this window';
-    if (before === undefined) return undefined;
-    // Nothing sold before: "+Rs 82K" against it says nothing. Said once.
-    if (priorEmpty) return key === 'revenue' ? `No sales in the ${priorWords}` : ' ';
-    const change = metricChange(key, current, before);
+  const cover = facts && t ? itemCover(facts, t.unitsSold, range) : null;
+  const sinceSold = daysSince(facts?.lastSoldDate ?? null);
+  const badge = facts ? stockBadge(facts) : null;
+
+  // ── The comparison, said once beside the window ─────────────────────────
+  const priorEmpty = priorPerf ? priorPerf.totals.revenue === 0 && priorPerf.totals.unitsSold === 0 : null;
+  const comparison = comparisonCaption(range, priorEmpty);
+
+  // ── The figure tabs: value, move against the window before, shape ───────
+  const tabs: MetricTab<ExplorerMetricKey>[] = HEADLINE.map((key) => {
+    const pick = (x: typeof t) =>
+      x ? (key === 'marginPct' ? x.marginPct : x[key as 'revenue' | 'grossProfit' | 'unitsSold']) : null;
+    const current = pick(t);
+    const change = !priorEmpty && p ? metricChange(key, current, pick(p)) : null;
     const text = formatChange(key, change);
-    if (!text) return before === null ? ' ' : `Unchanged on the ${priorWords}`;
-    const tone = changeTone(key, change);
-    return (
-      <>
-        {tone ? <Change text={text} good={tone === 'good'} /> : <span className="tabular">{text}</span>}{' '}
-        vs {priorWords}
-      </>
-    );
-  };
-  const tabs = HEADLINE.map((key) => {
-    const current = t ? (key === 'marginPct' ? t.marginPct : t[key as 'revenue' | 'grossProfit' | 'unitsSold']) : null;
-    const before = p === undefined ? undefined : key === 'marginPct' ? p.marginPct : p[key as 'revenue' | 'grossProfit' | 'unitsSold'];
     return {
       key,
       label: explorerMetric(key).label,
       value: formatMetric(key, current),
       tone: current !== null && current < 0 ? ('danger' as const) : ('default' as const),
-      caption: t ? caption(key, current, before) : 'Not available',
+      change: text ? { text, tone: changeTone(key, change) } : null,
+      caption: !t ? 'Not available' : current === null ? 'No sales in this window' : undefined,
+      // A run of zeros has no shape to show — only a line along the floor.
+      trend: months.some((m) => (m.values[key] ?? 0) !== 0) ? months.map((m) => m.values[key]) : undefined,
     };
   });
 
-  // ── Stock position ─────────────────────────────────────────────────────
-  const cover = facts && t ? daysOfCover(facts.qtyOnHand, t.unitsSold, range) : null;
-  const sinceSold = daysSince(facts?.lastSoldDate ?? null);
-  const belowReorder = !!facts && facts.reorderPoint > 0 && facts.qtyOnHand <= facts.reorderPoint;
-  const listMargin =
-    facts && facts.sellingPrice > 0
-      ? ((facts.sellingPrice - facts.unitCost) / facts.sellingPrice) * 100
-      : null;
-
+  // ── About these figures ─────────────────────────────────────────────────
   const notes: string[] = [];
   if (perf && perf.estimatedCogsShare > 0) {
     notes.push(
@@ -297,54 +287,113 @@ export default function InventoryItemReportPage() {
   }
   if (history?.coverage.message) notes.push(history.coverage.message);
 
-  // One line under the chart: the dashed average, and the best month.
+  // One line under the chart: the dashed average, the best month, how often it sold.
   const legend: string[] = [];
   if (summary.average !== null && summary.readings > 1 && def.kind !== 'ratio') {
     legend.push(`Average ${formatMetric(metric, summary.average)} a month`);
   }
   if (summary.best) legend.push(`Best ${summary.best.label} · ${formatMetric(metric, summary.best.value)}`);
+  if (def.group === 'sales' && perf && months.length > 0) {
+    legend.push(`Sold in ${monthsWithSales(months)} of ${months.length} month${months.length === 1 ? '' : 's'}`);
+  }
 
-  const subtitle = [
-    sku,
-    facts?.category,
-    onHand !== null ? `${formatMetric('closingQty', onHand)} ${facts ? unitWord(facts.unitOfMeasure, onHand) : 'on hand'}${facts ? ' on hand' : ''}` : null,
-  ]
-    .filter(Boolean)
-    .join(' · ');
+  const customerHref = customersAllowed ? (id: string) => `/customers/${id}` : undefined;
+  const windowLabel = rangeLabel(range.startDate, range.endDate);
+  const margin = facts && t ? priceAndMargin(facts, t) : null;
+  const channelsShown = hasChannelBreakdown(perf);
+
+  const exportCsv = () => {
+    const out: CsvRow[] = [
+      [`${itemName}${sku ? ` (${sku})` : ''}`],
+      [windowLabel],
+      ['Revenue net of tax and invoice discounts; stock at each month end'],
+      [],
+      ...explorerCsvRows(months),
+    ];
+    if (perf && perf.customers.length > 0) {
+      out.push([], ['Revenue by customer'], ['Customer', 'Units', 'Revenue', 'Share (%)', 'Gross profit']);
+      for (const c of perf.customers) {
+        out.push([c.customerName, c.unitsSold, c.revenue.toFixed(2), c.sharePct === null ? '' : c.sharePct.toFixed(1), c.grossProfit.toFixed(2)]);
+      }
+      const o = perf.otherCustomers;
+      if (o.count > 0) {
+        out.push([`Other (${o.count})`, o.unitsSold, o.revenue.toFixed(2), o.sharePct === null ? '' : o.sharePct.toFixed(1), o.grossProfit.toFixed(2)]);
+      }
+    }
+    if (perf?.channels && perf.channels.length > 0) {
+      out.push([], ['Revenue by channel'], ['Channel', 'Units', 'Revenue', 'Share (%)', 'Documents']);
+      for (const c of perf.channels) {
+        out.push([CHANNEL_LABEL[c.key], c.unitsSold, c.revenue.toFixed(2), c.sharePct === null ? '' : c.sharePct.toFixed(1), c.documents]);
+      }
+      if (perf.returns) {
+        out.push(['Returns', perf.returns.unitsSold, perf.returns.revenue.toFixed(2), '', perf.returns.documents]);
+      }
+    }
+    if (facts) {
+      out.push(
+        [],
+        ['Stock position (today)'],
+        ['On hand', facts.qtyOnHand],
+        ['Stock value', facts.stockValue.toFixed(2)],
+        ['Average cost', facts.unitCost.toFixed(2)],
+        ['Selling price', facts.sellingPrice.toFixed(2)],
+        ['Reorder point', facts.reorderPoint],
+        ['Days of cover', cover?.days ?? ''],
+        ['Last sold', facts.lastSoldDate ?? 'Never'],
+      );
+    }
+    return downloadCsv(
+      csvFilename(`item-${(sku || itemName).toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, range),
+      toCsv(out),
+    );
+  };
 
   return (
     <ReportShell
       title={itemName}
-      subtitle={subtitle || undefined}
       back={{ to: '/reports/inventory-valuation', label: 'Inventory Valuation' }}
+      leading={
+        facts?.imageUrl ? (
+          <button
+            type="button"
+            onClick={() => setPhotoOpen(true)}
+            aria-label={`View the photo of ${itemName} full size`}
+            className="group relative block overflow-hidden rounded-md border border-border focus-visible:outline-2 focus-visible:outline-border-focus"
+          >
+            <ItemThumb src={facts.thumbnailUrl ?? facts.imageUrl} alt="" className="size-14" iconClassName="size-6" />
+            <span className="absolute inset-0 hidden items-center justify-center bg-neutral-900/40 text-neutral-0 group-hover:flex">
+              <Maximize2 className="size-4" aria-hidden="true" />
+            </span>
+          </button>
+        ) : (
+          <ItemThumb src={null} alt="" className="size-14 rounded-md" iconClassName="size-6" />
+        )
+      }
+      status={
+        badge && (
+          <span title={STOCK_BADGE[badge].hint}>
+            <StatusBadge status={STOCK_BADGE[badge].status} label={STOCK_BADGE[badge].label} />
+          </span>
+        )
+      }
+      meta={[
+        sku ? `SKU ${sku}` : null,
+        facts?.category || null,
+        facts ? `Sold by ${uom}` : null,
+      ]}
       actions={
-        <>
-          {itemOptions.length > 1 && (
-            <Combobox
-              compact
-              value={itemId}
-              onChange={(id) => {
-                if (id !== itemId) navigate(itemExplorerHref(id, range));
-              }}
-              options={itemOptions}
-              placeholder="Switch item"
-              searchPlaceholder="Find an item…"
-              containerClassName="hidden w-60 sm:flex"
-            />
-          )}
-          {showOpenItem && (
-            <Button asChild variant="secondary" size="sm">
-              <Link to={`/inventory/${itemId}`}>
-                <ExternalLink className="size-4" aria-hidden="true" />
-                Open item
-              </Link>
-            </Button>
-          )}
-        </>
+        showOpenItem && (
+          <Button asChild variant="secondary" size="sm">
+            <Link to={`/inventory/${itemId}`}>
+              <ExternalLink className="size-4" aria-hidden="true" />
+              Open item
+            </Link>
+          </Button>
+        )
       }
       onExportCsv={exportCsv}
       pdf={{
-        periodLabel: rangeLabel(range.startDate, range.endDate),
+        periodLabel: windowLabel,
         basis: 'Revenue net of tax and discounts · stock at each month end',
         cacheKey: `${itemId}|${perfQuery.dataUpdatedAt}|${historyQuery.dataUpdatedAt}`,
         build: () => [
@@ -375,7 +424,7 @@ export default function InventoryItemReportPage() {
               })),
               {
                 cells: [
-                  'Window',
+                  'Period',
                   formatMetric('unitsSold', t?.unitsSold ?? null),
                   t?.revenue ?? null,
                   t?.cogs ?? null,
@@ -391,29 +440,128 @@ export default function InventoryItemReportPage() {
           ...(perf && perf.customers.length > 0
             ? [
                 {
-                  title: 'Top customers',
+                  title: 'Revenue by customer',
                   columns: [
                     { header: 'Customer', flex: 4 },
                     { header: 'Units', align: 'right' as const, flex: 1 },
                     { header: 'Revenue', align: 'right' as const, flex: 2 },
+                    { header: 'Share', align: 'right' as const, flex: 1 },
                     { header: 'Gross profit', align: 'right' as const, flex: 2 },
                   ],
-                  rows: perf.customers.map((c) => ({
-                    cells: [c.customerName, formatQty(c.unitsSold), c.revenue, c.grossProfit],
-                  })),
+                  rows: [
+                    ...perf.customers.map((c) => ({
+                      cells: [
+                        c.customerName,
+                        formatQty(c.unitsSold),
+                        c.revenue,
+                        c.sharePct === null ? '' : `${c.sharePct.toFixed(1)}%`,
+                        c.grossProfit,
+                      ],
+                    })),
+                    ...(perf.otherCustomers.count > 0
+                      ? [
+                          {
+                            cells: [
+                              `Other (${perf.otherCustomers.count})`,
+                              formatQty(perf.otherCustomers.unitsSold),
+                              perf.otherCustomers.revenue,
+                              perf.otherCustomers.sharePct === null ? '' : `${perf.otherCustomers.sharePct.toFixed(1)}%`,
+                              perf.otherCustomers.grossProfit,
+                            ],
+                          },
+                        ]
+                      : []),
+                  ],
+                },
+              ]
+            : []),
+          ...(perf?.channels && perf.channels.length > 0
+            ? [
+                {
+                  title: 'Revenue by channel',
+                  columns: [
+                    { header: 'Channel', flex: 3 },
+                    { header: 'Units', align: 'right' as const, flex: 1 },
+                    { header: 'Revenue', align: 'right' as const, flex: 2 },
+                    { header: 'Share', align: 'right' as const, flex: 1 },
+                    { header: 'Documents', align: 'right' as const, flex: 1 },
+                  ],
+                  rows: [
+                    ...perf.channels.map((c) => ({
+                      cells: [
+                        CHANNEL_LABEL[c.key],
+                        formatQty(c.unitsSold),
+                        c.revenue,
+                        c.sharePct === null ? '' : `${c.sharePct.toFixed(1)}%`,
+                        String(c.documents),
+                      ],
+                    })),
+                    ...(perf.returns
+                      ? [
+                          {
+                            cells: [
+                              'Returns',
+                              formatQty(perf.returns.unitsSold),
+                              perf.returns.revenue,
+                              '',
+                              String(perf.returns.documents),
+                            ],
+                          },
+                        ]
+                      : []),
+                  ],
+                },
+              ]
+            : []),
+          ...(facts
+            ? [
+                {
+                  title: 'Stock position — today',
+                  columns: [
+                    { header: 'Figure', flex: 2 },
+                    { header: 'Value', align: 'right' as const, flex: 2 },
+                  ],
+                  rows: [
+                    { cells: ['On hand', unitsText(facts.qtyOnHand, uom)] },
+                    { cells: ['Stock value', facts.stockValue] },
+                    { cells: ['Average cost', facts.unitCost] },
+                    { cells: ['Selling price', facts.sellingPrice] },
+                    ...(facts.reorderPoint > 0 ? [{ cells: ['Reorder point', unitsText(facts.reorderPoint, uom)] }] : []),
+                    { cells: ['Days of cover', coverText(cover?.days ?? null)] },
+                    { cells: ['Last sold', facts.lastSoldDate ? formatShortDate(facts.lastSoldDate) : 'Never'] },
+                  ],
                 },
               ]
             : []),
         ],
       }}
       controls={
-        <PeriodMenu
-          layout="segments"
-          presets={TREND_PRESETS}
-          shortLabels={WINDOW_LABELS}
-          value={range}
-          onChange={(r) => update({ from: r.startDate, to: r.endDate, month: null })}
-        />
+        <div className="flex flex-wrap items-start justify-between gap-sm">
+          <PeriodMenu
+            className="min-w-0 flex-1"
+            layout="segments"
+            presets={TREND_PRESETS}
+            shortLabels={WINDOW_LABELS}
+            value={range}
+            onChange={(r) => update({ from: r.startDate, to: r.endDate, month: null })}
+            note={comparison}
+          />
+          {itemOptions.length > 1 && (
+            // Beside the window it keeps: another item, the same months. Full
+            // width on a phone, where it is the only way to another item.
+            <Combobox
+              compact
+              value={itemId}
+              onChange={(id) => {
+                if (id !== itemId) navigate(itemExplorerHref(id, range));
+              }}
+              options={itemOptions}
+              placeholder="Switch item"
+              searchPlaceholder="Find an item…"
+              containerClassName="w-full sm:w-64"
+            />
+          )}
+        </div>
       }
       isLoading={perfQuery.isLoading && historyQuery.isLoading}
       isRefetching={perfQuery.isFetching || historyQuery.isFetching}
@@ -435,131 +583,12 @@ export default function InventoryItemReportPage() {
       <DetailLayout
         aside={
           <>
-            <RailSection
-              title="Stock position"
-              action={
-                belowReorder ? (
-                  <StatusBadge status={STOCK_STATUS_DISPLAY.low.badge} label="Below reorder point" />
-                ) : undefined
-              }
-            >
-              <KeyValueList
-                items={[
-                  {
-                    label: 'On hand',
-                    value:
-                      onHand === null
-                        ? '—'
-                        : `${formatMetric('closingQty', onHand)}${facts ? ` ${unitWord(facts.unitOfMeasure, onHand)}` : ''}`,
-                    emphasis: true,
-                  },
-                  { label: 'Stock value', value: facts ? formatMoney(facts.stockValue) : '—', hidden: !facts },
-                  { label: 'Average cost', value: facts ? formatMoney(facts.unitCost) : '—', hidden: !facts },
-                  {
-                    label: 'Selling price',
-                    value: facts ? (
-                      <>
-                        {formatMoney(facts.sellingPrice)}
-                        {listMargin !== null && (
-                          <span
-                            className={cn(
-                              'block text-caption',
-                              listMargin < 0 ? 'text-danger' : 'text-text-tertiary',
-                            )}
-                          >
-                            {listMargin < 0
-                              ? `${Math.abs(listMargin).toFixed(1)}% below cost`
-                              : `${listMargin.toFixed(1)}% margin`}
-                          </span>
-                        )}
-                      </>
-                    ) : (
-                      '—'
-                    ),
-                    hidden: !facts || facts.sellingPrice <= 0,
-                  },
-                  {
-                    label: 'Reorder point',
-                    value: facts ? formatQty(facts.reorderPoint) : '—',
-                    hidden: !facts || facts.reorderPoint <= 0,
-                  },
-                  {
-                    label: 'Days of cover',
-                    value:
-                      cover === null ? (
-                        <span className="text-text-tertiary">No recent sales</span>
-                      ) : (
-                        <span className={cover > 0 && cover <= 14 ? 'text-warning' : undefined}>
-                          {cover === 0
-                            ? 'Out of stock'
-                            : cover > 365
-                              ? 'Over a year'
-                              : `${cover.toLocaleString('en-US')} day${cover === 1 ? '' : 's'}`}
-                        </span>
-                      ),
-                    hidden: !facts,
-                  },
-                  {
-                    label: 'Last sold',
-                    value: facts?.lastSoldDate ? (
-                      <>
-                        {formatShortDate(facts.lastSoldDate)}
-                        {sinceSold !== null && (
-                          <span className="block text-caption text-text-tertiary">
-                            {sinceSold === 0 ? 'Today' : `${sinceSold} day${sinceSold === 1 ? '' : 's'} ago`}
-                          </span>
-                        )}
-                      </>
-                    ) : (
-                      'Never'
-                    ),
-                    hidden: !facts,
-                  },
-                ]}
-              />
-            </RailSection>
-
-            {perf && (
-              <RailSection title="Top customers">
-                <RankedBars
-                  points={perf.customers.map((c, i) => ({
-                    key: c.customerId ?? `none-${i}`,
-                    label: c.customerName,
-                    value: c.revenue,
-                    hint: `${formatQty(c.unitsSold)} units · ${compactMoney(c.grossProfit)} gross profit`,
-                  }))}
-                  format={(v) => formatMoney(v)}
-                  hrefFor={
-                    customersAllowed
-                      ? (key) => (key.startsWith('none-') ? null : `/customers/${key}`)
-                      : undefined
-                  }
-                  emptyLabel="Nobody bought it in this window."
-                />
-                {perf.otherCustomers.count > 0 && (
-                  <p className="mt-sm text-caption text-text-tertiary">
-                    And {perf.otherCustomers.count} more · {formatMoney(perf.otherCustomers.revenue)}
-                  </p>
-                )}
-              </RailSection>
-            )}
-
-            {notes.length > 0 && (
-              <RailSection title="Notes">
-                <ul className="flex flex-col gap-sm">
-                  {notes.map((n) => (
-                    <li key={n} className="flex items-start gap-xs text-caption text-text-secondary">
-                      <Info className="mt-[2px] size-3.5 shrink-0 text-text-tertiary" aria-hidden="true" />
-                      {n}
-                    </li>
-                  ))}
-                </ul>
-              </RailSection>
-            )}
+            <ItemStockPosition facts={facts} onHand={onHand} cover={cover} sinceSold={sinceSold} />
+            {facts && margin && margin.price > 0 && <ItemPriceMargin facts={facts} totals={t} />}
           </>
         }
       >
-        {/* ── One chart card: the figures choose what the chart draws ─── */}
+        {/* ── Performance: the figures choose what the chart draws ─────── */}
         <Card className="overflow-hidden">
           <MetricTabs
             items={tabs}
@@ -600,36 +629,85 @@ export default function InventoryItemReportPage() {
               />
             )}
 
-            <div className="mt-xs flex flex-col gap-xxs border-t border-border-light pt-sm sm:flex-row sm:items-center sm:justify-between">
-              <p className="flex items-center gap-xs text-caption text-text-secondary">
-                {legend.length > 0 && def.kind !== 'ratio' && summary.readings > 1 && (
-                  <span aria-hidden="true" className="inline-block w-4 border-t border-dashed border-neutral-400" />
+            <div className="mt-xs flex flex-wrap items-center justify-between gap-x-lg gap-y-xxs border-t border-border-light pt-sm">
+              <p className="flex min-w-0 flex-wrap items-center gap-x-xs gap-y-xxs text-caption text-text-secondary">
+                {summary.average !== null && def.kind !== 'ratio' && summary.readings > 1 && (
+                  <span aria-hidden="true" className="inline-block w-4 shrink-0 border-t border-dashed border-neutral-400" />
                 )}
-                <span className="truncate">{legend.join(' · ') || ' '}</span>
+                {legend.map((l, i) => (
+                  <span key={l} className="whitespace-nowrap">
+                    {i > 0 && <span aria-hidden="true">· </span>}
+                    {l}
+                  </span>
+                ))}
               </p>
-              <p className="flex items-center gap-xs text-caption text-text-tertiary print:hidden">
-                <MousePointerClick className="size-4 shrink-0 text-primary" aria-hidden="true" />
-                Click a month to see its documents
-              </p>
+              {summary.readings > 0 && (
+                <p className="flex shrink-0 items-center gap-xs text-caption text-text-tertiary print:hidden">
+                  <MousePointerClick className="size-4 shrink-0 text-primary" aria-hidden="true" />
+                  Click a month to see its documents
+                </p>
+              )}
             </div>
           </div>
         </Card>
 
-        <Card className="overflow-hidden">
-          <PanelHeader
-            title="Monthly breakdown"
-            description="Every figure by month · choose a row to chart it"
-          />
-          <MetricTable
-            months={months}
-            metric={metric}
-            onMetric={(k) => update({ metric: k })}
-            selectedPeriod={selectedPeriod}
-            onPeriod={(period) => update({ month: period }, true)}
-            hidden={EXPLORER_METRICS.filter((m) => (m.group === 'sales' ? !perf : !history)).map((m) => m.key)}
-          />
-        </Card>
+        {/* ── Under the chart: what the revenue is made of, and every figure by month ── */}
+        <Tabs value={tab} onValueChange={(v) => update({ tab: v === 'revenue' ? null : v })}>
+          <TabsList className="print:hidden">
+            <TabsTrigger value="revenue">Revenue breakdown</TabsTrigger>
+            <TabsTrigger value="months">Monthly breakdown</TabsTrigger>
+          </TabsList>
+          <TabsContent value="revenue" className="pt-md">
+            {perf ? (
+              <ItemRevenueBreakdown
+                perf={perf}
+                dimension={channelsShown ? mix : 'customer'}
+                view={mixChart}
+                onDimension={(d) => update({ mix: d === 'customer' ? null : d })}
+                onView={(v) => update({ mixChart: v === 'pie' ? null : v })}
+                windowLabel={windowLabel}
+                unitOfMeasure={uom}
+                customerHref={customerHref}
+              />
+            ) : (
+              <Card className="p-xl text-center text-body-sm text-text-tertiary">
+                The sales behind this item could not be loaded.
+              </Card>
+            )}
+          </TabsContent>
+          <TabsContent value="months" className="pt-md">
+            <Card className="overflow-hidden">
+              <PanelHeader
+                title="Every figure, month by month"
+                description="Choose a row to chart it, or a month to see its documents"
+              />
+              <MetricTable
+                months={months}
+                metric={metric}
+                onMetric={(k) => update({ metric: k })}
+                selectedPeriod={selectedPeriod}
+                onPeriod={(period) => update({ month: period }, true)}
+                hidden={EXPLORER_METRICS.filter((m) => (m.group === 'sales' ? !perf : !history)).map((m) => m.key)}
+              />
+            </Card>
+          </TabsContent>
+        </Tabs>
       </DetailLayout>
+
+      {/* Last on every screen: what to bear in mind about the figures above. */}
+      {notes.length > 0 && (
+        <Card className="mt-lg px-lg py-md">
+          <h2 className="text-label-lg text-text-primary">About these figures</h2>
+          <ul className="mt-sm flex flex-col gap-sm">
+            {notes.map((n) => (
+              <li key={n} className="flex items-start gap-xs text-caption text-text-secondary">
+                <Info className="mt-[2px] size-3.5 shrink-0 text-text-tertiary" aria-hidden="true" />
+                {n}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <ItemMonthPanel
         itemId={itemId}
@@ -638,6 +716,10 @@ export default function InventoryItemReportPage() {
         range={selectedMonth ? monthRange(selectedMonth.period, range) : null}
         onClose={() => update({ month: null })}
       />
+
+      {facts?.imageUrl && (
+        <ItemPhotoDialog src={facts.imageUrl} title={itemName} open={photoOpen} onOpenChange={setPhotoOpen} />
+      )}
     </ReportShell>
   );
 }

@@ -1,35 +1,46 @@
-import { keepPreviousData, useQuery, type UseQueryResult } from '@tanstack/react-query';
-import { useMemo, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import type { UseQueryResult } from '@tanstack/react-query';
+import { BarChart3, PieChart, X } from 'lucide-react';
+import { useMemo, useRef } from 'react';
 
-import {
-  saveAgingPreference,
-  type AgingDetailParams,
-  type AgingParams,
-} from '@/networks/reports/agingNetwork';
+import type { AgingDetailParams } from '@/networks/reports/agingNetwork';
 
 import { Button } from '@/components/ui/Button';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
+import { TablePager } from '@/components/ui/DataTable';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Field';
 import { SearchInput } from '@/components/ui/SearchInput';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Select } from '@/components/ui/Select';
+import { useDocumentCompany } from '@/features/documents/useDocumentContext';
+import { AgingAgeBar } from '@/features/reports/AgingAgeBar';
 import { AgingChart } from '@/features/reports/AgingChart';
+import { AgingPartyActions } from '@/features/reports/AgingPartyActions';
 import { AgingPartyDocuments } from '@/features/reports/AgingPartyDocuments';
+import { AgingScheduleChart } from '@/features/reports/AgingScheduleChart';
 import { AgingSummary } from '@/features/reports/AgingSummary';
 import { AgingTable } from '@/features/reports/AgingTable';
 import { AgingTopParties } from '@/features/reports/AgingTopParties';
 import { BucketPresetPicker } from '@/features/reports/BucketPresetPicker';
+import { DonutChart } from '@/features/reports/DonutChart';
+import { FigureStrip } from '@/features/reports/FigureStrip';
+import { KpiCard } from '@/features/reports/KpiCard';
 import { ReportShell } from '@/features/reports/ReportShell';
 import { ReportTitleBlock } from '@/features/reports/ReportTitleBlock';
+import { cn } from '@/lib/cn';
+import { plainKpi } from '@/models/kpi';
 import {
+  AGING_QUICK_FILTERS,
   AGING_SORT_OPTIONS,
-  defaultAgingSort,
-  resolveSelectedBucket,
+  agingPage,
+  agingStatus,
+  quickFilterAgingRows,
   visibleAgingRows,
+  type AgingQuickFilter,
   type AgingSort,
   type TopAgingParty,
 } from '@/models/reportAging';
-import { csvAmount, csvFilename, downloadCsv, toCsv, type CsvRow } from '@/models/reportCsv';
-import { asOfLabel, formatReportDate } from '@/models/reportPeriod';
+import { csvAmount, csvFilename, csvHeaderBlock, downloadCsv, toCsv, type CsvRow } from '@/models/reportCsv';
+import { asOfLabel, formatReportDate, formatShortDate } from '@/models/reportPeriod';
 import {
   LEGACY_AGING_BUCKETS,
   notYetDueTotal,
@@ -38,6 +49,8 @@ import {
   type AgingReport,
   type AgingTotals,
 } from '@/serializers/reportSerializers';
+import { AGING_RAMP, rampSteps } from '@/theme/tokens';
+import { formatMoney } from '@/utils/money';
 
 /** Placeholder totals, so the table and chart render their frame while loading. */
 const ZERO_TOTALS: AgingTotals = {
@@ -84,7 +97,28 @@ export interface AgingReportViewProps {
   partyType: 'customer' | 'vendor';
   /** The bucket spec to pass through to the drill-down. */
   detailParams: AgingDetailParams;
+  /** Overdue only / Over limit / 90+ days — or none. */
+  quickFilter: AgingQuickFilter | null;
+  onQuickFilter: (filter: AgingQuickFilter | null) => void;
+  /** Bucket columns, or the account view (terms, limit, last payment, oldest due). */
+  columnsView: 'buckets' | 'account';
+  onColumnsView: (view: 'buckets' | 'account') => void;
+  /** Which picture: the aging by period, or the schedule of what falls due. */
+  chartView: 'age' | 'schedule';
+  onChartView: (view: 'age' | 'schedule') => void;
+  /** The age picture as a ring (the share each age holds) or as columns. */
+  ageChart: 'donut' | 'bars';
+  onAgeChart: (chart: 'donut' | 'bars') => void;
+  /** The table's page, 25 parties a page. */
+  page: number;
+  onPage: (page: number) => void;
 }
+
+const QUICK_LABELS: Record<AgingQuickFilter, string> = {
+  overdue: 'Overdue only',
+  'over-limit': 'Over limit',
+  '90plus': '90+ days',
+};
 
 /**
  * Both aging reports, which are the same report twice.
@@ -129,9 +163,21 @@ export function AgingReportView({
   onOpenParty,
   partyType,
   detailParams,
+  quickFilter,
+  onQuickFilter,
+  columnsView,
+  onColumnsView,
+  chartView,
+  onChartView,
+  ageChart,
+  onAgeChart,
+  page,
+  onPage,
 }: AgingReportViewProps) {
+  const company = useDocumentCompany();
   const tableRef = useRef<HTMLDivElement>(null);
   const report = query.data;
+  const insights = report?.insights ?? null;
   const totals = report?.totals;
   // Columns come from the payload; the classic five stand in only while the
   // first response is still in flight.
@@ -139,14 +185,29 @@ export function AgingReportView({
   const overdue = report ? overdueTotal(report) : 0;
   const notDue = report ? notYetDueTotal(report) : 0;
 
-  const allRows = report?.rows ?? [];
+  const allRows = useMemo(() => report?.rows ?? [], [report]);
   const visibleRows = useMemo(
-    () => visibleAgingRows({ rows: allRows, buckets, selectedBucket, sort, search }),
-    [allRows, buckets, selectedBucket, sort, search],
+    () =>
+      visibleAgingRows({
+        rows: quickFilterAgingRows(allRows, buckets, quickFilter, report?.asOfDate ?? ''),
+        buckets,
+        selectedBucket,
+        sort,
+        search,
+      }),
+    [allRows, buckets, quickFilter, report?.asOfDate, selectedBucket, sort, search],
   );
+  const paged = agingPage(visibleRows, page);
+  const asOfDate = report?.asOfDate ?? '';
+  const statusOf = (row: (typeof visibleRows)[number]) => agingStatus(row, buckets, asOfDate);
   const selectedLabel = buckets.find((b) => b.key === selectedBucket)?.label;
   const partyNoun = counterpartyHeader.toLowerCase();
-  const narrowed = Boolean(selectedBucket) || search.trim().length > 0;
+  const narrowed = Boolean(selectedBucket) || search.trim().length > 0 || quickFilter !== null;
+  // The account view and the limit filter need the v2 party facts.
+  const hasPartyFacts = !!insights;
+  const hasLimits = partyType === 'customer' && allRows.some((r) => r.creditLimit !== null);
+  const accountView = hasPartyFacts && columnsView === 'account';
+  const scheduleTitle = partyType === 'customer' ? 'Expected collections' : 'Cash required';
   const plural = (n: number) => `${n} ${partyNoun}${n === 1 ? '' : 's'}`;
   const asOf = asOfLabel(report?.asOfDate ?? '');
 
@@ -161,30 +222,49 @@ export function AgingReportView({
     );
   };
 
+  // What the table shows is what is exported: the same parties, the same
+  // columns, the same footer label.
+  const filterNote = [
+    selectedLabel ? `${selectedLabel} only` : null,
+    quickFilter ? QUICK_LABELS[quickFilter] : null,
+    search.trim() ? `Matching “${search.trim()}”` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const termsText = (raw: string) => raw || '';
+  const exportHeader = accountView
+    ? [counterpartyHeader, 'Terms', ...(hasLimits ? ['Credit limit', 'Over limit'] : []), 'Last payment date', 'Last payment amount', 'Oldest due', 'Total']
+    : [counterpartyHeader, ...buckets.map((b) => b.label), 'Total'];
+  const exportCells = (row: (typeof visibleRows)[number]) =>
+    accountView
+      ? [
+          row.customerName,
+          termsText(row.paymentTerms),
+          ...(hasLimits ? [csvAmount(row.creditLimit), row.overLimit ? 'Yes' : ''] : []),
+          row.lastPaymentDate ?? '',
+          csvAmount(row.lastPaymentAmount),
+          row.oldestDueDate ?? '',
+          csvAmount(row.total),
+        ]
+      : [row.customerName, ...buckets.map((b) => csvAmount(row.amounts[b.key] ?? 0)), csvAmount(row.total)];
+  const totalLabel = narrowed ? 'Total (all parties)' : 'Total';
+
   const exportCsv = () => {
     if (!report) return;
     const out: CsvRow[] = [
-      [title],
-      [asOfLabel(report.asOfDate)],
-      [],
-      [counterpartyHeader, ...buckets.map((b) => b.label), 'Total'],
+      ...csvHeaderBlock({
+        company: company.name,
+        report: title,
+        period: asOfLabel(report.asOfDate),
+        basis: filterNote || 'Accrual basis',
+      }),
+      exportHeader,
+      ...visibleRows.map(exportCells),
+      accountView
+        ? [totalLabel, ...exportHeader.slice(1, -1).map(() => ''), csvAmount(report.totals.total)]
+        : [totalLabel, ...buckets.map((b) => csvAmount(report.totals.amounts[b.key] ?? 0)), csvAmount(report.totals.total)],
     ];
-    for (const row of report.rows) {
-      out.push([
-        row.customerName,
-        ...buckets.map((b) => csvAmount(row.amounts[b.key] ?? 0)),
-        csvAmount(row.total),
-      ]);
-    }
-    out.push([
-      'Total',
-      ...buckets.map((b) => csvAmount(report.totals.amounts[b.key] ?? 0)),
-      csvAmount(report.totals.total),
-    ]);
-    return downloadCsv(
-      csvFilename(csvName, { asOfDate: report.asOfDate }),
-      toCsv(out),
-    );
+    return downloadCsv(csvFilename(csvName, { asOfDate: report.asOfDate }), toCsv(out));
   };
 
   return (
@@ -211,20 +291,25 @@ export function AgingReportView({
       }
       pdf={{
         periodLabel: asOfLabel(report?.asOfDate ?? ''),
-        cacheKey: String(query.dataUpdatedAt),
+        basis: filterNote || undefined,
+        cacheKey: [query.dataUpdatedAt, selectedBucket, quickFilter, search, columnsView, sort].join('|'),
         build: () => [
           {
             columns: [
               { header: counterpartyHeader, flex: 3 },
-              ...buckets.map((b) => ({ header: b.label, align: 'right' as const, flex: 1.5 })),
+              ...exportHeader.slice(1, -1).map((h) => ({ header: h, align: 'right' as const, flex: 1.5 })),
               { header: 'Total', align: 'right', flex: 1.7 },
             ],
             rows: [
-              ...(report?.rows ?? []).map((r) => ({
-                cells: [r.customerName, ...buckets.map((b) => r.amounts[b.key] ?? 0), r.total],
+              ...visibleRows.map((r) => ({
+                cells: accountView
+                  ? exportCells(r).map((c, i) => (i === exportCells(r).length - 1 ? r.total : c))
+                  : [r.customerName, ...buckets.map((b) => r.amounts[b.key] ?? 0), r.total],
               })),
               {
-                cells: ['Total', ...buckets.map((b) => report?.totals.amounts[b.key] ?? 0), report?.totals.total ?? 0],
+                cells: accountView
+                  ? [totalLabel, ...exportHeader.slice(1, -1).map(() => null), report?.totals.total ?? 0]
+                  : [totalLabel, ...buckets.map((b) => report?.totals.amounts[b.key] ?? 0), report?.totals.total ?? 0],
                 grand: true,
               },
             ],
@@ -245,49 +330,147 @@ export function AgingReportView({
     >
       <div className="flex flex-col gap-lg">
         <div className="print:hidden">
-          <AgingSummary
-            buckets={buckets}
-            totals={totals ?? ZERO_TOTALS}
-            rows={allRows}
-            notDue={notDue}
-            overdue={overdue}
-            partyNoun={partyNoun}
-          />
+          {insights ? (
+            // Reports v2: the server's figures, each judged against its rule
+            // of thumb on the server, and each with its working behind the ⓘ.
+            <FigureStrip>
+              <KpiCard
+                kpi={plainKpi('totalOpen', 'Total outstanding', insights.totalOpen, 'money', insights.assessments.overduePct)}
+                context={`${formatMoney(insights.overdue)} overdue${
+                  insights.overduePct !== null ? ` (${insights.overduePct.toFixed(1)}%)` : ''
+                } · ${plural(allRows.length)}`}
+                footer={totals ? <AgingAgeBar buckets={buckets} totals={totals} /> : undefined}
+              />
+              {insights.days ? (
+                <KpiCard kpi={insights.days} />
+              ) : (
+                <KpiCard kpi={plainKpi(partyType === 'customer' ? 'dso' : 'dpo', partyType === 'customer' ? 'Days sales outstanding' : 'Days payables outstanding', null, 'days')} />
+              )}
+              <KpiCard
+                kpi={plainKpi(
+                  'weightedAvgDaysOverdue',
+                  'Average days overdue',
+                  insights.weightedAvgDaysOverdue,
+                  'days',
+                  insights.assessments.weightedAvgDaysOverdue,
+                )}
+                context={insights.weightedAvgDaysOverdue === null ? 'Nothing is overdue' : 'Weighted by the balance overdue'}
+              />
+              <KpiCard
+                kpi={plainKpi(
+                  'top5SharePct',
+                  `Top 5 ${partyNoun}s`,
+                  insights.top5SharePct,
+                  'percent',
+                  insights.assessments.top5SharePct,
+                )}
+                context={partyType === 'customer' ? 'Share of what customers owe' : 'Share of what you owe'}
+              />
+            </FigureStrip>
+          ) : (
+            <AgingSummary
+              buckets={buckets}
+              totals={totals ?? ZERO_TOTALS}
+              rows={allRows}
+              notDue={notDue}
+              overdue={overdue}
+              partyNoun={partyNoun}
+            />
+          )}
         </div>
 
         {/* The two pictures. Screen-only, like the summary: the printed report
             is the table, and a chart resized for paper by a script mid-print
             is not something to hand an auditor. */}
+        <Tabs
+          value={insights ? chartView : 'age'}
+          onValueChange={(v) => onChartView(v === 'schedule' ? 'schedule' : 'age')}
+          className="print:hidden"
+        >
+          {insights && (
+            <TabsList>
+              <TabsTrigger value="age">By age</TabsTrigger>
+              <TabsTrigger value="schedule">{scheduleTitle}</TabsTrigger>
+            </TabsList>
+          )}
+          {insights && (
+            <TabsContent value="schedule">
+              <Card className="p-lg">
+                <CardTitle className="text-h5">{scheduleTitle}</CardTitle>
+                <CardDescription className="mt-[2px] text-caption text-text-tertiary">
+                  {partyType === 'customer'
+                    ? 'What customers owe, by when it falls due — overdue first'
+                    : 'What you owe suppliers, by when it falls due — overdue first'}
+                </CardDescription>
+                <div className="mt-md">
+                  <AgingScheduleChart schedule={insights.schedule} documentNoun={documentNoun} />
+                </div>
+              </Card>
+            </TabsContent>
+          )}
+          <TabsContent value="age" className={insights ? undefined : 'pt-0'}>
         <div className="grid gap-lg xl:grid-cols-5 print:hidden">
           <Card className="flex flex-col xl:col-span-3">
             <CardHeader className="items-center">
               <div className="min-w-0">
                 <CardTitle className="text-h5">
-                  Outstanding by period
+                  Outstanding by age
                   {selectedLabel && <span className="text-text-tertiary"> · {selectedLabel}</span>}
                 </CardTitle>
                 <CardDescription className="mt-[2px] text-caption text-text-tertiary">
                   {selectedLabel
                     ? 'The table shows this period only'
-                    : 'Select a bar to filter the table'}
+                    : `Choose a ${ageChart === 'donut' ? 'period' : 'bar'} to filter the table`}
                 </CardDescription>
               </div>
-              {selectedBucket && (
-                <Button variant="text" size="sm" onClick={() => onSelectBucket(null)}>
-                  Show all periods
-                </Button>
-              )}
+              <div className="flex shrink-0 items-center gap-xs">
+                {selectedBucket && (
+                  <Button variant="text" size="sm" onClick={() => onSelectBucket(null)}>
+                    Show all
+                  </Button>
+                )}
+                <SegmentedControl<'donut' | 'bars'>
+                  label="Chart type"
+                  size="sm"
+                  value={ageChart}
+                  onChange={onAgeChart}
+                  options={[
+                    { value: 'donut', label: <PieChart className="size-4" aria-hidden="true" />, ariaLabel: 'Ring chart' },
+                    { value: 'bars', label: <BarChart3 className="size-4" aria-hidden="true" />, ariaLabel: 'Bar chart' },
+                  ]}
+                />
+              </div>
             </CardHeader>
-            <div className="min-h-[18rem] flex-1 px-md pb-sm pt-md">
-              <AgingChart
-                labelled
-                className="h-full min-h-[16rem]"
-                buckets={buckets}
-                totals={totals ?? ZERO_TOTALS}
-                rows={allRows}
-                selectedBucket={selectedBucket}
-                onSelectBucket={onSelectBucket}
-              />
+            <div className="min-h-[18rem] flex-1 px-lg pb-md pt-md">
+              {ageChart === 'donut' ? (
+                <DonutChart
+                  title={`What ${partyType === 'customer' ? 'customers owe' : 'you owe'}, by age`}
+                  slices={buckets.map((b) => ({
+                    key: b.key,
+                    label: b.label,
+                    value: totals?.amounts[b.key] ?? 0,
+                    count: allRows.filter((r) => (r.amounts[b.key] ?? 0) > 0).length,
+                  }))}
+                  palette={rampSteps(buckets.length, AGING_RAMP)}
+                  total={totals?.total}
+                  centerLabel="Outstanding"
+                  labelHeader="Age"
+                  countLabel={plural}
+                  selectedKey={selectedBucket}
+                  onSelect={(key) => onSelectBucket(key === selectedBucket ? null : key)}
+                  selectVerb="Show only"
+                />
+              ) : (
+                <AgingChart
+                  labelled
+                  className="h-full min-h-[16rem]"
+                  buckets={buckets}
+                  totals={totals ?? ZERO_TOTALS}
+                  rows={allRows}
+                  selectedBucket={selectedBucket}
+                  onSelectBucket={onSelectBucket}
+                />
+              )}
             </div>
           </Card>
 
@@ -300,6 +483,8 @@ export function AgingReportView({
             onFindParty={findParty}
           />
         </div>
+          </TabsContent>
+        </Tabs>
 
         {/* The scroll target for the top-parties chart. */}
         <div ref={tableRef} className="scroll-mt-lg">
@@ -333,6 +518,25 @@ export function AgingReportView({
                     <X className="size-3.5" aria-hidden="true" />
                   </button>
                 )}
+                {AGING_QUICK_FILTERS.filter(
+                  (f) => (f !== 'over-limit' || hasLimits) && (f === 'overdue' || hasPartyFacts || f === '90plus'),
+                ).map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    aria-pressed={quickFilter === f}
+                    onClick={() => onQuickFilter(quickFilter === f ? null : f)}
+                    className={cn(
+                      'flex h-8 items-center gap-xxs rounded-full border px-sm text-label-md transition-colors',
+                      quickFilter === f
+                        ? 'border-primary bg-primary-tint text-primary'
+                        : 'border-border text-text-secondary hover:border-primary hover:text-primary',
+                    )}
+                  >
+                    {QUICK_LABELS[f]}
+                    {quickFilter === f && <X className="size-3.5" aria-hidden="true" />}
+                  </button>
+                ))}
                 <span className="text-caption text-text-tertiary">
                   {narrowed
                     ? `${visibleRows.length} of ${plural(allRows.length)}`
@@ -341,6 +545,18 @@ export function AgingReportView({
               </div>
 
               <div className="flex shrink-0 items-center gap-sm">
+                {hasPartyFacts && (
+                  <SegmentedControl<'buckets' | 'account'>
+                    label="Table columns"
+                    size="sm"
+                    value={columnsView}
+                    onChange={onColumnsView}
+                    options={[
+                      { value: 'buckets', label: 'Buckets' },
+                      { value: 'account', label: 'Account' },
+                    ]}
+                  />
+                )}
                 <Select
                   compact
                   value={sort}
@@ -352,17 +568,31 @@ export function AgingReportView({
             </div>
 
             <AgingTable
-              className="rounded-b-lg"
+              className={paged.pages > 1 ? undefined : 'rounded-b-lg'}
               buckets={buckets}
-              rows={visibleRows}
+              rows={paged.rows}
+              statusOf={hasPartyFacts ? statusOf : undefined}
               totals={totals ?? ZERO_TOTALS}
               counterpartyHeader={counterpartyHeader}
               selectedBucket={selectedBucket}
               onSelectBucket={onSelectBucket}
-              filtered={narrowed}
+              // The footer is every party's total; say so when some are on
+              // another page or filtered out.
+              filtered={narrowed || paged.pages > 1}
+              columnsView={accountView ? 'account' : 'buckets'}
+              showCreditLimit={hasLimits}
               expanded={expanded}
               onToggleParty={onToggleParty}
               renderDetail={(row) => (
+                <div>
+                  <div className="flex flex-wrap items-center justify-between gap-sm px-lg pt-sm print:hidden">
+                    <AgingPartyActions partyId={row.customerId} partyType={partyType} />
+                    {row.lastPaymentDate && (
+                      <span className="text-caption text-text-tertiary">
+                        Last paid {formatShortDate(row.lastPaymentDate)}
+                      </span>
+                    )}
+                  </div>
                 <AgingPartyDocuments
                   partyId={row.customerId}
                   partyType={partyType}
@@ -374,14 +604,21 @@ export function AgingReportView({
                   }
                   bucketLabel={selectedLabel}
                 />
+                </div>
               )}
             />
+
+            <div className="print:hidden">
+              <TablePager page={paged.page} totalPages={paged.pages} total={visibleRows.length} onPage={onPage} />
+            </div>
 
             {visibleRows.length === 0 && (
               <p className="border-t border-border-light px-lg py-lg text-center text-body-sm text-text-tertiary print:hidden">
                 {search.trim()
                   ? `No ${partyNoun} matches “${search.trim()}”${selectedLabel ? ` in ${selectedLabel}` : ''}.`
-                  : `No ${partyNoun} has anything in ${selectedLabel ?? 'this period'}.`}
+                  : quickFilter
+                    ? `No ${partyNoun} is ${QUICK_LABELS[quickFilter].toLowerCase().replace(' only', '')}.`
+                    : `No ${partyNoun} has anything in ${selectedLabel ?? 'this period'}.`}
               </p>
             )}
           </Card>
@@ -397,107 +634,5 @@ export function AgingReportView({
     </ReportShell>
   );
 }
-
-/**
- * Everything both aging pages need: the query, the bucket choice, and
- * remembering it.
- *
- * The preset starts as `null`, meaning "whatever this company's default is".
- * The server resolves the saved preference when the request names no preset and
- * echoes back the one it used, so the page opens on the company default without
- * a separate settings round trip — and the chips can show it without a
- * setState-in-effect, by falling through to what the response reported.
- */
-export const useAgingReport = (
-  key: string,
-  fetcher: (params: AgingParams) => Promise<AgingReport>,
-) => {
-  const [preset, setPreset] = useState<AgingPresetKey | null>(null);
-  const [customBuckets, setCustomBuckets] = useState('3,6,9,12');
-  const [selectedBucketRaw, setSelectedBucket] = useState<string | null>(null);
-  // `null` means "follow whatever the default is for the current selection",
-  // which is what lets the order switch to oldest-first when a bucket is picked
-  // without a setState inside an effect.
-  const [sortRaw, setSort] = useState<AgingSort | null>(null);
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [search, setSearch] = useState('');
-
-  // A custom preset with no boundaries is not sent: the server rejects it, and
-  // the user is mid-edit rather than mistaken.
-  const params: AgingParams =
-    preset === 'custom'
-      ? customBuckets.trim()
-        ? { preset: 'custom', buckets: customBuckets.trim() }
-        : {}
-      : preset
-        ? { preset }
-        : {};
-
-  const query = useQuery({
-    queryKey: ['reports', key, params],
-    queryFn: () => fetcher(params),
-    // Picking another bucket set keeps the current report on screen, dimmed,
-    // until the new one lands. Without this the new key starts with no data
-    // and the whole page drops to "Loading…" for the length of the request.
-    placeholderData: keepPreviousData,
-  });
-
-  // A bucket key only means something within the bucket set that produced it:
-  // `d31to60` exists under `monthly` and does not exist under `days3`. Validating
-  // against the live payload is what stops a stale selection from filtering the
-  // table to nothing beneath a chip naming a column that is not on screen.
-  const selectedBucket = resolveSelectedBucket(
-    selectedBucketRaw,
-    query.data?.buckets ?? LEGACY_AGING_BUCKETS,
-  );
-
-  // Changing the bucket set invalidates any selection made under the old one,
-  // and the order that selection implied.
-  const resetInvestigation = () => {
-    setSelectedBucket(null);
-    setSort(null);
-    // Open panels go too. Their documents were bucketed by the spec that is
-    // being replaced, so leaving them open would show rows labelled with
-    // columns that are no longer on screen — right figures, wrong headings.
-    setExpanded({});
-  };
-
-  return {
-    query,
-    // Falls through to the server's answer on the first load, when we asked for
-    // nothing and it applied the company default.
-    preset: preset ?? query.data?.preset ?? null,
-    customBuckets,
-    onPickPreset: (next: AgingPresetKey) => {
-      setPreset(next);
-      resetInvestigation();
-      void saveAgingPreference({ preset: next, buckets: customBuckets });
-    },
-    onApplyCustom: (buckets: string) => {
-      setCustomBuckets(buckets);
-      setPreset('custom');
-      resetInvestigation();
-      void saveAgingPreference({ preset: 'custom', buckets });
-    },
-    selectedBucket,
-    onSelectBucket: (next: string | null) => {
-      setSelectedBucket(next);
-      // The open panels were fetched for a different bucket filter, so their
-      // contents no longer match the row they sit under.
-      setExpanded({});
-    },
-    sort: sortRaw ?? defaultAgingSort(selectedBucket),
-    onChangeSort: setSort,
-    search,
-    onChangeSearch: setSearch,
-    expanded,
-    onToggleParty: (partyId: string) =>
-      setExpanded((prev) => ({ ...prev, [partyId]: !prev[partyId] })),
-    onOpenParty: (partyId: string) => setExpanded({ [partyId]: true }),
-    // What the drill-down must be told, so its buckets are the report's
-    // buckets. `selectedBucket` is validated against the live payload above.
-    detailParams: { ...params, ...(selectedBucket ? { bucket: selectedBucket } : {}) },
-  };
-};
 
 export default AgingReportView;

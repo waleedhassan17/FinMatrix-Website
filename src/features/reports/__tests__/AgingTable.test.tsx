@@ -23,7 +23,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { AgingTable } from '@/features/reports/AgingTable';
-import type { AgingBucketDef, AgingRow, AgingTotals } from '@/serializers/reportSerializers';
+import { NO_AGING_PARTY_FACTS, type AgingBucketDef, type AgingRow, type AgingTotals } from '@/serializers/reportSerializers';
 
 const BUCKETS: AgingBucketDef[] = [
   { key: 'current', label: 'Current', minDays: 0, maxDays: 0 },
@@ -42,6 +42,7 @@ const ROWS: AgingRow[] = [
     bucket31to60: 0,
     bucket61to90: 0,
     bucket90Plus: 0,
+    ...NO_AGING_PARTY_FACTS,
   },
 ];
 

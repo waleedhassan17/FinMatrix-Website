@@ -6,7 +6,14 @@
 // the one on screen are built from one list and cannot disagree.
 
 import type { DocCompany, DocParty, DocTotal } from '@/features/documents/documentModel';
-import type { StatementRowData } from '@/models/reportStatement';
+import {
+  cellValue,
+  formatPctCell,
+  isPercentColumn,
+  statementColumns,
+  type StatementColumn,
+} from '@/features/reports/statementColumns';
+import { rowKind, type StatementRowData } from '@/models/reportStatement';
 import { parenNegative } from '@/utils/money';
 
 /** A number is a figure and is formatted; a string is printed as it is. */
@@ -62,42 +69,57 @@ export const reportCellText = (cell: ReportCell): string =>
   typeof cell === 'number' ? parenNegative(cell, '') : (cell ?? '');
 
 /**
- * A financial statement's rows as a table: label and amount, or — when comparing
- * periods — label, current, prior and the change between them.
+ * A financial statement's rows as a table: the label, then one column per
+ * entry in `columns` — the same spec the screen table draws, so the PDF has
+ * exactly the columns the reader was looking at.
+ *
+ * `comparing` / `currentLabel` / `priorLabel` remain for callers that predate
+ * the column spec and mean current · prior · change · %.
  */
 export function statementSection(
   rows: StatementRowData[],
-  opts: { title?: string; comparing?: boolean; currentLabel?: string; priorLabel?: string } = {},
+  opts: {
+    title?: string;
+    comparing?: boolean;
+    currentLabel?: string;
+    priorLabel?: string;
+    columns?: StatementColumn[];
+  } = {},
 ): ReportSection {
-  const comparing = Boolean(opts.comparing);
-  const columns: ReportColumn[] = comparing
-    ? [
-        { header: '', flex: 4.5 },
-        { header: opts.currentLabel ?? 'Current', align: 'right', flex: 2 },
-        { header: opts.priorLabel ?? 'Prior', align: 'right', flex: 2 },
-        { header: 'Change', align: 'right', flex: 1.7 },
-      ]
-    : [
-        { header: '', flex: 6 },
-        { header: 'Amount', align: 'right', flex: 2 },
-      ];
+  const spec =
+    opts.columns ??
+    statementColumns({
+      comparing: opts.comparing,
+      currentLabel: opts.currentLabel,
+      priorLabel: opts.priorLabel,
+    });
+  const labelFlex = Math.max(3.5, 8 - spec.length * 1.2);
+  const columns: ReportColumn[] = [
+    { header: '', flex: labelFlex },
+    ...spec.map((c): ReportColumn => ({
+      header: c.header,
+      align: 'right',
+      flex: isPercentColumn(c.key) ? 1.1 : 2,
+    })),
+  ];
 
   return {
     title: opts.title,
     columns,
     rows: rows.map((r) => {
-      const hasAmount = r.amount !== undefined && r.amount !== null;
-      const cells: ReportCell[] = [r.label, hasAmount ? r.amount : null];
-      if (comparing) {
-        const hasPrior = r.prior !== undefined && r.prior !== null;
-        cells.push(hasPrior ? r.prior : null, hasAmount && hasPrior ? (r.amount as number) - (r.prior as number) : null);
+      const kind = rowKind(r);
+      const cells: ReportCell[] = [r.label];
+      for (const c of spec) {
+        const value = kind === 'heading' ? null : cellValue(r, c.key);
+        // Percentages are text — `reportCellText` would print a number as money.
+        cells.push(isPercentColumn(c.key) ? formatPctCell(value) || null : value);
       }
       return {
         cells,
         bold: r.bold,
-        total: r.isTotal,
-        grand: r.isGrand,
-        heading: !hasAmount && Boolean(r.bold) && !r.isTotal && !r.isGrand,
+        total: kind === 'subtotal',
+        grand: kind === 'grand',
+        heading: kind === 'heading' && Boolean(r.bold),
         depth: r.depth,
       };
     }),

@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, MousePointerClick } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, MousePointerClick, X } from 'lucide-react';
 import { useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -84,6 +84,23 @@ export interface InventoryItemsTableProps {
  * The view — search, category, filter, sort and page — belongs to the page's
  * URL, so coming Back from an item returns to exactly this list.
  */
+/** One filter in force, with its own way out. */
+function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
+  return (
+    <span className="inline-flex h-7 items-center gap-xxs rounded-full border border-primary bg-primary-tint pr-xxs pl-sm text-label-md text-primary">
+      {label}
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={`Remove the filter ${label}`}
+        className="inline-flex size-5 items-center justify-center rounded-full hover:bg-primary-100"
+      >
+        <X className="size-3.5" aria-hidden="true" />
+      </button>
+    </span>
+  );
+}
+
 export function InventoryItemsTable({
   rows,
   showSales,
@@ -168,6 +185,35 @@ export function InventoryItemsTable({
           Select any item to explore its monthly sales, profit and stock.
         </p>
       </div>
+
+      {filtered && (
+        // Every narrowing in force, each removable on its own — the way back to
+        // the whole list is never a guess.
+        <div className="flex flex-wrap items-center gap-xs border-t border-border-light px-lg py-xs print:hidden">
+          <span className="text-caption text-text-tertiary">
+            Showing {shown.length.toLocaleString('en-US')} of {rows.length.toLocaleString('en-US')} items
+          </span>
+          {query.category !== '' && (
+            <FilterChip label={`Category: ${query.category}`} onRemove={() => onQuery({ category: '' })} />
+          )}
+          {query.filter !== 'all' && (
+            <FilterChip
+              label={STOCK_FILTERS.find((f) => f.key === query.filter)?.label ?? query.filter}
+              onRemove={() => onQuery({ filter: 'all' })}
+            />
+          )}
+          {query.search.trim() !== '' && (
+            <FilterChip label={`Matching “${query.search.trim()}”`} onRemove={() => onQuery({ search: '' })} />
+          )}
+          <button
+            type="button"
+            onClick={() => onQuery({ search: '', category: '', filter: 'all' })}
+            className="ml-auto text-label-md text-text-link hover:underline"
+          >
+            Clear all
+          </button>
+        </div>
+      )}
 
       <div className="overflow-x-auto border-t border-border-light">
         <table className="w-full border-collapse">
@@ -365,6 +411,8 @@ function Cell({ row: r, column }: { row: ValuationRow; column: SortKey }) {
         <span className={cn('text-body-sm', r.qty <= 0 ? 'text-warning' : 'text-text-primary')}>{qty(r.qty)}</span>
       );
     case 'value':
+      // An item the as-of record could not value: a dash, never a guess.
+      if (r.valueKnown === false) return dash;
       return <span className="text-label-md text-text-primary">{formatAmount(r.value)}</span>;
     case 'revenue':
       return r.revenue === 0 ? dash : <span className="text-body-sm text-text-primary">{formatAmount(r.revenue)}</span>;

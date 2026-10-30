@@ -8,7 +8,7 @@ import { AGING_RAMP, rampSteps } from '@/theme/tokens';
 import { formatAmount, formatMoney } from '@/utils/money';
 
 /** How many parties get a bar before the rest fold into one line. */
-const PARTY_LIMIT = 10;
+const PARTY_LIMIT = 8;
 
 export interface AgingTopPartiesProps {
   buckets: AgingBucketDef[];

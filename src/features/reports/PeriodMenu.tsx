@@ -1,6 +1,6 @@
 import * as Popover from '@radix-ui/react-popover';
 import { CalendarRange, Check, ChevronDown } from 'lucide-react';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 
 import { Button } from '@/components/ui/Button';
 import { DateField } from '@/components/ui/Field';
@@ -31,6 +31,8 @@ export interface PeriodMenuProps {
   shortLabels?: Partial<Record<PeriodPresetKey, string>>;
   /** Names what the period governs — "Sales period". */
   label?: string;
+  /** A short fact after the dates — what the figures are compared with. */
+  note?: ReactNode;
   className?: string;
 }
 
@@ -89,6 +91,7 @@ export function PeriodMenu({
   layout = 'menu',
   shortLabels = {},
   label,
+  note,
   className,
 }: PeriodMenuProps) {
   const [open, setOpen] = useState(false);
@@ -223,6 +226,12 @@ export function PeriodMenu({
       )}
 
       <span className="text-body-sm text-text-tertiary tabular">{rangeText(value)}</span>
+      {note && (
+        <span className="flex items-center gap-x-sm text-body-sm text-text-tertiary">
+          <span aria-hidden="true" className="size-1 rounded-full bg-border-strong" />
+          {note}
+        </span>
+      )}
     </div>
   );
 }

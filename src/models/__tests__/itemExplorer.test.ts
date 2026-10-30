@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
+import { OTHER_KEY } from '@/models/chartSlices';
 import {
   EXPLORER_METRICS,
+  STOCK_BADGE,
   buildExplorerMonths,
   changeTone,
+  comparisonCaption,
+  coverText,
   daysOfCover,
   daysSince,
   defaultMetric,
@@ -11,13 +15,24 @@ import {
   formatChange,
   formatMetric,
   formatMetricCompact,
+  hasChannelBreakdown,
+  itemCover,
   metricChange,
   monthOnMonth,
+  monthsWithSales,
   periodValue,
+  priceAndMargin,
+  returnsText,
+  revenueBreakdown,
+  stockBadge,
+  stockMeter,
   summarizeMetric,
+  unitsText,
+  vsListText,
 } from '@/models/itemExplorer';
 import type {
   InventoryItemHistory,
+  ItemFacts,
   ItemPerformance,
   ItemPerformancePoint,
 } from '@/serializers/reportSerializers';
@@ -49,7 +64,9 @@ const PERF: ItemPerformance = {
   estimatedCogsShare: 0,
   item: null,
   customers: [],
-  otherCustomers: { count: 0, unitsSold: 0, revenue: 0, grossProfit: 0 },
+  otherCustomers: { count: 0, unitsSold: 0, revenue: 0, grossProfit: 0, sharePct: null },
+  channels: [],
+  returns: null,
 };
 
 const HISTORY: InventoryItemHistory = {
@@ -68,6 +85,28 @@ const HISTORY: InventoryItemHistory = {
 };
 
 const MONTHS = buildExplorerMonths(PERF, HISTORY);
+
+const facts = (over: Partial<ItemFacts> = {}): ItemFacts => ({
+  category: 'FMCG',
+  unitOfMeasure: 'unit',
+  sellingPrice: 2350,
+  unitCost: 1800,
+  qtyOnHand: 45,
+  stockValue: 81000,
+  reorderPoint: 20,
+  isActive: true,
+  lastSoldDate: '2026-07-24',
+  imageUrl: null,
+  thumbnailUrl: null,
+  location: null,
+  stockStatus: 'ok',
+  suggestedOrderQty: null,
+  daysOfCover: null,
+  cover: null,
+  deadStock: false,
+  lastOutboundDate: '2026-07-24',
+  ...over,
+});
 
 describe('buildExplorerMonths', () => {
   it('joins sales and stock by period', () => {
@@ -205,9 +244,138 @@ describe('stock cover', () => {
     expect(daysOfCover(0, 20, RANGE, TODAY)).toBe(0);
   });
 
+  it('says nothing about an item out of stock that nobody is buying', () => {
+    expect(daysOfCover(0, 0, RANGE, TODAY)).toBeNull();
+  });
+
+  it('words the cover the way the rail prints it', () => {
+    expect(coverText(null)).toBe('No recent sales');
+    expect(coverText(0)).toBe('Out of stock');
+    expect(coverText(1)).toBe('1 day');
+    expect(coverText(1200)).toBe('Over a year');
+    expect(coverText(365)).toBe('365 days');
+  });
+
+  it("takes the server's cover and verdict, and guesses no verdict without one", () => {
+    const verdict = { level: 'risk' as const, guide: 'Over four months ties up cash.' };
+    expect(itemCover(facts({ daysOfCover: 387, cover: verdict }), 35, RANGE, TODAY)).toEqual({ days: 387, assessment: verdict });
+    expect(itemCover(facts({ daysOfCover: null, cover: verdict }), 35, RANGE, TODAY).days).toBeNull();
+    // An older server sent neither: the same arithmetic, and no pill.
+    const old = facts({ qtyOnHand: 30 });
+    delete old.daysOfCover;
+    expect(itemCover(old, 20, RANGE, TODAY)).toEqual({ days: 15, assessment: null });
+  });
+
   it('counts days since a sale', () => {
     expect(daysSince('2026-09-01', TODAY)).toBe(9);
     expect(daysSince(null, TODAY)).toBeNull();
+  });
+});
+
+describe('the item today', () => {
+  it('shows one badge, the most urgent first', () => {
+    expect(stockBadge(facts({ qtyOnHand: 0, stockStatus: 'out', deadStock: false }))).toBe('out');
+    // Dead stock outranks low: ordering more of it is the wrong advice.
+    expect(stockBadge(facts({ qtyOnHand: 5, stockStatus: 'low', deadStock: true }))).toBe('dead');
+    expect(stockBadge(facts({ qtyOnHand: 5, stockStatus: 'low' }))).toBe('low');
+    expect(stockBadge(facts({ qtyOnHand: 45, stockStatus: 'ok' }))).toBe('ok');
+    // An inactive item says only that, as its record page does.
+    expect(stockBadge(facts({ isActive: false, stockStatus: 'out', qtyOnHand: 0 }))).toBe('inactive');
+  });
+
+  it('works the status out from the figures for a server that did not send it', () => {
+    expect(stockBadge(facts({ stockStatus: null, qtyOnHand: 10, reorderPoint: 20 }))).toBe('low');
+    expect(stockBadge(facts({ stockStatus: null, qtyOnHand: 0, reorderPoint: 0 }))).toBe('out');
+  });
+
+  it('labels each badge in the shared status words', () => {
+    expect(STOCK_BADGE.low.label).toBe('Low stock');
+    expect(STOCK_BADGE.dead).toMatchObject({ label: 'Dead stock', hint: 'Nothing out in 180 days' });
+  });
+
+  it('counts units in the item’s own unit', () => {
+    expect(unitsText(45)).toBe('45 units');
+    expect(unitsText(1)).toBe('1 unit');
+    expect(unitsText(2.5, 'kg')).toBe('2.5 kg');
+  });
+
+  it('places on hand and the reorder point on one bar, with room either side', () => {
+    const m = stockMeter(45, 20)!;
+    expect(m.headroom).toBe(25);
+    expect(m.fillPct).toBeCloseTo(90.91, 1);
+    expect(m.tickPct).toBeCloseTo(40.4, 1);
+    expect(stockMeter(5, 20)).toMatchObject({ fillPct: 12.5, tickPct: 50, headroom: -15 });
+    expect(stockMeter(10, 0)).toBeNull();
+  });
+
+  it('sets the list price against cost, and against what it really sold for', () => {
+    const p = priceAndMargin(facts({ sellingPrice: 2350, unitCost: 1800 }), { revenue: 82250, unitsSold: 35 });
+    expect(p).toMatchObject({ margin: 550, marginPct: 23.4, realised: 2350, vsListPct: 0 });
+    expect(p.costShare).toBeCloseTo(76.6, 1);
+    expect(vsListText(p.vsListPct)).toBe('At list price');
+    expect(vsListText(-4.21)).toBe('4.2% below list');
+    expect(vsListText(1.3)).toBe('1.3% above list');
+    // Sold below cost: a negative margin, the bar all cost.
+    const below = priceAndMargin(facts({ sellingPrice: 100, unitCost: 120 }), { revenue: 0, unitsSold: 0 });
+    expect(below).toMatchObject({ margin: -20, marginPct: -20, costShare: 100, realised: null, vsListPct: null });
+  });
+
+  it('counts the months that traded', () => {
+    expect(monthsWithSales(MONTHS)).toBe(2);
+  });
+
+  it('states the comparison once, or why there is none', () => {
+    const r = { startDate: '2026-01-01', endDate: '2026-10-28' };
+    expect(comparisonCaption(r, false)).toBe('Compared with the prior 10 months');
+    expect(comparisonCaption(r, true)).toBe('No sales in the prior 10 months to compare with');
+    expect(comparisonCaption({ startDate: '2026-01-15', endDate: '2026-02-14' }, false)).toBe('Compared with the prior period');
+    expect(comparisonCaption(r, null)).toBeNull();
+  });
+});
+
+describe('revenueBreakdown', () => {
+  const withBuyers: ItemPerformance = {
+    ...PERF,
+    totals: { ...PERF.totals, revenue: 1000 },
+    customers: [
+      { customerId: 'k1', customerName: 'Karim Store', unitsSold: 5, revenue: 500, grossProfit: 100, sharePct: 50 },
+      { customerId: null, customerName: '(no customer)', unitsSold: 2, revenue: 200, grossProfit: 40, sharePct: 20 },
+    ],
+    otherCustomers: { count: 4, unitsSold: 9, revenue: 300, grossProfit: 60, sharePct: 30 },
+    channels: [
+      { key: 'invoice', unitsSold: 10, revenue: 900, grossProfit: 180, documents: 6, sharePct: 85.71 },
+      { key: 'delivery', unitsSold: 2, revenue: 150, grossProfit: 30, documents: 1, sharePct: 14.29 },
+    ],
+    returns: { unitsSold: -1, revenue: -50, grossProfit: -10, documents: 1 },
+  };
+
+  it("keeps the server's top customers in order, with Other last however large", () => {
+    const b = revenueBreakdown(withBuyers, 'customer');
+    expect(b.slices.map((x) => x.key)).toEqual(['k1', 'none-1', OTHER_KEY]);
+    expect(b.slices[2]).toMatchObject({ label: 'Other (4)', value: 300, count: 9, sharePct: 30 });
+    expect(b).toMatchObject({ total: 1000, donut: true });
+  });
+
+  it('splits the sales by channel, before returns', () => {
+    const b = revenueBreakdown(withBuyers, 'channel');
+    expect(b.slices.map((x) => [x.label, x.value])).toEqual([['Invoices', 900], ['Deliveries', 150]]);
+    expect(b.total).toBe(1050);
+    expect(returnsText(withBuyers.returns)).toBe('Returns (Rs 50.00) · 1 unit — taken off revenue');
+    expect(returnsText(null)).toBeNull();
+  });
+
+  it('falls back to bars when a customer returned more than they bought', () => {
+    const b = revenueBreakdown(
+      { ...withBuyers, customers: [{ ...withBuyers.customers[0], revenue: -20, sharePct: null }] },
+      'customer',
+    );
+    expect(b.donut).toBe(false);
+  });
+
+  it('offers the channel view only when the item went out both ways', () => {
+    expect(hasChannelBreakdown(withBuyers)).toBe(true);
+    expect(hasChannelBreakdown({ ...withBuyers, channels: [withBuyers.channels![0]] })).toBe(false);
+    expect(hasChannelBreakdown({ ...withBuyers, channels: null })).toBe(false);
   });
 });
 

@@ -123,7 +123,7 @@ describe('figures', () => {
 describe('valuationRows', () => {
   it('falls back to the snapshot, with empty sales, when there is no performance', () => {
     const rows = valuationRows(
-      { rows: [{ itemId: 'a', itemName: 'A', sku: 'A1', category: 'C', qty: 2, cost: 5, value: 10 }], byCategory: [], totalValue: 10 },
+      { rows: [{ itemId: 'a', itemName: 'A', sku: 'A1', category: 'C', qty: 2, cost: 5, value: 10, valueKnown: true }], byCategory: [], totalValue: 10, asOfDate: '', ledgerTie: null, coverage: null },
       undefined,
     );
     expect(rows[0]).toMatchObject({ qty: 2, unitCost: 5, value: 10, revenue: 0, marginPct: null });

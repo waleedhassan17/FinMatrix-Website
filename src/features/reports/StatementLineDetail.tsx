@@ -2,33 +2,13 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 
 import { Skeleton } from '@/components/ui/Skeleton';
+import { documentHref } from '@/features/reports/documentRoutes';
 import type { ReportRange } from '@/models/reportPeriod';
 import { getStatementLineEntries } from '@/networks/reports/profitLossNetwork';
 import { formatShortDate } from '@/models/reportPeriod';
 import { parenNegative } from '@/utils/money';
 
 const PAGE_LIMIT = 50;
-
-/**
- * Where the record behind a ledger row lives.
- *
- * Only sources that HAVE a page appear. A payment or a delivery leg leaves the
- * row as plain text rather than linking somewhere that cannot show it.
- */
-const SOURCE_PATHS: Record<string, (id: string) => string> = {
-  invoice: (id) => `/invoices/${id}`,
-  invoice_void: (id) => `/invoices/${id}`,
-  bill: (id) => `/bills/${id}`,
-  bill_void: (id) => `/bills/${id}`,
-  credit_memo: (id) => `/credit-memos/${id}`,
-  credit_memo_void: (id) => `/credit-memos/${id}`,
-  credit_memo_refund: (id) => `/credit-memos/${id}`,
-  vendor_credit: (id) => `/vendor-credits/${id}`,
-  vendor_credit_void: (id) => `/vendor-credits/${id}`,
-  purchase_order: (id) => `/purchase-orders/${id}`,
-  po_receipt: (id) => `/purchase-orders/${id}`,
-  journal_entry: (id) => `/journal-entries/${id}`,
-};
 
 export interface StatementLineDetailProps {
   accountCode: string;
@@ -120,7 +100,7 @@ export function StatementLineDetail({
       <table className="w-full border-collapse">
         <tbody>
           {entries.map((e) => {
-            const href = SOURCE_PATHS[e.sourceType]?.(e.sourceId);
+            const href = documentHref(e.sourceType, e.sourceId);
             // The DOCUMENT leads, not the journal entry. Asked what is in Sales
             // Revenue, the answer is INV-2026-0001 for Acme Ltd — JE-005 names
             // the posting, which is not what anyone came for.

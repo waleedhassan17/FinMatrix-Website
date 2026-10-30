@@ -92,21 +92,19 @@ export interface AsOfPickerProps {
   value: string;
   onChange: (asOfDate: string) => void;
   className?: string;
+  /** "As of" unless the report has its own word for the date. */
+  label?: string;
+  /** What the date means on this report — a statement closes on it; stock is valued at it. */
+  hint?: string;
 }
 
 /**
  * A single date, for the statements that close AS OF a moment rather than
  * covering a span — the balance sheet being the one that matters.
  */
-export function AsOfPicker({ value, onChange, className }: AsOfPickerProps) {
+export function AsOfPicker({ value, onChange, className, label = 'As of', hint = 'The date the statement closes on.' }: AsOfPickerProps) {
   return (
-    <DateField
-      label="As of"
-      value={value}
-      onChange={onChange}
-      containerClassName={cn('w-44', className)}
-      hint="The date the statement closes on."
-    />
+    <DateField label={label} value={value} onChange={onChange} containerClassName={cn('w-44', className)} hint={hint} />
   );
 }
 

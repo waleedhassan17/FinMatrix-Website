@@ -29,7 +29,9 @@ const PERF = {
   estimatedCogsShare: 0,
   item: null,
   customers: [],
-  otherCustomers: { count: 0, unitsSold: 0, revenue: 0, grossProfit: 0 },
+  otherCustomers: { count: 0, unitsSold: 0, revenue: 0, grossProfit: 0, sharePct: null },
+  channels: [],
+  returns: null,
 } satisfies ItemPerformance;
 
 const MONTHS = buildExplorerMonths(PERF, undefined);

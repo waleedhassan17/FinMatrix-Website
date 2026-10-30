@@ -455,6 +455,40 @@ export const CHART_SERIES = [
 ] as const;
 
 /**
+ * Categorical palette, for slices and series that have an IDENTITY — expense
+ * accounts, stock categories and locations, customers, cash in against cash
+ * out. Built from the brand rather than borrowed: it leads with the brand's
+ * navy and teal (each lifted just enough to read as a colour, not a grey, in a
+ * chart), keeps to their cool family — a sky blue, a slate indigo, a mint —
+ * and allows one warm accent, a muted gold, so a chart sits in the same quiet
+ * register as the rest of the product. Three-series charts take navy, teal
+ * and gold: the gold line is the one thing that stands apart.
+ *
+ * Six hues, assigned in this order and never cycled: a seventh category folds
+ * into "Other" (CATEGORY_OTHER), so a colour always means one thing.
+ *
+ * Validated with the dataviz validator on white, light mode: every slot inside
+ * the lightness band (OKLCH L 0.43–0.77) and over the chroma floor; worst
+ * adjacent pair ΔE 12.0 under protanopia (target 8) and 17.2 for normal vision
+ * (floor 15), the wrap-around pair included (a full donut closes on itself).
+ * Gold, sky and mint sit below 3:1 on white, so every chart that uses them
+ * names each slice in a legend with its value, and offers a table.
+ *
+ * CHART_SERIES above failed the same check (violet against blue, ΔE 0.4 under
+ * deuteranopia) and stays only for the landing page's brand art.
+ *
+ * Identical to CATEGORY_PALETTE in the app's theme.ts.
+ */
+export const CATEGORY_PALETTE = ['#235E93', '#079487', '#C3963B', '#6BB6EE', '#505BA7', '#54C8B1'] as const;
+
+/**
+ * The pale grey "Other" takes — the tail of a ranked list, never a category of
+ * its own. Pale on purpose: it recedes, and it sits at least ΔE 15 from every
+ * slot above (8.5 under colour-blind simulation), so it is never mistaken for one.
+ */
+export const CATEGORY_OTHER = palette.neutral300;
+
+/**
  * Sequential ramp for ORDERED data, light → dark.
  *
  * CHART_SERIES is categorical: five hues chosen to be told APART, for series

@@ -5,7 +5,8 @@ import { toast } from 'sonner';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { reportPdfBlob } from '@/features/documents/documentPdf';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { generatedStamp, reportPdfBlob } from '@/features/documents/documentPdf';
 import { useDocumentCompany } from '@/features/documents/useDocumentContext';
 import type { ReportSection } from '@/features/reports/reportPdfTable';
 import { DocumentActions } from '@/features/share/DocumentActions';
@@ -15,6 +16,8 @@ export interface ReportPdfOptions {
   /** "Jan 1, 2026 – Sep 13, 2026" or "As of Sep 13, 2026". */
   periodLabel: string;
   basis?: string;
+  /** "Compared with December 31, 2025", when a comparison is on screen. */
+  comparisonLabel?: string | null;
   /** Changes whenever the figures or the controls do, so a stale PDF is never reused. */
   cacheKey: string;
   /** The report's tables, from the same rows the screen draws. */
@@ -24,6 +27,10 @@ export interface ReportPdfOptions {
 export interface ReportShellProps {
   title: string;
   subtitle?: string;
+  /** Beside the title: a record's badge — an item's stock status. */
+  status?: ReactNode;
+  /** Left of the title: what the report is about, at a glance — an item's photo. */
+  leading?: ReactNode;
   /**
    * Short facts under the title, separated by dots — "As of 24 Sep 2026",
    * "Accrual basis". Where a report states its terms, instead of a paragraph.
@@ -88,6 +95,8 @@ export interface ReportShellProps {
 export function ReportShell({
   title,
   subtitle,
+  status,
+  leading,
   meta,
   controls,
   actions,
@@ -126,6 +135,8 @@ export function ReportShell({
         className="print:hidden"
         back={backLink}
         title={title}
+        status={status}
+        leading={leading}
         description={subtitle}
         meta={meta}
         actions={
@@ -153,6 +164,16 @@ export function ReportShell({
                     periodLabel: pdf.periodLabel,
                     basis: pdf.basis,
                     company,
+                    // The header block: what the statement is and when this
+                    // copy was produced, the same facts the CSV opens with.
+                    meta: [
+                      { label: 'Period', value: pdf.periodLabel },
+                      ...(pdf.basis ? [{ label: 'Basis', value: pdf.basis }] : []),
+                      ...(pdf.comparisonLabel
+                        ? [{ label: 'Comparison', value: pdf.comparisonLabel.replace(/^Compared with /, '') }]
+                        : []),
+                      { label: 'Generated', value: generatedStamp() },
+                    ],
                     sections: pdf.build(),
                   })
                 }
@@ -172,7 +193,28 @@ export function ReportShell({
       {controls && <div className="print:hidden">{controls}</div>}
 
       {isLoading && (
-        <p className="text-body-sm text-text-secondary">Loading…</p>
+        // The page's shape while the first figures load — a strip of headline
+        // figures over a statement — so nothing jumps when they land.
+        <div role="status" aria-label="Loading the report" className="flex flex-col gap-lg">
+          <Card className="grid grid-cols-2 gap-px overflow-hidden lg:grid-cols-4">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="flex flex-col gap-xs bg-surface px-lg py-md">
+                <Skeleton className="h-3.5 w-24" />
+                <Skeleton className="h-6 w-32" />
+                <Skeleton className="h-3 w-20" />
+              </div>
+            ))}
+          </Card>
+          <Card className="flex flex-col gap-sm p-lg">
+            <Skeleton className="h-5 w-48" />
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="flex items-center justify-between gap-lg">
+                <Skeleton className="h-4 w-1/3" />
+                <Skeleton className="h-4 w-24" />
+              </div>
+            ))}
+          </Card>
+        </div>
       )}
 
       {!isLoading && error && (

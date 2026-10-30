@@ -306,3 +306,75 @@ export const overduePartyCount = (rows: AgingRow[], buckets: AgingBucketDef[]): 
   const late = buckets.filter((b) => b.minDays > 0).map((b) => b.key);
   return rows.filter((row) => late.some((k) => (row.amounts[k] ?? 0) > 0)).length;
 };
+
+// ─── Quick filters (reports v2) ─────────────────────────────────────────────
+// Narrow the table by a fact about each party rather than by a column:
+// anything overdue, over its credit limit, or more than 90 days late. Like
+// the bucket filter, they hide rows and never re-add anything — the footer
+// stays the server's total, relabelled.
+
+export type AgingQuickFilter = 'overdue' | 'over-limit' | '90plus';
+
+export const AGING_QUICK_FILTERS: readonly AgingQuickFilter[] = ['overdue', 'over-limit', '90plus'];
+
+const daysBetween = (fromIso: string, toIso: string): number =>
+  Math.round(
+    (new Date(`${toIso}T00:00:00`).getTime() - new Date(`${fromIso}T00:00:00`).getTime()) / 86_400_000,
+  );
+
+/**
+ * Whether a party has anything more than 90 days past due. Read from its
+ * oldest due date when the server sends one; otherwise from the buckets, where
+ * a bucket that starts beyond 90 days says so on its own.
+ */
+/**
+ * Something 90 or more days past due — "90+ days", the same rule as the
+ * app's filter. The oldest due date answers it under any preset; without one,
+ * a bucket that starts at 90 days or later does.
+ */
+const over90 = (row: AgingRow, buckets: AgingBucketDef[], asOfDate: string): boolean => {
+  if (row.oldestDueDate && asOfDate) return daysBetween(row.oldestDueDate, asOfDate) >= 90;
+  return buckets.some((b) => b.minDays >= 90 && (row.amounts[b.key] ?? 0) > 0);
+};
+
+export const quickFilterAgingRows = (
+  rows: AgingRow[],
+  buckets: AgingBucketDef[],
+  filter: AgingQuickFilter | null,
+  asOfDate: string,
+): AgingRow[] => {
+  if (!filter) return rows;
+  if (filter === 'over-limit') return rows.filter((r) => r.overLimit);
+  if (filter === '90plus') return rows.filter((r) => over90(r, buckets, asOfDate));
+  return rows.filter((r) => buckets.some((b) => b.minDays > 0 && (r.amounts[b.key] ?? 0) > 0));
+};
+
+/** Where a party stands, for the chip beside its name. */
+export type AgingStatus = 'current' | 'overdue' | '90plus';
+
+export const AGING_STATUS_LABEL: Record<AgingStatus, string> = {
+  current: 'Current',
+  overdue: 'Overdue',
+  '90plus': '90+ days',
+};
+
+/**
+ * Current when nothing is past due; 90+ when the oldest amount is more than
+ * ninety days late (by the oldest due date when the server sent it, else by
+ * the buckets); overdue otherwise — the same tests as the quick filters, so a
+ * chip and a filter can never disagree about a party.
+ */
+export const agingStatus = (row: AgingRow, buckets: AgingBucketDef[], asOfDate: string): AgingStatus => {
+  if (over90(row, buckets, asOfDate)) return '90plus';
+  return buckets.some((b) => b.minDays > 0 && (row.amounts[b.key] ?? 0) > 0) ? 'overdue' : 'current';
+};
+
+/** Rows per page of the aging table. */
+export const AGING_PAGE_SIZE = 25;
+
+/** One page of rows, the page clamped to the ones there are. */
+export const agingPage = <T>(rows: readonly T[], page: number, size = AGING_PAGE_SIZE) => {
+  const pages = Math.max(1, Math.ceil(rows.length / size));
+  const current = Math.min(Math.max(1, Math.trunc(page) || 1), pages);
+  return { rows: rows.slice((current - 1) * size, current * size), page: current, pages };
+};

@@ -4,6 +4,10 @@
 
 import { api, toApiError, unwrapEnvelope } from '@/networks/network/apiHelpers';
 import {
+  inventoryHealthSerializer,
+  type InventoryHealth,
+} from '@/serializers/reportInsightSerializers';
+import {
   inventoryItemHistorySerializer,
   inventoryValuationSerializer,
   inventoryValuationTrendSerializer,
@@ -30,9 +34,16 @@ import {
  * it does not, the subledger has drifted from the control account, which is worth
  * knowing about rather than papering over.
  */
-export const getInventoryValuation = async (): Promise<InventoryValuationReport> => {
+export const getInventoryValuation = async (
+  asOfDate?: string,
+): Promise<InventoryValuationReport> => {
   try {
-    const response = await api.get('/reports/inventory-valuation');
+    // Reports v2: an `asOfDate` rebuilds each item from its dated movements and
+    // returns the server's own tie to GL 1200 for that day. Without one the
+    // call is exactly what it always was — today's snapshot.
+    const response = await api.get('/reports/inventory-valuation', {
+      params: asOfDate ? { asOfDate } : undefined,
+    });
     return inventoryValuationSerializer(unwrapEnvelope(response.data));
   } catch (e) {
     throw toApiError(e);
@@ -148,6 +159,19 @@ export const getInventoryPerformance = async (
       params: { startDate: range.startDate, endDate: range.endDate, sort },
     });
     return inventoryPerformanceSerializer(unwrapEnvelope(response.data));
+  } catch (e) {
+    throw toApiError(e);
+  }
+};
+
+/**
+ * Reorder alerts, stock age, dead stock, turnover/DIO and value by location
+ * as of a date. Every list is the server's; the page only arranges it.
+ */
+export const getInventoryHealth = async (asOfDate: string): Promise<InventoryHealth> => {
+  try {
+    const response = await api.get('/reports/inventory-health', { params: { asOfDate } });
+    return inventoryHealthSerializer(unwrapEnvelope(response.data));
   } catch (e) {
     throw toApiError(e);
   }

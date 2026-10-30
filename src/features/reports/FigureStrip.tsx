@@ -75,8 +75,11 @@ export function FigureStrip({
   className,
 }: {
   children: ReactNode;
-  /** How many figures sit in a row on a wide screen. */
-  columns?: 2 | 3 | 4;
+  /**
+   * How many figures sit in a row on a wide screen. `hero` is four headline
+   * figures with trends: one to a row on a phone, where two would clip them.
+   */
+  columns?: 2 | 3 | 4 | 'hero';
   className?: string;
 }) {
   return (
@@ -88,7 +91,9 @@ export function FigureStrip({
             ? 'grid-cols-1 sm:grid-cols-2'
             : columns === 3
               ? 'grid-cols-1 sm:grid-cols-3'
-              : 'grid-cols-2 lg:grid-cols-4',
+              : columns === 'hero'
+                ? 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-4'
+                : 'grid-cols-2 lg:grid-cols-4',
         )}
       >
         {children}

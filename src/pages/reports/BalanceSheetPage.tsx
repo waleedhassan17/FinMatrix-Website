@@ -1,179 +1,194 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import { Card } from '@/components/ui/Card';
+import { Switch } from '@/components/ui/Field';
+import { useDocumentCompany } from '@/features/documents/useDocumentContext';
 import { BalanceWarning } from '@/features/reports/BalanceWarning';
+import { balanceSheetRows } from '@/features/reports/balanceSheetRows';
+import { ComparisonPicker } from '@/features/reports/ComparisonPicker';
+import { FinancialHealthStrip } from '@/features/reports/FinancialHealthStrip';
 import { Figure, FigureStrip } from '@/features/reports/FigureStrip';
+import { InvestigatePanel, type InvestigateSubject } from '@/features/reports/InvestigatePanel';
 import { AsOfPicker } from '@/features/reports/PeriodPicker';
 import { ReportShell } from '@/features/reports/ReportShell';
 import { statementSection } from '@/features/reports/reportPdfTable';
 import { ReportTitleBlock } from '@/features/reports/ReportTitleBlock';
+import { statementColumns, statementCsvRows } from '@/features/reports/statementColumns';
+import { StatementOptions } from '@/features/reports/StatementOptions';
 import { StatementTable } from '@/features/reports/StatementTable';
-import { isoToday } from '@/models/document';
-import { csvAmount, csvFilename, downloadCsv, toCsv, type CsvRow } from '@/models/reportCsv';
-import { asOfLabel, formatReportDate } from '@/models/reportPeriod';
+import { TieOutBadge } from '@/features/reports/TieOutBadge';
+import { useInspectParam } from '@/features/reports/useInspectParam';
+import { readEnum, readIso, useReportParams } from '@/features/reports/useReportParams';
+import { addDays, isoToday } from '@/models/document';
+import { csvFilename, csvHeaderBlock, downloadCsv, toCsv, type CsvRow } from '@/models/reportCsv';
 import {
-  ASSET_GROUPS,
-  bucketStatementLines,
-  formatRatio,
-  LIABILITY_GROUPS,
-  reconcile,
-  type BucketedLines,
-  type StatementRowData,
-} from '@/models/reportStatement';
+  AS_OF_COMPARE_KEYS,
+  asOfComparisonLabel,
+  resolveAsOfComparison,
+  type AsOfCompareKey,
+} from '@/models/reportComparison';
+import { asOfLabel, formatReportDate, formatShortDate } from '@/models/reportPeriod';
+import { formatRatio, isZeroRow, type StatementRowData } from '@/models/reportStatement';
 import { getBalanceSheet } from '@/networks/reports/balanceSheetNetwork';
-import type { StatementLine } from '@/models/reportStatement';
+import { getFinancialHealth } from '@/networks/reports/financialHealthNetwork';
 
-/** A bucketed section rendered as heading → accounts → subtotal. */
-const sectionRows = (
-  bucketed: BucketedLines,
-  leftoverLabel: string,
-): StatementRowData[] => {
-  const out: StatementRowData[] = [];
-
-  for (const section of bucketed.sections) {
-    out.push({ label: section.label, bold: true, key: `h-${section.group}` });
-    for (const line of section.lines) {
-      out.push({
-        key: `${section.group}-${line.accountCode}`,
-        label: `${line.accountCode}  ${line.accountName}`.trim(),
-        amount: line.amount,
-        depth: 1,
-      });
-    }
-    out.push({
-      key: `t-${section.group}`,
-      label: `Total ${section.label}`,
-      amount: section.subtotal,
-      depth: 1,
-      isTotal: true,
-      bold: true,
-    });
-  }
-
-  // Anything the groups did not claim. Shown rather than dropped: an account
-  // missing from the balance sheet because of an odd number is far worse than one
-  // under a vague heading.
-  if (bucketed.leftover.length > 0) {
-    out.push({ label: leftoverLabel, bold: true, key: 'h-other' });
-    for (const line of bucketed.leftover) {
-      out.push({
-        key: `other-${line.accountCode}`,
-        label: `${line.accountCode}  ${line.accountName}`.trim(),
-        amount: line.amount,
-        depth: 1,
-      });
-    }
-    out.push({
-      key: 't-other',
-      label: `Total ${leftoverLabel}`,
-      amount: bucketed.leftoverSubtotal,
-      depth: 1,
-      isTotal: true,
-      bold: true,
-    });
-  }
-
-  return out;
-};
-
-const flatRows = (lines: StatementLine[], prefix: string): StatementRowData[] =>
-  lines.map((line) => ({
-    key: `${prefix}-${line.accountCode}`,
-    label: `${line.accountCode}  ${line.accountName}`.trim(),
-    amount: line.amount,
-    depth: 1,
-  }));
+const BASIS = 'Accrual basis';
 
 export default function BalanceSheetPage() {
-  const [asOfDate, setAsOfDate] = useState(isoToday);
+  const navigate = useNavigate();
+  const company = useDocumentCompany();
+  const { params, update } = useReportParams();
+  const inspect = useInspectParam();
 
-  const query = useQuery({
-    queryKey: ['reports', 'balance-sheet', asOfDate],
+  // ── View state, all of it in the URL ───────────────────────────────────
+  const asOfDate = readIso(params.get('asOf')) ?? isoToday();
+  const compareKey = readEnum<AsOfCompareKey>(params.get('compare'), AS_OF_COMPARE_KEYS, 'none');
+  const customCompare = readIso(params.get('compareTo'));
+  const commonSize = params.get('size') === 'common';
+  const showZero = params.get('zero') === '1';
+
+  // The fiscal year start comes back with the statement; until the first
+  // response "Prior fiscal year-end" cannot resolve, and the statement loads
+  // without a comparison rather than waiting for it.
+  const fyQuery = useQuery({
+    queryKey: ['reports', 'balance-sheet', asOfDate, null, false],
     queryFn: () => getBalanceSheet(asOfDate),
+    enabled: compareKey === 'priorFiscalYearEnd',
     placeholderData: keepPreviousData,
   });
+  const compareTo = resolveAsOfComparison(compareKey, asOfDate, {
+    fiscalYearStart: fyQuery.data?.fiscalYearStart,
+    custom: customCompare,
+  });
+  const comparing = compareTo !== null;
 
+  const query = useQuery({
+    queryKey: ['reports', 'balance-sheet', asOfDate, compareTo, showZero],
+    queryFn: () => getBalanceSheet(asOfDate, { compareTo: compareTo ?? undefined, includeZero: showZero }),
+    placeholderData: keepPreviousData,
+  });
   const report = query.data;
+  const fiscalYearStart = report?.fiscalYearStart || fyQuery.data?.fiscalYearStart || '';
 
-  // The server returns flat arrays — no grouping at all — so the statement's
-  // shape comes entirely from the account numbers.
-  const assets = useMemo(
-    () => bucketStatementLines(report?.assets, ASSET_GROUPS),
-    [report],
+  const health = useQuery({
+    queryKey: ['reports', 'financial-health', asOfDate],
+    queryFn: () => getFinancialHealth(asOfDate),
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
+  const priorHealth = useQuery({
+    queryKey: ['reports', 'financial-health', compareTo],
+    queryFn: () => getFinancialHealth(compareTo as string),
+    enabled: comparing,
+    retry: false,
+  });
+
+  const layout = useMemo(() => (report ? balanceSheetRows(report, comparing) : null), [report, comparing]);
+  const columns = useMemo(
+    () =>
+      statementColumns({
+        comparing,
+        commonSize,
+        currentLabel: comparing ? formatShortDate(asOfDate) : 'Amount',
+        priorLabel: compareTo ? formatShortDate(compareTo) : undefined,
+        pctLabel: '% of assets',
+      }),
+    [comparing, commonSize, asOfDate, compareTo],
   );
-  const liabilities = useMemo(
-    () => bucketStatementLines(report?.liabilities, LIABILITY_GROUPS),
-    [report],
-  );
 
-  const assetRows = useMemo((): StatementRowData[] => {
-    if (!report) return [];
-    return [
-      ...sectionRows(assets, 'Other Assets'),
-      {
-        label: 'TOTAL ASSETS',
-        amount: reconcile(
-          assets.sections.reduce((s, x) => s + x.subtotal, 0) +
-            assets.leftoverSubtotal,
-          report.totalAssets,
-          'Balance Sheet — assets',
-        ),
-        isGrand: true,
-      },
-    ];
-  }, [report, assets]);
+  // What is exported is what is on screen: the zero filter applies to both.
+  const visible = (rows: StatementRowData[]) => (showZero ? rows : rows.filter((r) => !isZeroRow(r)));
+  const assetRows = layout ? visible(layout.assets) : [];
+  const rightRows = layout ? visible(layout.liabilitiesAndEquity) : [];
 
-  const liabilityRows = useMemo((): StatementRowData[] => {
-    if (!report) return [];
-    return [
-      ...sectionRows(liabilities, 'Other Liabilities'),
-      {
-        label: 'Total Liabilities',
-        amount: reconcile(
-          liabilities.sections.reduce((s, x) => s + x.subtotal, 0) +
-            liabilities.leftoverSubtotal,
-          report.totalLiabilities,
-          'Balance Sheet — liabilities',
-        ),
-        isTotal: true,
-        bold: true,
-      },
-      { label: 'Equity', bold: true, key: 'h-equity' },
-      ...flatRows(report.equity, 'equity'),
-      {
-        label: 'Total Equity',
-        amount: report.totalEquity,
-        isTotal: true,
-        bold: true,
-      },
-      {
-        label: 'TOTAL LIABILITIES AND EQUITY',
-        // The one figure on the statement added on this side, because the server
-        // sends the two halves and not their sum. Whether it ties to total assets
-        // is answered by `BalanceWarning` above — prominently and with the
-        // difference named — rather than by a dev-only console warning nobody
-        // running the business will ever see.
-        amount: report.totalLiabilities + report.totalEquity,
-        isGrand: true,
-      },
-    ];
-  }, [report, liabilities]);
+  const comparisonLabel = asOfComparisonLabel(compareTo);
+  const totals = report?.totals;
+  // The server's own gap when it sends one (reports v2); an older server's
+  // two totals otherwise — read only to name the size of a gap it reported.
+  const gap =
+    report?.gap ??
+    (totals?.totalAssets && totals.totalLiabilitiesAndEquity
+      ? totals.totalAssets.amount - totals.totalLiabilitiesAndEquity.amount
+      : 0);
+
+  // ── The investigate panel ──────────────────────────────────────────────
+  // Balances are cumulative; the register shows how the balance got from the
+  // comparison date (or the start of the fiscal year) to the statement date.
+  const subject = useMemo((): InvestigateSubject | null => {
+    if (!inspect.value || !layout) return null;
+    const registerRange = {
+      startDate: compareTo ? addDays(compareTo, 1) : fiscalYearStart || `${asOfDate.slice(0, 4)}-01-01`,
+      endDate: asOfDate,
+    };
+    const hit = layout.lines.get(inspect.value);
+    if (!hit) return null;
+    const { line, section } = hit;
+    const context = `Balance Sheet · ${asOfLabel(asOfDate)}`;
+    if (inspect.value === 'retained-earnings') {
+      return {
+        kind: 'retainedEarnings',
+        asOfDate,
+        lineAmount: line.amount,
+        context,
+        posted:
+          line.composite && line.accountCode
+            ? {
+                accountCode: line.accountCode,
+                accountName: line.accountName,
+                amount: line.composite.postedBalance,
+                range: registerRange,
+              }
+            : null,
+      };
+    }
+    if (line.synthetic) return null;
+    return {
+      kind: 'account',
+      accountCode: line.accountCode,
+      accountName: line.accountName,
+      lineAmount: line.amount,
+      basis: 'closing',
+      range: registerRange,
+      statementGroup: section.label,
+      context,
+      movement: compareTo
+        ? {
+            range: registerRange,
+            compare: null,
+            caption: `Change between ${formatShortDate(compareTo)} and ${formatShortDate(asOfDate)}`,
+          }
+        : null,
+    };
+  }, [inspect.value, layout, asOfDate, compareTo, fiscalYearStart]);
+
+  const activate = (row: StatementRowData) => {
+    if (!row.key) return;
+    if (row.key === 'synthetic-currentYearEarnings') {
+      // The current year's earnings ARE the P&L for the fiscal year to date.
+      navigate(`/reports/profit-loss?from=${fiscalYearStart || `${asOfDate.slice(0, 4)}-01-01`}&to=${asOfDate}`);
+      return;
+    }
+    inspect.open(row.key);
+  };
 
   const exportCsv = () => {
     if (!report) return;
     const out: CsvRow[] = [
-      ['Balance Sheet'],
-      [asOfLabel(asOfDate)],
-      ['Accrual basis'],
-      [],
-      ['Line', 'Amount'],
+      ...csvHeaderBlock({
+        company: company.name,
+        report: 'Balance Sheet',
+        period: asOfLabel(asOfDate),
+        basis: BASIS,
+        comparison: comparisonLabel,
+      }),
       ['ASSETS'],
+      ...statementCsvRows(assetRows, columns),
+      [],
+      ['LIABILITIES AND EQUITY'],
+      ...statementCsvRows(rightRows, columns),
     ];
-    for (const row of assetRows) out.push([row.label, csvAmount(row.amount)]);
-    out.push([], ['LIABILITIES AND EQUITY']);
-    for (const row of liabilityRows) out.push([row.label, csvAmount(row.amount)]);
-
     return downloadCsv(csvFilename('balance-sheet', { asOfDate }), toCsv(out));
   };
 
@@ -181,16 +196,45 @@ export default function BalanceSheetPage() {
     <ReportShell
       title="Balance Sheet"
       subtitle="What the business owns and owes on a given day."
-      meta={[asOfLabel(asOfDate), 'Accrual basis']}
-      controls={<AsOfPicker value={asOfDate} onChange={setAsOfDate} />}
+      meta={[
+        asOfLabel(asOfDate),
+        BASIS,
+        ...(comparisonLabel ? [comparisonLabel] : []),
+        ...(report
+          ? [
+              <TieOutBadge
+                key="tie"
+                ok={report.isBalanced}
+                gap={gap}
+                title="Assets = Liabilities + Equity"
+              />,
+            ]
+          : []),
+      ]}
+      controls={
+        <div className="flex flex-wrap items-start gap-md">
+          <AsOfPicker value={asOfDate} onChange={(d) => update({ asOf: readIso(d) && d !== isoToday() ? d : null })} />
+          <ComparisonPicker
+            kind="asOf"
+            value={compareKey}
+            asOf={asOfDate}
+            fiscalYearStart={fiscalYearStart || undefined}
+            customDate={customCompare}
+            onChange={(key, date) =>
+              update({ compare: key === 'none' ? null : key, compareTo: key === 'custom' ? date : null })
+            }
+          />
+        </div>
+      }
       onExportCsv={exportCsv}
       pdf={{
         periodLabel: asOfLabel(asOfDate),
-        basis: 'Accrual basis',
-        cacheKey: [asOfDate, query.dataUpdatedAt].join('|'),
+        basis: BASIS,
+        comparisonLabel,
+        cacheKey: [asOfDate, compareTo, commonSize, showZero, query.dataUpdatedAt].join('|'),
         build: () => [
-          statementSection(assetRows, { title: 'Assets' }),
-          statementSection(liabilityRows, { title: 'Liabilities and Equity' }),
+          statementSection(assetRows, { title: 'Assets', columns }),
+          statementSection(rightRows, { title: 'Liabilities and Equity', columns }),
         ],
       }}
       isLoading={query.isLoading}
@@ -200,50 +244,84 @@ export default function BalanceSheetPage() {
       hasData={Boolean(report)}
     >
       <div className="flex flex-col gap-lg">
-        {report && (
+        {report && !report.isBalanced && totals?.totalAssets && totals.totalLiabilitiesAndEquity && (
           <BalanceWarning
-            balanced={report.isBalanced}
-            left={{ label: 'Total assets', value: report.totalAssets }}
-            right={{
-              label: 'Liabilities and equity',
-              value: report.totalLiabilities + report.totalEquity,
-            }}
+            balanced={false}
+            left={{ label: 'Total assets', value: totals.totalAssets.amount }}
+            right={{ label: 'Liabilities and equity', value: totals.totalLiabilitiesAndEquity.amount }}
           />
         )}
 
-        <FigureStrip columns={3} className="print:hidden">
-          <Figure label="Total assets" value={report?.totalAssets ?? 0} caption="What the business owns" />
-          <Figure
-            label="Total liabilities"
-            value={report?.totalLiabilities ?? 0}
-            caption={`${formatRatio(report?.totalLiabilities ?? 0, report?.totalAssets ?? 0)} of assets`}
+        {health.data && Object.keys(health.data.kpis).length > 0 ? (
+          <FinancialHealthStrip
+            className="print:hidden"
+            health={health.data}
+            prior={comparing ? priorHealth.data : undefined}
+            priorLabel={compareTo ? `vs ${formatShortDate(compareTo)}` : undefined}
           />
-          <Figure
-            label="Total equity"
-            value={report?.totalEquity ?? 0}
-            tone={(report?.totalEquity ?? 0) < 0 ? 'danger' : 'default'}
-            caption={`${formatRatio(report?.totalEquity ?? 0, report?.totalAssets ?? 0)} of assets`}
-          />
-        </FigureStrip>
+        ) : (
+          // The health endpoint is reports v2; against an older server the
+          // page keeps its headline totals.
+          <FigureStrip columns={3} className="print:hidden">
+            <Figure label="Total assets" value={report?.totalAssets ?? 0} caption="What the business owns" />
+            <Figure
+              label="Total liabilities"
+              value={report?.totalLiabilities ?? 0}
+              caption={`${formatRatio(report?.totalLiabilities ?? 0, report?.totalAssets ?? 0)} of assets`}
+            />
+            <Figure
+              label="Total equity"
+              value={report?.totalEquity ?? 0}
+              tone={(report?.totalEquity ?? 0) < 0 ? 'danger' : 'default'}
+              caption={`${formatRatio(report?.totalEquity ?? 0, report?.totalAssets ?? 0)} of assets`}
+            />
+          </FigureStrip>
+        )}
 
         <Card className="p-lg">
           <ReportTitleBlock report="Balance Sheet" periodLabel={asOfLabel(asOfDate)} />
 
-          <h3 className="mt-lg text-overline text-text-secondary">Assets</h3>
-          <StatementTable className="mt-xs" rows={assetRows} />
+          <StatementOptions
+            className="mt-md"
+            // The server lists every active account with no balance when asked
+            // (`includeZero`), so the whole chart is one switch away.
+            showZero={{ value: showZero, onChange: (v) => update({ zero: v ? '1' : null }) }}
+          >
+            <Switch
+              checked={commonSize}
+              onCheckedChange={(v) => update({ size: v ? 'common' : null })}
+              label={<span className="text-body-sm">% of total assets</span>}
+            />
+          </StatementOptions>
 
-          <h3 className="mt-xl text-overline text-text-secondary">
-            Liabilities and Equity
-          </h3>
-          <StatementTable className="mt-xs" rows={liabilityRows} />
+          <h3 className="mt-lg text-overline text-text-secondary">Assets</h3>
+          <StatementTable
+            className="mt-xs"
+            caption="Assets"
+            rows={assetRows}
+            columns={columns}
+            onRowActivate={activate}
+            activeKey={inspect.value}
+          />
+
+          <h3 className="mt-xl text-overline text-text-secondary">Liabilities and Equity</h3>
+          <StatementTable
+            className="mt-xs"
+            caption="Liabilities and equity"
+            rows={rightRows}
+            columns={columns}
+            onRowActivate={activate}
+            activeKey={inspect.value}
+          />
         </Card>
 
-        <p className="text-caption text-text-tertiary">
-          Balances are cumulative through {formatReportDate(asOfDate)}. The current
-          period’s earnings are carried into equity as Net Income, which matches the
-          figure on the Profit &amp; Loss for the same period.
+        <p className="text-caption text-text-tertiary print:hidden">
+          Balances are cumulative through {formatReportDate(asOfDate)}. Open any line to see the postings
+          behind it; Net Income (current fiscal year) opens the Profit &amp; Loss for the same dates.
         </p>
       </div>
+
+      <InvestigatePanel subject={subject} onClose={inspect.close} focusKey={inspect.value} />
     </ReportShell>
   );
 }

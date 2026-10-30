@@ -14,6 +14,13 @@ export interface SidePanelProps {
   footer?: ReactNode;
   children: ReactNode;
   className?: string;
+  /**
+   * Where focus goes when the panel closes. Radix returns it to whatever had
+   * it before the panel opened; a panel opened by a link (no trigger was
+   * focused) needs to say where instead — call `event.preventDefault()` and
+   * focus the element yourself.
+   */
+  onCloseAutoFocus?: (event: Event) => void;
 }
 
 /**
@@ -34,12 +41,14 @@ export function SidePanel({
   footer,
   children,
   className,
+  onCloseAutoFocus,
 }: SidePanelProps) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-neutral-900/40 data-[state=closed]:animate-scrim-out data-[state=open]:animate-scrim-in motion-reduce:animate-none" />
         <Dialog.Content
+          onCloseAutoFocus={onCloseAutoFocus}
           className={cn(
             'fixed inset-y-0 right-0 z-50 flex w-full max-w-[32rem] flex-col bg-surface shadow-lg outline-none',
             'data-[state=closed]:animate-panel-out data-[state=open]:animate-panel-in motion-reduce:animate-none',

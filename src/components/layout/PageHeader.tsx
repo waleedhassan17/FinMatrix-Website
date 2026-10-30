@@ -22,6 +22,11 @@ export interface PageHeaderProps {
   back?: { to: string; label: string };
   /** Status badge(s), shown beside the title. */
   status?: ReactNode;
+  /**
+   * Something that identifies the record at a glance, left of the title — an
+   * item's photo. Optional; a page without one lays out as before.
+   */
+  leading?: ReactNode;
   description?: ReactNode;
   /** Short facts under the title, separated by dots: a customer link, a date. */
   meta?: ReactNode[];
@@ -44,6 +49,7 @@ export function PageHeader({
   title,
   back,
   status,
+  leading,
   description,
   meta,
   actions,
@@ -56,26 +62,29 @@ export function PageHeader({
       {back && <BackLink fallback={back} />}
 
       <div className="flex flex-col gap-md lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-sm">
-            <h1 className="min-w-0 break-words text-h2 text-text-primary">{title}</h1>
-            {status}
+        <div className="flex min-w-0 items-start gap-md">
+          {leading && <div className="shrink-0">{leading}</div>}
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-sm">
+              <h1 className="min-w-0 break-words text-h2 text-text-primary">{title}</h1>
+              {status}
+            </div>
+            {description && (
+              <p className="mt-xxs max-w-3xl text-body-sm text-text-secondary">{description}</p>
+            )}
+            {facts.length > 0 && (
+              <p className="mt-xs flex flex-wrap items-center gap-x-sm gap-y-xxs text-body-sm text-text-secondary">
+                {facts.map((fact, i) => (
+                  <Fragment key={i}>
+                    {i > 0 && (
+                      <span aria-hidden="true" className="size-1 rounded-full bg-border-strong" />
+                    )}
+                    <span className="inline-flex min-w-0 items-center gap-xxs">{fact}</span>
+                  </Fragment>
+                ))}
+              </p>
+            )}
           </div>
-          {description && (
-            <p className="mt-xxs max-w-3xl text-body-sm text-text-secondary">{description}</p>
-          )}
-          {facts.length > 0 && (
-            <p className="mt-xs flex flex-wrap items-center gap-x-sm gap-y-xxs text-body-sm text-text-secondary">
-              {facts.map((fact, i) => (
-                <Fragment key={i}>
-                  {i > 0 && (
-                    <span aria-hidden="true" className="size-1 rounded-full bg-border-strong" />
-                  )}
-                  <span className="inline-flex min-w-0 items-center gap-xxs">{fact}</span>
-                </Fragment>
-              ))}
-            </p>
-          )}
         </div>
 
         {actions && (

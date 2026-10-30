@@ -15,14 +15,19 @@
 // reads `totals`); the explorer's summary line is derived here from the
 // months, and a test holds the two in step.
 
+import { canDonut, OTHER_KEY, type SlicePoint } from '@/models/chartSlices';
 import { variance } from '@/models/reportStatement';
-import { formatQty } from '@/models/inventory';
-import type { ReportRange } from '@/models/reportPeriod';
+import { STOCK_STATUS_DISPLAY, formatQty, stockStatus } from '@/models/inventory';
+import { monthsSpanned, type ReportRange } from '@/models/reportPeriod';
+import type { KpiAssessment } from '@/serializers/kpiSerializer';
 import type {
   InventoryItemHistory,
+  ItemChannel,
+  ItemFacts,
   ItemPerformance,
+  ItemReturns,
 } from '@/serializers/reportSerializers';
-import { compactMoney, formatAmount, formatMoney, sumMoney, toDecimal } from '@/utils/money';
+import { compactMoney, formatAmount, formatMoney, parenNegative, sumMoney, toDecimal } from '@/utils/money';
 
 export type ExplorerMetricKey =
   | 'revenue'
@@ -429,7 +434,10 @@ const parseIso = (iso: string): Date => new Date(`${iso}T00:00:00`);
  * The rate is units sold per ELAPSED day: a window that runs to the end of
  * this month has not had those days yet, and counting them would understate
  * the rate and overstate the cover. Null when nothing sold (no rate to divide
- * by), zero when nothing is on hand.
+ * by); zero when it is out of stock and still selling.
+ *
+ * The server works this out now (item-stock.ts, held to these same cases);
+ * this is the figure for a server from before it.
  */
 export const daysOfCover = (
   onHand: number,
@@ -437,7 +445,7 @@ export const daysOfCover = (
   range: ReportRange,
   today: Date = new Date(),
 ): number | null => {
-  if (onHand <= 0) return 0;
+  if (onHand <= 0) return unitsSold > 0 ? 0 : null;
   const start = parseIso(range.startDate);
   const end = parseIso(range.endDate);
   const until = end.getTime() > today.getTime() ? today : end;
@@ -453,6 +461,221 @@ export const daysSince = (iso: string | null, today: Date = new Date()): number 
   if (Number.isNaN(then.getTime())) return null;
   const midnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   return Math.max(0, Math.round((midnight.getTime() - then.getTime()) / 86_400_000));
+};
+
+/** "Out of stock", "Over a year", "12 days", or "No recent sales". */
+export const coverText = (days: number | null): string => {
+  if (days === null) return 'No recent sales';
+  if (days === 0) return 'Out of stock';
+  if (days > 365) return 'Over a year';
+  return `${days.toLocaleString('en-US')} day${days === 1 ? '' : 's'}`;
+};
+
+/**
+ * Days of cover and its verdict: the server's, or — from a server before it
+ * worked them out — the same arithmetic here, with no verdict rather than a
+ * guessed one.
+ */
+export const itemCover = (
+  facts: ItemFacts,
+  unitsSold: number,
+  range: ReportRange,
+  today: Date = new Date(),
+): { days: number | null; assessment: KpiAssessment | null } =>
+  facts.daysOfCover !== undefined
+    ? { days: facts.daysOfCover, assessment: facts.cover }
+    : { days: daysOfCover(facts.qtyOnHand, unitsSold, range, today), assessment: null };
+
+// ─── The item, today ────────────────────────────────────────────────────────
+
+export type StockBadgeKey = 'inactive' | 'out' | 'dead' | 'low' | 'ok';
+
+/**
+ * The one badge beside the item's name, most urgent first: out of stock, then
+ * dead stock, then low. An inactive item says only that, as its record page
+ * does — nobody restocks what they retired.
+ */
+export const stockBadge = (facts: ItemFacts): StockBadgeKey => {
+  if (!facts.isActive) return 'inactive';
+  const status =
+    facts.stockStatus ??
+    stockStatus({ quantityOnHand: facts.qtyOnHand, reorderPoint: facts.reorderPoint });
+  if (status === 'out') return 'out';
+  if (facts.deadStock) return 'dead';
+  return status;
+};
+
+/** Each badge's words and its tier in the shared status colours. */
+export const STOCK_BADGE: Record<StockBadgeKey, { label: string; status: string; hint?: string }> = {
+  inactive: { label: 'Inactive', status: 'inactive' },
+  out: { label: STOCK_STATUS_DISPLAY.out.label, status: STOCK_STATUS_DISPLAY.out.badge },
+  dead: { label: 'Dead stock', status: 'expired', hint: 'Nothing out in 180 days' },
+  low: { label: STOCK_STATUS_DISPLAY.low.label, status: STOCK_STATUS_DISPLAY.low.badge },
+  ok: { label: STOCK_STATUS_DISPLAY.ok.label, status: STOCK_STATUS_DISPLAY.ok.badge },
+};
+
+/** "45 units", "1 unit", "12 kg" — only the generic word takes a plural. */
+export const unitsText = (qty: number, unitOfMeasure = 'unit'): string => {
+  const word = unitOfMeasure === 'unit' && Math.abs(qty) !== 1 ? 'units' : unitOfMeasure;
+  return `${formatMetric('closingQty', qty)} ${word}`;
+};
+
+export interface StockMeter {
+  /** On hand, as a share of the bar (0–100). */
+  fillPct: number;
+  /** Where the reorder point sits on the bar (0–100). */
+  tickPct: number;
+  /** On hand less the reorder point: below it when negative. */
+  headroom: number;
+}
+
+/**
+ * On hand against the reorder point, for a bar with a tick at the point. The
+ * scale leaves room either side, so neither the fill nor the tick sits on an
+ * edge. Null with no reorder point set — there is nothing to measure against.
+ */
+export const stockMeter = (onHand: number, reorderPoint: number): StockMeter | null => {
+  if (!(reorderPoint > 0)) return null;
+  const scale = Math.max(onHand * 1.1, reorderPoint * 2);
+  const pct = (v: number) => Math.min(100, Math.max(0, (v / scale) * 100));
+  return { fillPct: pct(onHand), tickPct: pct(reorderPoint), headroom: onHand - reorderPoint };
+};
+
+export interface PriceAndMargin {
+  price: number;
+  cost: number;
+  /** Price less average cost, per unit. */
+  margin: number;
+  /** Margin as a share of the price; null with no price. */
+  marginPct: number | null;
+  /** Cost as a share of the price (0–100), for the cost | margin bar; null with no price. */
+  costShare: number | null;
+  /** What a unit actually sold for in the window, net of tax and discounts. */
+  realised: number | null;
+  /** The realised price against the list price, in percent. */
+  vsListPct: number | null;
+}
+
+/** The item's list price against its cost, and what it really sold for. */
+export const priceAndMargin = (
+  facts: ItemFacts,
+  totals: { revenue: number; unitsSold: number } | null | undefined,
+): PriceAndMargin => {
+  const price = facts.sellingPrice;
+  const cost = facts.unitCost;
+  const margin = toDecimal(price).minus(cost).toDecimalPlaces(2).toNumber();
+  const realised =
+    totals && totals.unitsSold > 0 ? round2(totals.revenue / totals.unitsSold) : null;
+  return {
+    price,
+    cost,
+    margin,
+    marginPct: price > 0 ? round2((margin / price) * 100) : null,
+    costShare: price > 0 ? Math.min(100, Math.max(0, (cost / price) * 100)) : null,
+    realised,
+    vsListPct: realised !== null && price > 0 ? round2(((realised - price) / price) * 100) : null,
+  };
+};
+
+/** "At list price", "4.2% below list", "1.3% above list". */
+export const vsListText = (pct: number | null): string | null => {
+  if (pct === null) return null;
+  if (Math.abs(pct) < 0.5) return 'At list price';
+  return `${Math.abs(pct).toFixed(1)}% ${pct < 0 ? 'below' : 'above'} list`;
+};
+
+/** Months in which the item sold or was returned at all. */
+export const monthsWithSales = (months: readonly ExplorerMonth[]): number =>
+  months.filter((m) => (m.values.unitsSold ?? 0) !== 0 || (m.values.revenue ?? 0) !== 0).length;
+
+/**
+ * The comparison, said once beside the window rather than under every
+ * figure: "Compared with the prior 10 months", or why there is none. Null
+ * while the window before is still loading, or could not be.
+ */
+export const comparisonCaption = (range: ReportRange, priorEmpty: boolean | null): string | null => {
+  if (priorEmpty === null) return null;
+  const n = monthsSpanned(range);
+  const words = /^\d{4}-\d{2}-01$/.test(range.startDate)
+    ? `prior ${n} month${n === 1 ? '' : 's'}`
+    : 'prior period';
+  return priorEmpty ? `No sales in the ${words} to compare with` : `Compared with the ${words}`;
+};
+
+// ─── Revenue breakdown ──────────────────────────────────────────────────────
+
+export type BreakdownDimension = 'customer' | 'channel';
+
+export const CHANNEL_LABEL: Record<ItemChannel['key'], string> = {
+  invoice: 'Invoices',
+  delivery: 'Deliveries',
+};
+
+export interface RevenueBreakdown {
+  /** In the server's order — largest first — with Other last, never re-sorted. */
+  slices: SlicePoint[];
+  /** The whole the shares are of. */
+  total: number;
+  /** Whether it can be a ring: no part below zero, and something to draw. */
+  donut: boolean;
+}
+
+/**
+ * Who bought it, or how it went out — as slices for the ring or the bars.
+ *
+ * The server sends its top five customers and folds the rest; they are taken
+ * as they come, with Other last, because re-folding would sort a large Other
+ * to the front and give it a colour. Channels are the sales before returns;
+ * what came back is stated beside them (see `returnsText`), not drawn as a
+ * slice of what went out.
+ */
+export const revenueBreakdown = (
+  perf: ItemPerformance,
+  dimension: BreakdownDimension,
+): RevenueBreakdown => {
+  if (dimension === 'channel') {
+    const slices = (perf.channels ?? []).map((c) => ({
+      key: c.key,
+      label: CHANNEL_LABEL[c.key],
+      value: c.revenue,
+      count: c.unitsSold,
+      sharePct: c.sharePct,
+    }));
+    const total = sumMoney(slices.map((x) => x.value)).toNumber();
+    return { slices, total, donut: total > 0 && canDonut(slices) };
+  }
+  const slices: SlicePoint[] = perf.customers.map((c, i) => ({
+    key: c.customerId ?? `none-${i}`,
+    label: c.customerName,
+    value: c.revenue,
+    count: c.unitsSold,
+    sharePct: c.sharePct,
+  }));
+  const other = perf.otherCustomers;
+  if (other.count > 0) {
+    slices.push({
+      key: OTHER_KEY,
+      label: `Other (${other.count})`,
+      value: other.revenue,
+      count: other.unitsSold,
+      sharePct: other.sharePct,
+    });
+  }
+  const total = perf.totals.revenue;
+  return { slices, total, donut: total > 0 && canDonut(slices) };
+};
+
+/**
+ * Whether "by channel" says anything: only when the item went out both ways.
+ * A ring that is all one slice is not a breakdown.
+ */
+export const hasChannelBreakdown = (perf: ItemPerformance | null | undefined): boolean =>
+  (perf?.channels ?? []).filter((c) => c.revenue !== 0 || c.unitsSold !== 0).length >= 2;
+
+/** "Returns (Rs 2,350.00) · 1 unit — taken off revenue", or null with none. */
+export const returnsText = (returns: ItemReturns | null, unitOfMeasure = 'unit'): string | null => {
+  if (!returns || (returns.revenue === 0 && returns.unitsSold === 0)) return null;
+  return `Returns ${parenNegative(returns.revenue)} · ${unitsText(Math.abs(returns.unitsSold), unitOfMeasure)} — taken off revenue`;
 };
 
 // ─── Export ─────────────────────────────────────────────────────────────────

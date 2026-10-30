@@ -10,6 +10,7 @@ import { renderToBuffer } from '@react-pdf/renderer';
 import { companyForDocument } from '@/features/documents/documentModel';
 import { ReportPdf } from '@/features/pdf/ReportPdf';
 import { statementSection } from '@/features/reports/reportPdfTable';
+import { statementColumns } from '@/features/reports/statementColumns';
 import { customerSummaryDocument } from '@/features/documents/statementBuilders';
 import { summaryFixture } from '@/test/partySummaryFixture';
 
@@ -76,5 +77,40 @@ describe('ReportPdf', () => {
     const { pdf } = customerSummaryDocument(withCredits, companyForDocument(null, 'Warehouse Co'), null);
     const buffer = await renderToBuffer(<ReportPdf generatedAt="Sep 28, 2026" data={pdf} />);
     expect(buffer.subarray(0, 5).toString()).toBe('%PDF-');
+  });
+
+  it('runs a long statement across pages with its comparison columns and header block', async () => {
+    const rows = Array.from({ length: 140 }, (_, i) => ({
+      key: `a${i}`,
+      label: `${1000 + i}  Account ${i}`,
+      amount: 1000 + i,
+      prior: 900 + i,
+      depth: 1,
+    }));
+    const buffer = await renderToBuffer(
+      <ReportPdf
+        generatedAt="Oct 26, 2026, 4:05 PM"
+        data={{
+          title: 'Balance Sheet',
+          periodLabel: 'As of Sep 30, 2026',
+          basis: 'Accrual basis',
+          company: companyForDocument(null, 'Warehouse Co'),
+          meta: [
+            { label: 'Period', value: 'As of Sep 30, 2026' },
+            { label: 'Comparison', value: 'Aug 31, 2026' },
+            { label: 'Generated', value: 'Oct 26, 2026, 4:05 PM' },
+          ],
+          sections: [
+            statementSection(rows, {
+              title: 'Assets',
+              columns: statementColumns({ comparing: true, currentLabel: 'Sep 30, 2026', priorLabel: 'Aug 31, 2026' }),
+            }),
+          ],
+        }}
+      />,
+    );
+    // pdfkit writes one page object per page, uncompressed.
+    const pages = buffer.toString('latin1').match(/\/Type \/Page\b/g) ?? [];
+    expect(pages.length).toBeGreaterThan(2);
   });
 });

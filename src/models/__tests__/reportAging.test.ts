@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   AGING_SORT_OPTIONS,
   NO_PARTY_NAME,
+  agingPage,
   agingPartyLabel,
+  agingStatus,
   bucketShares,
   bucketTopParties,
   canDrillParty,
@@ -14,7 +16,7 @@ import {
   topAgingParties,
   visibleAgingRows,
 } from '@/models/reportAging';
-import type { AgingBucketDef, AgingRow } from '@/serializers/reportSerializers';
+import { NO_AGING_PARTY_FACTS, type AgingBucketDef, type AgingRow } from '@/serializers/reportSerializers';
 
 /** The classic monthly set, oldest last — the order the server sends. */
 const BUCKETS: AgingBucketDef[] = [
@@ -38,6 +40,7 @@ const row = (
   bucket31to60: 0,
   bucket61to90: 0,
   bucket90Plus: 0,
+  ...NO_AGING_PARTY_FACTS,
 });
 
 // Allama is the biggest debtor; Sukoon holds the oldest money. That divergence
@@ -384,5 +387,31 @@ describe('topAgingParties', () => {
     const credit = row('c8', 'Refund Due', { current: -40 });
     const top = topAgingParties({ rows: [credit, SUKOON], buckets: BUCKETS, selectedBucket: null, limit: 10 });
     expect(top.parties.map((p) => p.name)).toEqual(['Sukoon Mart']);
+  });
+});
+
+describe('agingStatus and agingPage', () => {
+  const buckets = [
+    { key: 'current', label: 'Current', minDays: 0, maxDays: 0 },
+    { key: 'd1to30', label: '1–30', minDays: 1, maxDays: 30 },
+    { key: 'd91plus', label: '91 and over', minDays: 91, maxDays: null },
+  ];
+  const party = (amounts: Record<string, number>, oldestDueDate: string | null = null): AgingRow =>
+    ({ ...NO_AGING_PARTY_FACTS, customerId: 'c', customerName: 'C', amounts, total: 10, oldestDueDate }) as AgingRow;
+
+  it('reads a party as current, overdue or 90+ — the quick filters’ own tests', () => {
+    expect(agingStatus(party({ current: 10 }), buckets, '2026-09-30')).toBe('current');
+    expect(agingStatus(party({ d1to30: 10 }), buckets, '2026-09-30')).toBe('overdue');
+    expect(agingStatus(party({ d91plus: 10 }), buckets, '2026-09-30')).toBe('90plus');
+    // The oldest due date decides when the server sent one.
+    expect(agingStatus(party({ d1to30: 10 }, '2026-05-01'), buckets, '2026-09-30')).toBe('90plus');
+  });
+
+  it('pages 25 at a time and clamps the page to the ones there are', () => {
+    const rows = Array.from({ length: 30 }, (_, i) => i);
+    expect(agingPage(rows, 1)).toMatchObject({ page: 1, pages: 2 });
+    expect(agingPage(rows, 2).rows).toEqual([25, 26, 27, 28, 29]);
+    expect(agingPage(rows, 9).page).toBe(2);
+    expect(agingPage([], 3)).toEqual({ rows: [], page: 1, pages: 1 });
   });
 });

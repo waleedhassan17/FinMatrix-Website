@@ -1,14 +1,24 @@
 import type { ReactNode } from 'react';
 
+import { Change } from '@/features/reports/FigureStrip';
+import { Sparkline } from '@/features/reports/Sparkline';
 import { cn } from '@/lib/cn';
+import { colors } from '@/theme/tokens';
 
 export interface MetricTab<K extends string = string> {
   key: K;
   label: string;
   /** The figure, formatted. */
   value: string;
-  /** One line under it — the change against the window before. */
+  /**
+   * Its move against the window before — "+12.4%" — and whether that is good
+   * news. The comparison itself is named once, beside the window, not here.
+   */
+  change?: { text: string; tone: 'good' | 'bad' | null } | null;
+  /** One line under it, when there is no change to show — "No sales in this window". */
   caption?: ReactNode;
+  /** The figure month by month, oldest first: its shape, under the figure. */
+  trend?: readonly (number | null)[];
   tone?: 'default' | 'danger';
 }
 
@@ -20,6 +30,11 @@ export interface MetricTab<K extends string = string> {
  * control — choose a figure, and the chart below draws it month by month —
  * which is how a reader already expects a dashboard to behave. The chosen one
  * carries a top rule in the brand colour; the rest read as plain figures.
+ *
+ * Every tile has the same parts in the same places — figure, change, shape —
+ * so a row of four reads evenly whether or not there is a change to show.
+ * The shapes are drawn grey except the chosen figure's, so the colour points
+ * at what the chart below is drawing.
  *
  * `selected` may name none of them (a metric chosen from "More metrics"), in
  * which case every figure reads as unselected.
@@ -54,7 +69,7 @@ export function MetricTabs<K extends string>({
             aria-selected={on}
             onClick={() => onSelect(it.key)}
             className={cn(
-              'relative min-w-0 bg-surface px-lg py-md text-left transition-colors',
+              'relative flex min-w-0 flex-col bg-surface px-lg pt-md pb-sm text-left transition-colors',
               on ? 'bg-surface' : 'hover:bg-surface-2',
             )}
           >
@@ -74,8 +89,28 @@ export function MetricTabs<K extends string>({
             >
               {it.value}
             </span>
-            {it.caption !== undefined && (
-              <span className="mt-xxs line-clamp-2 text-caption text-text-tertiary">{it.caption}</span>
+            {/* Always a line, so the shapes below line up across the row. */}
+            <span className="mt-xxs line-clamp-2 min-h-[1lh] text-caption text-text-tertiary">
+              {it.change ? (
+                it.change.tone ? (
+                  <Change text={it.change.text} good={it.change.tone === 'good'} />
+                ) : (
+                  <span className="tabular text-text-secondary">{it.change.text}</span>
+                )
+              ) : (
+                (it.caption ?? ' ')
+              )}
+            </span>
+            {it.trend && (
+              <span className="mt-auto block pt-xs">
+                <Sparkline
+                  decorative
+                  values={it.trend}
+                  label={`${it.label} by month`}
+                  color={on ? colors.primary : colors.neutral400}
+                  className="h-7"
+                />
+              </span>
             )}
           </button>
         );

@@ -5,6 +5,10 @@
 import { api, toApiError, unwrapEnvelope } from '@/networks/network/apiHelpers';
 import type { ReportRange } from '@/models/reportPeriod';
 import {
+  cashFlowLineEntriesSerializer,
+  type CashFlowLineEntries,
+} from '@/serializers/reportInvestigateSerializers';
+import {
   cashFlowSerializer,
   type CashFlowReport,
 } from '@/serializers/reportSerializers';
@@ -29,6 +33,30 @@ export const getCashFlow = async (range: ReportRange): Promise<CashFlowReport> =
       params: { startDate: range.startDate, endDate: range.endDate },
     });
     return cashFlowSerializer(unwrapEnvelope(response.data));
+  } catch (e) {
+    throw toApiError(e);
+  }
+};
+
+/**
+ * The cash rows classified into one statement line, by its `lineKey`.
+ *
+ * Where one payment was split across lines — a bill payment allocated over the
+ * bills' accounts — each row carries `allocatedAmount` and `allocationPct`,
+ * and the allocated amounts add up to the line.
+ */
+export const getCashFlowLineEntries = async (
+  lineKey: string,
+  range: ReportRange,
+  page = 1,
+  limit = 50,
+): Promise<CashFlowLineEntries> => {
+  try {
+    const response = await api.get(
+      `/reports/cash-flow/lines/${encodeURIComponent(lineKey)}/entries`,
+      { params: { startDate: range.startDate, endDate: range.endDate, page, limit } },
+    );
+    return cashFlowLineEntriesSerializer(unwrapEnvelope(response.data));
   } catch (e) {
     throw toApiError(e);
   }

@@ -805,9 +805,60 @@ describe('itemPerformanceSerializer', () => {
     const p = itemPerformanceSerializer(payload);
     expect(p.range).toEqual({ startDate: '2026-01-01', endDate: '2026-09-26' });
     expect(p.item).toMatchObject({ qtyOnHand: 45, stockValue: 81000, lastSoldDate: '2026-07-24' });
-    expect(p.customers[0]).toEqual({ customerId: 'k1', customerName: 'Karim Store', unitsSold: 3, revenue: 7050, grossProfit: 1650 });
+    expect(p.customers[0]).toEqual({ customerId: 'k1', customerName: 'Karim Store', unitsSold: 3, revenue: 7050, grossProfit: 1650, sharePct: null });
     expect(p.otherCustomers.count).toBe(2);
     expect(p.points[0].marginPct).toBe(23.4);
+  });
+
+  it('reads the photo, the stock facts and the revenue breakdown', () => {
+    const p = itemPerformanceSerializer({
+      ...payload,
+      item: {
+        ...payload.item,
+        imageUrl: 'https://api.test/display.jpg',
+        thumbnailUrl: 'https://api.test/thumb.jpg',
+        location: 'Main store',
+        stockStatus: 'low',
+        suggestedOrderQty: '30',
+        daysOfCover: 387,
+        cover: { level: 'risk', guide: 'Two weeks to two months of stock is healthy.' },
+        deadStock: false,
+        lastOutboundDate: '2026-07-24',
+      },
+      customers: [{ ...payload.customers[0], sharePct: '54.29' }],
+      otherCustomers: { ...payload.otherCustomers, sharePct: 1.4 },
+      channels: [
+        { key: 'invoice', unitsSold: 32, revenue: 75200, grossProfit: 17600, documents: 4, sharePct: 91.43 },
+        { key: 'delivery', unitsSold: 3, revenue: 7050, grossProfit: 1650, documents: 1, sharePct: 8.57 },
+        { key: 'barter', unitsSold: 1, revenue: 1, grossProfit: 1, documents: 1, sharePct: 0 },
+      ],
+      returns: { unitsSold: -1, revenue: '-2350', grossProfit: -550, documents: 1 },
+    });
+    expect(p.item).toMatchObject({
+      imageUrl: 'https://api.test/display.jpg',
+      thumbnailUrl: 'https://api.test/thumb.jpg',
+      location: 'Main store',
+      stockStatus: 'low',
+      suggestedOrderQty: 30,
+      daysOfCover: 387,
+      cover: { level: 'risk' },
+      deadStock: false,
+      lastOutboundDate: '2026-07-24',
+    });
+    expect(p.customers[0].sharePct).toBe(54.29);
+    expect(p.otherCustomers.sharePct).toBe(1.4);
+    // A channel the client does not know is left out, never drawn as a guess.
+    expect(p.channels?.map((c) => c.key)).toEqual(['invoice', 'delivery']);
+    expect(p.returns).toEqual({ unitsSold: -1, revenue: -2350, grossProfit: -550, documents: 1 });
+  });
+
+  it('reads a server from before the breakdown, without inventing figures', () => {
+    const p = itemPerformanceSerializer(payload);
+    expect(p.channels).toBeNull();
+    expect(p.returns).toBeNull();
+    expect(p.item).toMatchObject({ imageUrl: null, location: null, stockStatus: null, cover: null, deadStock: false });
+    // Absent, not null: the page can tell "not sent" from "nothing sold".
+    expect(p.item && 'daysOfCover' in p.item).toBe(false);
   });
 
   it('reads a server from before the explorer, with no facts or customers', () => {
@@ -815,7 +866,7 @@ describe('itemPerformanceSerializer', () => {
     const p = itemPerformanceSerializer(old);
     expect(p.item).toBeNull();
     expect(p.customers).toEqual([]);
-    expect(p.otherCustomers).toEqual({ count: 0, unitsSold: 0, revenue: 0, grossProfit: 0 });
+    expect(p.otherCustomers).toEqual({ count: 0, unitsSold: 0, revenue: 0, grossProfit: 0, sharePct: null });
   });
 });
 

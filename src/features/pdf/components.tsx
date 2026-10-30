@@ -261,7 +261,12 @@ export function PdfTable({
   const textCol = Math.max(0, columns.findIndex((c) => !c.image));
   return (
     <View style={{ marginBottom: 14 }}>
+      {/* `fixed` inside the table's own View: react-pdf repeats a fixed child
+          on every page its parent breaks across, so a statement that runs to a
+          second page keeps its column headings — and only this table's pages
+          get them, not the whole document. */}
       <View
+        fixed
         style={[
           s.row,
           {

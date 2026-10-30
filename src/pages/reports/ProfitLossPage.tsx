@@ -2,20 +2,26 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 
 import { Card } from '@/components/ui/Card';
-import { Switch } from '@/components/ui/Field';
+import { useDocumentCompany } from '@/features/documents/useDocumentContext';
+import { ComparisonPicker } from '@/features/reports/ComparisonPicker';
 import { Figure, FigureStrip } from '@/features/reports/FigureStrip';
 import { PeriodPicker } from '@/features/reports/PeriodPicker';
 import { ReportShell } from '@/features/reports/ReportShell';
 import { statementSection } from '@/features/reports/reportPdfTable';
 import { ReportTitleBlock } from '@/features/reports/ReportTitleBlock';
+import { statementColumns, statementCsvRows } from '@/features/reports/statementColumns';
 import { StatementLineDetail } from '@/features/reports/StatementLineDetail';
+import { StatementOptions } from '@/features/reports/StatementOptions';
 import { StatementTable } from '@/features/reports/StatementTable';
-import { csvAmount, csvFilename, downloadCsv, toCsv, type CsvRow } from '@/models/reportCsv';
+import { readEnum, useRangeParam, useReportParams } from '@/features/reports/useReportParams';
+import { csvFilename, csvHeaderBlock, downloadCsv, toCsv, type CsvRow } from '@/models/reportCsv';
 import {
-  comparisonRange,
-  defaultReportRange,
-  rangeLabel,
-} from '@/models/reportPeriod';
+  RANGE_COMPARE_KEYS,
+  rangeComparisonLabel,
+  resolveRangeComparison,
+  type RangeCompareKey,
+} from '@/models/reportComparison';
+import { defaultReportRange, rangeLabel, type ReportRange } from '@/models/reportPeriod';
 import { formatRatio, reconcile, type StatementRowData } from '@/models/reportStatement';
 import { getProfitLoss } from '@/networks/reports/profitLossNetwork';
 import type { ProfitLossReport } from '@/serializers/reportSerializers';
@@ -23,7 +29,8 @@ import { sumMoney } from '@/utils/money';
 
 const lineRows = (
   lines: ProfitLossReport['income'],
-  priorLines?: ProfitLossReport['income'],
+  priorLines: ProfitLossReport['income'] | undefined,
+  section: string,
 ): StatementRowData[] =>
   lines.map((line) => {
     // Matched by account CODE, not position — the two periods rarely touch the
@@ -33,8 +40,10 @@ const lineRows = (
     return {
       key: line.accountCode || line.accountName,
       label: `${line.accountCode}  ${line.accountName}`.trim(),
+      name: line.accountName,
       amount: line.amount,
       depth: 1,
+      section,
       prior: priorLines ? (prior?.amount ?? 0) : undefined,
       // Carrying the code is what makes the row expandable — see
       // StatementRowData. Headings and subtotals leave it unset because they
@@ -43,17 +52,55 @@ const lineRows = (
     };
   });
 
+/**
+ * Which way is good news, by section: more income is, more cost is not. Only
+ * the Change column is coloured, and only where the answer is not a matter of
+ * opinion.
+ */
+const RISE_IS_GOOD: Record<string, boolean> = {
+  income: true,
+  otherIncome: true,
+  cogs: false,
+  expenses: false,
+  otherExpense: false,
+};
+const TOTAL_TONE: Record<string, boolean> = {
+  'Total Income': true,
+  'Total Cost of Goods Sold': false,
+  'Gross Profit': true,
+  'Total Expenses': false,
+  'Net Operating Income': true,
+  'Net Other Income': true,
+  'Net Income': true,
+};
+const changeTone = (row: StatementRowData): boolean | null =>
+  (row.section ? RISE_IS_GOOD[row.section] : undefined) ?? TOTAL_TONE[row.label] ?? null;
+
 export default function ProfitLossPage() {
-  // In component state, not module scope: a range captured once at import freezes
-  // its end date on the day the bundle loaded.
-  const [range, setRange] = useState(defaultReportRange);
-  const [comparing, setComparing] = useState(false);
+  const company = useDocumentCompany();
+  const { params, update } = useReportParams();
+  // The period and the comparison are in the URL (`?from=&to=&compare=`), so
+  // the balance sheet's Net Income line and the cockpit can link straight to
+  // the period they mean. The default — year to date — is computed per
+  // render, never captured at import, so it never freezes on the day the
+  // bundle loaded.
+  const range = useRangeParam(params, defaultReportRange);
+  const compareKey = readEnum<RangeCompareKey>(params.get('compare'), RANGE_COMPARE_KEYS, 'none');
+  const comparing = compareKey !== 'none';
   // Which account lines are open. Reset when the period changes: the cached
   // transactions describe the old one, and leaving them under a new figure
   // would be right-looking and wrong.
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
-  const prior = useMemo(() => comparisonRange(range), [range]);
+  const prior: ReportRange = useMemo(
+    () => resolveRangeComparison(compareKey === 'none' ? 'previous' : compareKey, range) as ReportRange,
+    [compareKey, range],
+  );
+  const setRange = (next: ReportRange) => {
+    const fallback = defaultReportRange();
+    const isDefault = next.startDate === fallback.startDate && next.endDate === fallback.endDate;
+    update({ from: isDefault ? null : next.startDate, to: isDefault ? null : next.endDate });
+  };
 
   const current = useQuery({
     queryKey: ['reports', 'profit-loss', range],
@@ -78,7 +125,7 @@ export default function ProfitLossPage() {
     const out: StatementRowData[] = [];
 
     out.push({ label: 'Income', bold: true });
-    out.push(...lineRows(report.income, p?.income));
+    out.push(...lineRows(report.income, p?.income, 'income'));
     out.push({
       label: 'Total Income',
       // Every total is the server's. It foots from unrounded four-decimal figures
@@ -95,7 +142,7 @@ export default function ProfitLossPage() {
     });
 
     out.push({ label: 'Cost of Goods Sold', bold: true });
-    out.push(...lineRows(report.cogsLines, p?.cogsLines));
+    out.push(...lineRows(report.cogsLines, p?.cogsLines, 'cogs'));
     out.push({
       label: 'Total Cost of Goods Sold',
       amount: reconcile(
@@ -117,7 +164,7 @@ export default function ProfitLossPage() {
     });
 
     out.push({ label: 'Expenses', bold: true });
-    out.push(...lineRows(report.expenseLines, p?.expenseLines));
+    out.push(...lineRows(report.expenseLines, p?.expenseLines, 'expenses'));
     out.push({
       label: 'Total Expenses',
       amount: reconcile(
@@ -145,11 +192,11 @@ export default function ProfitLossPage() {
     if (hasOther) {
       if (report.otherIncome.length > 0) {
         out.push({ label: 'Other Income', bold: true });
-        out.push(...lineRows(report.otherIncome, p?.otherIncome));
+        out.push(...lineRows(report.otherIncome, p?.otherIncome, 'otherIncome'));
       }
       if (report.otherExpense.length > 0) {
         out.push({ label: 'Other Expenses', bold: true });
-        out.push(...lineRows(report.otherExpense, p?.otherExpense));
+        out.push(...lineRows(report.otherExpense, p?.otherExpense, 'otherExpense'));
       }
       out.push({
         label: 'Net Other Income',
@@ -170,22 +217,29 @@ export default function ProfitLossPage() {
     return out;
   }, [report, priorReport]);
 
+  const columns = useMemo(
+    () =>
+      statementColumns({
+        comparing,
+        currentLabel: comparing ? rangeLabel(range.startDate, range.endDate) : 'Amount',
+        priorLabel: rangeLabel(prior.startDate, prior.endDate),
+      }),
+    [comparing, range, prior],
+  );
+  const comparisonLabel = comparing ? rangeComparisonLabel(prior) : null;
+
   const exportCsv = () => {
     if (!report) return;
     const out: CsvRow[] = [
-      ['Profit & Loss'],
-      [rangeLabel(range.startDate, range.endDate)],
-      ['Accrual basis'],
-      [],
-      comparing ? ['Line', 'Amount', 'Prior'] : ['Line', 'Amount'],
+      ...csvHeaderBlock({
+        company: company.name,
+        report: 'Profit & Loss',
+        period: rangeLabel(range.startDate, range.endDate),
+        basis: 'Accrual basis',
+        comparison: comparisonLabel,
+      }),
+      ...statementCsvRows(rows, columns),
     ];
-    for (const row of rows) {
-      out.push(
-        comparing
-          ? [row.label, csvAmount(row.amount), csvAmount(row.prior)]
-          : [row.label, csvAmount(row.amount)],
-      );
-    }
     return downloadCsv(csvFilename('profit-loss', range), toCsv(out));
   };
 
@@ -193,38 +247,38 @@ export default function ProfitLossPage() {
     <ReportShell
       title="Profit & Loss"
       subtitle="What you earned and what it cost over the period."
-      meta={[rangeLabel(range.startDate, range.endDate), 'Accrual basis']}
+      meta={[
+        rangeLabel(range.startDate, range.endDate),
+        'Accrual basis',
+        ...(comparisonLabel ? [comparisonLabel] : []),
+      ]}
       controls={
-        <PeriodPicker
-          value={range}
-          onChange={(next) => {
-            setRange(next);
-            // Collapse rather than refetch: the open rows describe the old
-            // period, and StatementLineDetail keys its query on the range, so
-            // leaving them open would fire one request per open line at once.
-            setExpanded({});
-          }}
-        />
-      }
-      actions={
-        <Switch
-          checked={comparing}
-          onCheckedChange={setComparing}
-          label="Compare with prior period"
-        />
+        <div className="flex flex-wrap items-start gap-md">
+          <PeriodPicker
+            value={range}
+            onChange={(next) => {
+              setRange(next);
+              // Collapse rather than refetch: the open rows describe the old
+              // period, and StatementLineDetail keys its query on the range, so
+              // leaving them open would fire one request per open line at once.
+              setExpanded({});
+            }}
+          />
+          <ComparisonPicker
+            kind="range"
+            value={compareKey}
+            range={range}
+            onChange={(key) => update({ compare: key === 'none' ? null : key })}
+          />
+        </div>
       }
       onExportCsv={exportCsv}
       pdf={{
         periodLabel: rangeLabel(range.startDate, range.endDate),
         basis: 'Accrual basis',
-        cacheKey: [range.startDate, range.endDate, comparing, current.dataUpdatedAt, comparison.dataUpdatedAt].join('|'),
-        build: () => [
-          statementSection(rows, {
-            comparing,
-            currentLabel: rangeLabel(range.startDate, range.endDate),
-            priorLabel: rangeLabel(prior.startDate, prior.endDate),
-          }),
-        ],
+        comparisonLabel,
+        cacheKey: [range.startDate, range.endDate, compareKey, current.dataUpdatedAt, comparison.dataUpdatedAt].join('|'),
+        build: () => [statementSection(rows, { columns })],
       }}
       isLoading={current.isLoading}
       isRefetching={current.isFetching || (comparing && comparison.isFetching)}
@@ -260,12 +314,13 @@ export default function ProfitLossPage() {
             report="Profit & Loss"
             periodLabel={rangeLabel(range.startDate, range.endDate)}
           />
+          <StatementOptions className="mt-md" />
           <StatementTable
-            className="mt-md"
+            className="mt-sm"
+            caption="Profit and loss"
             rows={rows}
-            comparing={comparing}
-            currentLabel={rangeLabel(range.startDate, range.endDate)}
-            priorLabel={rangeLabel(prior.startDate, prior.endDate)}
+            columns={columns}
+            changeTone={changeTone}
             expanded={expanded}
             onToggle={(code) =>
               setExpanded((prev) => ({ ...prev, [code]: !prev[code] }))

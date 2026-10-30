@@ -18,6 +18,7 @@
 
 import type { StatementLine } from '@/models/reportStatement';
 import { asRaw, str } from '@/serializers/documentLines';
+import { assessmentSerializer, kpiOrNumber, type Kpi, type KpiAssessment } from '@/serializers/kpiSerializer';
 import { toNumber } from '@/utils/money';
 
 const lines = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
@@ -98,9 +99,65 @@ export const profitLossSerializer = (payload: unknown): ProfitLossReport => {
 // Balance Sheet
 // ═══════════════════════════════════════════════════════
 
+/**
+ * One account line in a v2 balance-sheet section. Every comparison figure is
+ * the server's — `change` and `changePct` are not recomputed here.
+ */
+export interface BalanceSheetLine extends StatementLine {
+  subType: string;
+  /** Null when the report is not comparing. */
+  priorAmount: number | null;
+  change: number | null;
+  /** Null when the prior figure is zero — a percentage of nothing says nothing. */
+  changePct: number | null;
+  pctOfTotalAssets: number | null;
+  /**
+   * Set on a computed line that no account holds: 'retainedEarnings' (when no
+   * 3100 exists) or 'currentYearEarnings'. A synthetic line never carries a
+   * real account code.
+   */
+  synthetic: string | null;
+  /** On 3100 Retained Earnings: the posted balance plus prior years' earnings. */
+  composite: { postedBalance: number; priorYearsEarnings: number } | null;
+}
+
+export interface BalanceSheetSection {
+  /** cashAndBank | receivables | inventory | otherCurrentAssets | fixedAssets |
+   *  currentLiabilities | longTermLiabilities | equity — or, from a server that
+   *  predates sections, assets | liabilities | equity. */
+  key: string;
+  label: string;
+  lines: BalanceSheetLine[];
+  subtotal: number;
+  priorSubtotal: number | null;
+  /** The server's movement in the subtotal; null without a comparison. */
+  change: number | null;
+  changePct: number | null;
+  pctOfTotalAssets: number | null;
+}
+
+/** A total the statement prints that spans sections (Total Current Assets …). */
+export interface BalanceSheetTotal {
+  key: BalanceSheetTotalKey;
+  label: string;
+  amount: number;
+  prior: number | null;
+  change: number | null;
+  changePct: number | null;
+  pctOfTotalAssets: number | null;
+}
+
+export type BalanceSheetTotalKey =
+  | 'currentAssets'
+  | 'totalAssets'
+  | 'currentLiabilities'
+  | 'totalLiabilities'
+  | 'totalEquity'
+  | 'totalLiabilitiesAndEquity';
+
 export interface BalanceSheetReport {
   asOfDate: string;
-  /** Flat — the server does no grouping. See `bucketStatementLines`. */
+  /** Flat, as the API has always sent them. Kept for shipped consumers. */
   assets: StatementLine[];
   liabilities: StatementLine[];
   equity: StatementLine[];
@@ -113,22 +170,217 @@ export interface BalanceSheetReport {
    * totals is how a ledger that ties exactly comes to report a paisa gap.
    */
   isBalanced: boolean;
+
+  /**
+   * Grouped by the server (reports v2). From an older server this is the three
+   * flat lists as three sections, so the page has one shape to draw.
+   */
+  sections: BalanceSheetSection[];
+  /** Whether `sections` came from the server rather than from the flat lists. */
+  grouped: boolean;
+  /** Keyed totals; a key is absent when the server did not send that figure. */
+  totals: Partial<Record<BalanceSheetTotalKey, BalanceSheetTotal>>;
+  comparison: {
+    asOfDate: string;
+    totalAssets: number;
+    totalLiabilities: number;
+    totalEquity: number;
+  } | null;
+  /** The first day of the fiscal year `asOfDate` falls in, or '' if not sent. */
+  fiscalYearStart: string;
+  /** Assets − (Liabilities + Equity), raw then rounded; 0 when balanced. Null from an older server. */
+  gap: number | null;
 }
+
+const TOTAL_LABELS: Record<BalanceSheetTotalKey, string> = {
+  currentAssets: 'Total Current Assets',
+  totalAssets: 'TOTAL ASSETS',
+  currentLiabilities: 'Total Current Liabilities',
+  totalLiabilities: 'Total Liabilities',
+  totalEquity: 'Total Equity',
+  totalLiabilitiesAndEquity: 'TOTAL LIABILITIES AND EQUITY',
+};
+
+const TOTAL_ALIASES: Record<string, BalanceSheetTotalKey> = {
+  currentAssets: 'currentAssets',
+  totalCurrentAssets: 'currentAssets',
+  totalAssets: 'totalAssets',
+  assets: 'totalAssets',
+  currentLiabilities: 'currentLiabilities',
+  totalCurrentLiabilities: 'currentLiabilities',
+  totalLiabilities: 'totalLiabilities',
+  liabilities: 'totalLiabilities',
+  totalEquity: 'totalEquity',
+  equity: 'totalEquity',
+  totalLiabilitiesAndEquity: 'totalLiabilitiesAndEquity',
+  liabilitiesAndEquity: 'totalLiabilitiesAndEquity',
+};
+
+const mapBalanceSheetLine = (raw: unknown): BalanceSheetLine => {
+  const r = asRaw(raw);
+  const composite = r.composite ? asRaw(r.composite) : null;
+  return {
+    ...mapStatementLine(raw),
+    subType: str(r.subType),
+    priorAmount: numberOrNull(r.priorAmount),
+    change: numberOrNull(r.change),
+    changePct: numberOrNull(r.changePct),
+    pctOfTotalAssets: numberOrNull(r.pctOfTotalAssets),
+    synthetic: r.synthetic ? str(r.synthetic) : null,
+    composite: composite
+      ? {
+          postedBalance: toNumber(composite.postedBalance as never),
+          priorYearsEarnings: toNumber(composite.priorYearsEarnings as never),
+        }
+      : null,
+  };
+};
+
+/**
+ * The subtotals that span sections. The contract names them without fixing a
+ * shape, so an array of `{ key, amount, priorAmount }`, a keyed map of numbers
+ * or objects, and flat `totalCurrentAssets`-style fields are all read.
+ */
+const mapBalanceSheetTotals = (
+  r: Record<string, unknown>,
+  comparison: BalanceSheetReport['comparison'],
+): BalanceSheetReport['totals'] => {
+  const out: BalanceSheetReport['totals'] = {};
+  const put = (rawKey: string, value: unknown) => {
+    const key = TOTAL_ALIASES[rawKey];
+    if (!key || out[key]) return;
+    if (value && typeof value === 'object') {
+      const v = asRaw(value);
+      out[key] = {
+        key,
+        label: str(v.label, TOTAL_LABELS[key]),
+        amount: toNumber((v.amount ?? v.value ?? v.subtotal) as never),
+        prior: numberOrNull(v.priorAmount ?? v.prior ?? v.priorSubtotal),
+        change: numberOrNull(v.change),
+        changePct: numberOrNull(v.changePct),
+        pctOfTotalAssets: numberOrNull(v.pctOfTotalAssets ?? v.subtotalPctOfTotalAssets),
+      };
+    } else if (value !== undefined && value !== null) {
+      out[key] = { key, label: TOTAL_LABELS[key], amount: toNumber(value as never), prior: null, change: null, changePct: null, pctOfTotalAssets: null };
+    }
+  };
+
+  const source = r.subtotals ?? r.totals;
+  if (Array.isArray(source)) {
+    for (const item of source) put(str(asRaw(item).key), item);
+  } else if (source && typeof source === 'object') {
+    for (const [key, value] of Object.entries(source as Record<string, unknown>)) put(key, value);
+  }
+  for (const flat of ['totalCurrentAssets', 'totalCurrentLiabilities', 'totalLiabilitiesAndEquity'] as const) {
+    put(flat, r[flat]);
+  }
+
+  // The three totals every version of the API sends, with their prior figure
+  // from `comparison` when the server's subtotal block did not carry one.
+  const ensure = (key: BalanceSheetTotalKey, amount: unknown, prior: number | null) => {
+    if (!out[key] && amount !== undefined && amount !== null) {
+      out[key] = { key, label: TOTAL_LABELS[key], amount: toNumber(amount as never), prior, change: null, changePct: null, pctOfTotalAssets: null };
+    } else if (out[key] && out[key]!.prior === null && prior !== null) {
+      out[key] = { ...out[key]!, prior };
+    }
+  };
+  ensure('totalAssets', r.totalAssets, comparison?.totalAssets ?? null);
+  ensure('totalLiabilities', r.totalLiabilities, comparison?.totalLiabilities ?? null);
+  ensure('totalEquity', r.totalEquity, comparison?.totalEquity ?? null);
+
+  // The bottom line of the right-hand side. Read from the server when sent; a
+  // server that predates it sends the two halves, and they are carried down
+  // as one figure — the same derivation `partySummarySerializer` makes for an
+  // absent `netDue`, and the only total on the statement not read verbatim.
+  if (!out.totalLiabilitiesAndEquity && out.totalLiabilities && out.totalEquity) {
+    const sum = (a: number, b: number) => Math.round((a + b) * 100) / 100;
+    out.totalLiabilitiesAndEquity = {
+      key: 'totalLiabilitiesAndEquity',
+      label: TOTAL_LABELS.totalLiabilitiesAndEquity,
+      amount: sum(out.totalLiabilities.amount, out.totalEquity.amount),
+      prior:
+        out.totalLiabilities.prior !== null && out.totalEquity.prior !== null
+          ? sum(out.totalLiabilities.prior, out.totalEquity.prior)
+          : null,
+      change: null,
+      changePct: null,
+      pctOfTotalAssets: null,
+    };
+  }
+  return out;
+};
 
 export const balanceSheetSerializer = (payload: unknown): BalanceSheetReport => {
   const r = asRaw(payload);
+  const assets = lines(r.assets).map(mapStatementLine);
+  const liabilities = lines(r.liabilities).map(mapStatementLine);
+  const equity = lines(r.equity).map(mapStatementLine);
+  const totalAssets = toNumber(r.totalAssets as never);
+  const totalLiabilities = toNumber(r.totalLiabilities as never);
+  const totalEquity = toNumber(r.totalEquity as never);
+
+  const cmp = r.comparison ? asRaw(r.comparison) : null;
+  const comparison = cmp
+    ? {
+        asOfDate: str(cmp.asOfDate),
+        totalAssets: toNumber(cmp.totalAssets as never),
+        totalLiabilities: toNumber(cmp.totalLiabilities as never),
+        totalEquity: toNumber(cmp.totalEquity as never),
+      }
+    : null;
+
+  const rawSections = lines(r.sections);
+  const grouped = rawSections.length > 0;
+  const legacy = (key: string, label: string, src: StatementLine[], subtotal: number): BalanceSheetSection => ({
+    key,
+    label,
+    lines: src.map((line) => mapBalanceSheetLine(line)),
+    subtotal,
+    priorSubtotal: null,
+    change: null,
+    changePct: null,
+    pctOfTotalAssets: null,
+  });
+
   return {
     asOfDate: str(r.asOfDate),
-    assets: lines(r.assets).map(mapStatementLine),
-    liabilities: lines(r.liabilities).map(mapStatementLine),
-    equity: lines(r.equity).map(mapStatementLine),
-    totalAssets: toNumber(r.totalAssets as never),
-    totalLiabilities: toNumber(r.totalLiabilities as never),
-    totalEquity: toNumber(r.totalEquity as never),
+    assets,
+    liabilities,
+    equity,
+    totalAssets,
+    totalLiabilities,
+    totalEquity,
     // Defaults to TRUE when absent. A missing flag is an old or partial payload,
     // not evidence of an imbalance, and crying "out of balance" at a business
     // whose books are fine sends someone hunting an error nobody posted.
     isBalanced: r.isBalanced === undefined ? true : Boolean(r.isBalanced),
+    grouped,
+    sections: grouped
+      ? rawSections.map((raw) => {
+          const s = asRaw(raw);
+          return {
+            key: str(s.key),
+            label: str(s.label),
+            lines: lines(s.lines).map(mapBalanceSheetLine),
+            subtotal: toNumber(s.subtotal as never),
+            priorSubtotal: numberOrNull(s.priorSubtotal),
+            change: numberOrNull(s.change),
+            changePct: numberOrNull(s.changePct),
+            // The contract names it `subtotalPctOfTotalAssets`.
+            pctOfTotalAssets: numberOrNull(s.subtotalPctOfTotalAssets ?? s.pctOfTotalAssets),
+          };
+        })
+      : // No grouping on this side: an older server's three flat lists, each
+        // under its own heading, totalled by the server's own figure.
+        [
+          legacy('assets', 'Assets', assets, totalAssets),
+          legacy('liabilities', 'Liabilities', liabilities, totalLiabilities),
+          legacy('equity', 'Equity', equity, totalEquity),
+        ],
+    totals: mapBalanceSheetTotals(r, comparison),
+    comparison,
+    fiscalYearStart: str(r.fiscalYearStart),
+    gap: numberOrNull(r.gap),
   };
 };
 
@@ -136,24 +388,136 @@ export const balanceSheetSerializer = (payload: unknown): BalanceSheetReport => 
 // Trial Balance
 // ═══════════════════════════════════════════════════════
 
-export interface TrialBalanceRow {
-  accountCode: string;
-  accountName: string;
+/**
+ * closing — where each account stands at the end date (balance-sheet accounts
+ *   cumulative, P&L accounts fiscal-year-to-date); the trial balance an
+ *   accountant means.
+ * working — opening, the period's movement and closing side by side.
+ * movement — what moved inside the range; the server's default and the only
+ *   mode an older server knows.
+ */
+export type TrialBalanceMode = 'closing' | 'working' | 'movement';
+
+export interface DebitCredit {
   debit: number;
   credit: number;
 }
 
+/** A column pair's totals, with the server's verdict taken on raw figures. */
+export interface TrialBalanceColumnTotals extends DebitCredit {
+  isBalanced: boolean;
+}
+
+export interface TrialBalanceRow {
+  accountCode: string;
+  accountName: string;
+  /** The row's figure in this mode: closing in closing/working, movement in movement. */
+  debit: number;
+  credit: number;
+  /** asset | liability | equity | revenue | expense — '' from an older server. */
+  accountType: string;
+  subType: string;
+  group: string;
+  /** 'abnormal_balance' | 'contra_assumed' | 'obe_nonzero' … */
+  flags: string[];
+  /** The computed prior-years retained-earnings row in closing mode. */
+  synthetic: boolean;
+  /** Working mode only. */
+  opening: DebitCredit | null;
+  period: DebitCredit | null;
+  closing: DebitCredit | null;
+}
+
+/** A type group's subtotals (contract gap G2 — absent until the server sends it). */
+export interface TrialBalanceGroup {
+  key: string;
+  label: string;
+  main: DebitCredit;
+  opening: DebitCredit | null;
+  period: DebitCredit | null;
+  closing: DebitCredit | null;
+}
+
 export interface TrialBalanceReport {
+  /** The mode the server answered in; 'movement' from a server without modes. */
+  mode: TrialBalanceMode;
   range: ReportRangeMeta;
   rows: TrialBalanceRow[];
   totalDebits: number;
   totalCredits: number;
   isBalanced: boolean;
+  /** Per column pair in working mode; null where the server sent none. */
+  columnTotals: {
+    opening: TrialBalanceColumnTotals | null;
+    period: TrialBalanceColumnTotals | null;
+    closing: TrialBalanceColumnTotals | null;
+  };
+  groups: TrialBalanceGroup[];
+  /** e.g. the range crosses a fiscal-year boundary. Null when there is nothing to say. */
+  warning: string | null;
+  fiscalYearStart: string;
 }
+
+const pairOrNull = (r: Record<string, unknown>, prefix: string): DebitCredit | null => {
+  // `{ opening: { debit, credit } }` or flat `openingDebit` / `openingCredit`.
+  const nested = r[prefix];
+  if (nested && typeof nested === 'object') {
+    const n = asRaw(nested);
+    return { debit: toNumber(n.debit as never), credit: toNumber(n.credit as never) };
+  }
+  const dr = r[`${prefix}Debit`];
+  const cr = r[`${prefix}Credit`];
+  if (dr === undefined && cr === undefined) return null;
+  return { debit: toNumber(dr as never), credit: toNumber(cr as never) };
+};
+
+const columnTotalsOrNull = (raw: unknown): TrialBalanceColumnTotals | null => {
+  if (!raw || typeof raw !== 'object') return null;
+  const t = asRaw(raw);
+  return {
+    debit: toNumber((t.debit ?? t.debits) as never),
+    credit: toNumber((t.credit ?? t.credits) as never),
+    isBalanced: t.isBalanced === undefined ? true : Boolean(t.isBalanced),
+  };
+};
+
+const TB_MODES: TrialBalanceMode[] = ['closing', 'working', 'movement'];
 
 export const trialBalanceSerializer = (payload: unknown): TrialBalanceReport => {
   const r = asRaw(payload);
+  const mode = TB_MODES.includes(str(r.mode) as TrialBalanceMode)
+    ? (str(r.mode) as TrialBalanceMode)
+    : 'movement';
+  const totalDebits = toNumber(r.totalDebits as never);
+  const totalCredits = toNumber(r.totalCredits as never);
+  const isBalanced = r.isBalanced === undefined ? true : Boolean(r.isBalanced);
+  const main: TrialBalanceColumnTotals = { debit: totalDebits, credit: totalCredits, isBalanced };
+
+  // Per column pair, nested (`{ opening: { debit, credit } }`) or flat
+  // (`{ openingDebit, openingCredit }`, with the verdicts in `balanced`) —
+  // the contract sends the flat form.
+  const totals = asRaw(r.columnTotals ?? r.totals);
+  const verdicts = asRaw(r.balanced);
+  const pairTotals = (prefix: 'opening' | 'period' | 'closing'): TrialBalanceColumnTotals | null => {
+    const nested = columnTotalsOrNull(totals[prefix]);
+    if (nested) return nested;
+    const flat = pairOrNull(totals, prefix);
+    if (!flat) return null;
+    const verdict = verdicts[prefix];
+    return { ...flat, isBalanced: verdict === undefined ? true : Boolean(verdict) };
+  };
+  const columnTotals = {
+    opening: pairTotals('opening'),
+    period: pairTotals('period'),
+    closing: pairTotals('closing'),
+  };
+  // The headline pair is the mode's own column; fill it from the flat totals
+  // every version sends so a page never has to ask which one it got.
+  if (mode === 'movement' && !columnTotals.period) columnTotals.period = main;
+  if (mode !== 'movement' && !columnTotals.closing) columnTotals.closing = main;
+
   return {
+    mode,
     range: mapRange(r.range),
     rows: lines(r.rows).map((raw) => {
       const row = asRaw(raw);
@@ -162,11 +526,39 @@ export const trialBalanceSerializer = (payload: unknown): TrialBalanceReport => 
         accountName: str(row.accountName),
         debit: toNumber(row.debit as never),
         credit: toNumber(row.credit as never),
+        accountType: str(row.accountType),
+        subType: str(row.subType),
+        group: str(row.group),
+        flags: lines(row.flags).map((f) => str(f)).filter(Boolean),
+        synthetic: Boolean(row.synthetic),
+        opening: pairOrNull(row, 'opening'),
+        period: pairOrNull(row, 'period'),
+        closing: pairOrNull(row, 'closing'),
       };
     }),
-    totalDebits: toNumber(r.totalDebits as never),
-    totalCredits: toNumber(r.totalCredits as never),
-    isBalanced: r.isBalanced === undefined ? true : Boolean(r.isBalanced),
+    totalDebits,
+    totalCredits,
+    isBalanced,
+    columnTotals,
+    groups: lines(r.groups).map((raw) => {
+      const g = asRaw(raw);
+      return {
+        key: str(g.key),
+        label: str(g.label),
+        main: { debit: toNumber(g.debit as never), credit: toNumber(g.credit as never) },
+        opening: pairOrNull(g, 'opening'),
+        period: pairOrNull(g, 'period'),
+        closing: pairOrNull(g, 'closing'),
+      };
+    }),
+    // `warnings: [{ code, message }]` in the contract; a bare `warning` string is read too.
+    warning: r.warning
+      ? str(r.warning)
+      : lines(r.warnings)
+          .map((w) => (typeof w === 'string' ? w : str(asRaw(w).message)))
+          .filter(Boolean)
+          .join(' ') || null,
+    fiscalYearStart: str(r.fiscalYearStart),
   };
 };
 
@@ -178,11 +570,36 @@ export interface CashFlowLine {
   /** A server-supplied description; these rows carry no account code. */
   label: string;
   amount: number;
+  /**
+   * A stable slug — op.customers, inv.fixed_assets, fin.loans … — that opens
+   * the cash rows classified into this line. Null from an older server, and on
+   * indirect adjustments until the server keys them (contract gap G7).
+   */
+  lineKey: string | null;
+  section: string | null;
 }
 
 export interface CashFlowSection {
   lines: CashFlowLine[];
   total: number;
+}
+
+/** One cash or bank account's movement over the period. */
+export interface CashFlowAccount {
+  accountCode: string;
+  accountName: string;
+  beginning: number;
+  ending: number;
+}
+
+/** One month of cash movement (contract gap G1 — absent until the server sends it). */
+export interface CashFlowMonth {
+  period: string;
+  label: string;
+  inflow: number;
+  outflow: number;
+  net: number;
+  endingCash: number;
 }
 
 export interface CashFlowReport {
@@ -193,7 +610,13 @@ export interface CashFlowReport {
   netChange: number;
   beginningCash: number;
   endingCash: number;
-  monthlyTrend: { label: string; value: number }[];
+  /**
+   * Net cash movement per month, zero-filled (reports v2). `endingCash` is the
+   * Cash + Bank held at the month's end — null from an older server.
+   */
+  monthlyTrend: { label: string; value: number; endingCash: number | null }[];
+  /** The server's own tie of ending cash to the balance sheet (reports v2). */
+  cashTie: { endingCash: number; balanceSheetCash: number; ties: boolean } | null;
   /**
    * The indirect reconciliation — net income adjusted for non-cash items. Its
    * `total` always equals `operating.total`. Optional: older deployments omit it.
@@ -202,12 +625,26 @@ export interface CashFlowReport {
     netIncome: number;
     adjustments: CashFlowLine[];
     total: number;
+    /**
+     * Non-cash transactions kept OUT of the working-capital lines (IAS 7.43) —
+     * opening balances, capex bought on credit — with the effect each would
+     * have had. Empty from an older server.
+     */
+    excludedNonCash: CashFlowLine[];
   } | null;
+  /** Per Cash/Bank account; Σ ending = endingCash. Empty from an older server. */
+  accounts: CashFlowAccount[];
+  monthly: CashFlowMonth[];
 }
 
 const mapCashFlowLine = (raw: unknown): CashFlowLine => {
   const r = asRaw(raw);
-  return { label: str(r.label), amount: toNumber(r.amount as never) };
+  return {
+    label: str(r.label),
+    amount: toNumber(r.amount as never),
+    lineKey: r.lineKey ? str(r.lineKey) : null,
+    section: r.section ? str(r.section) : null,
+  };
 };
 
 const mapCashFlowSection = (raw: unknown): CashFlowSection => {
@@ -232,15 +669,47 @@ export const cashFlowSerializer = (payload: unknown): CashFlowReport => {
     endingCash: toNumber(r.endingCash as never),
     monthlyTrend: lines(r.monthlyTrend).map((raw) => {
       const point = asRaw(raw);
-      return { label: str(point.label), value: toNumber(point.value as never) };
+      return {
+        label: str(point.label),
+        value: toNumber(point.value as never),
+        endingCash: numberOrNull(point.endingCash),
+      };
     }),
+    cashTie: r.cashTie
+      ? {
+          endingCash: toNumber(asRaw(r.cashTie).endingCash as never),
+          balanceSheetCash: toNumber(asRaw(r.cashTie).balanceSheetCash as never),
+          ties: Boolean(asRaw(r.cashTie).ties),
+        }
+      : null,
     operatingIndirect: indirect
       ? {
           netIncome: toNumber(indirect.netIncome as never),
           adjustments: lines(indirect.adjustments).map(mapCashFlowLine),
           total: toNumber(indirect.total as never),
+          excludedNonCash: lines(indirect.excludedNonCash).map(mapCashFlowLine),
         }
       : null,
+    accounts: lines(r.accounts).map((raw) => {
+      const a = asRaw(raw);
+      return {
+        accountCode: str(a.accountCode),
+        accountName: str(a.accountName),
+        beginning: toNumber(a.beginning as never),
+        ending: toNumber(a.ending as never),
+      };
+    }),
+    monthly: lines(r.monthly).map((raw) => {
+      const m = asRaw(raw);
+      return {
+        period: str(m.period ?? m.month),
+        label: str(m.label),
+        inflow: toNumber(m.inflow as never),
+        outflow: toNumber(m.outflow as never),
+        net: toNumber(m.net as never),
+        endingCash: toNumber(m.endingCash as never),
+      };
+    }),
   };
 };
 
@@ -584,10 +1053,67 @@ export interface AgingRow extends AgingBuckets {
   customerName: string;
   /** Keyed by `AgingBucketDef.key`. */
   amounts: Record<string, number>;
+
+  // ── reports v2 — absent (empty / null / false) from an older server ──
+  /** The API's dialect (`net30`); map with `paymentTermsFromApi`. */
+  paymentTerms: string;
+  /** A/R only. Null when the customer has no limit. */
+  creditLimit: number | null;
+  overLimit: boolean;
+  /** The balance as a share of the limit; null with no limit. */
+  creditUsedPct: number | null;
+  lastPaymentDate: string | null;
+  lastPaymentAmount: number | null;
+  oldestDueDate: string | null;
 }
 
 export interface AgingTotals extends AgingBuckets {
   amounts: Record<string, number>;
+}
+
+/** The v2 party facts as an older server leaves them: unknown, not zero. */
+export const NO_AGING_PARTY_FACTS: Pick<
+  AgingRow,
+  'paymentTerms' | 'creditLimit' | 'overLimit' | 'creditUsedPct' | 'lastPaymentDate' | 'lastPaymentAmount' | 'oldestDueDate'
+> = {
+  paymentTerms: '',
+  creditLimit: null,
+  overLimit: false,
+  creditUsedPct: null,
+  lastPaymentDate: null,
+  lastPaymentAmount: null,
+  oldestDueDate: null,
+};
+
+/** One slice of what falls due, by due date from today. */
+export interface AgingScheduleSlice {
+  /** overdue | d0_7 | d8_14 | d15_30 | d31_60 | d60_plus */
+  key: string;
+  label: string;
+  amount: number;
+  count: number;
+}
+
+export interface AgingInsights {
+  /** DSO on receivables, DPO on payables — a KPI object, formula and all. */
+  days: Kpi | null;
+  totalOpen: number;
+  overdue: number;
+  overduePct: number | null;
+  /** Balance-weighted. */
+  weightedAvgDaysOverdue: number | null;
+  top5SharePct: number | null;
+  /** Σ amount = totalOpen. */
+  schedule: AgingScheduleSlice[];
+  /**
+   * Each ratio against its rule of thumb, from the server. On payables the
+   * concentration is stated, never judged (neutral). Empty from an older server.
+   */
+  assessments: {
+    overduePct: KpiAssessment | null;
+    weightedAvgDaysOverdue: KpiAssessment | null;
+    top5SharePct: KpiAssessment | null;
+  };
 }
 
 export interface AgingReport {
@@ -596,6 +1122,8 @@ export interface AgingReport {
   buckets: AgingBucketDef[];
   rows: AgingRow[];
   totals: AgingTotals;
+  /** Null from a server that predates aging insights. */
+  insights: AgingInsights | null;
 }
 
 /** The classic columns, for a response from a server that predates buckets[]. */
@@ -670,6 +1198,7 @@ export const agingSerializer = (payload: unknown): AgingReport => {
   };
 
   const totalsRaw = asRaw(r.totals);
+  const ins = r.insights ? asRaw(r.insights) : null;
 
   return {
     asOfDate: str(r.asOfDate),
@@ -682,9 +1211,46 @@ export const agingSerializer = (payload: unknown): AgingReport => {
         customerName: str(row.customerName, 'Unknown'),
         amounts: amountsFor(row),
         ...mapBuckets(row),
+        paymentTerms: str(row.paymentTerms),
+        // The contract sends 0 for a customer with no limit; a limit of nothing
+        // is "no limit", not "everything is over it".
+        creditLimit: numberOrNull(row.creditLimit) ? numberOrNull(row.creditLimit) : null,
+        overLimit: Boolean(row.overLimit),
+        creditUsedPct: numberOrNull(row.creditUsedPct),
+        lastPaymentDate: row.lastPaymentDate ? str(row.lastPaymentDate) : null,
+        lastPaymentAmount: numberOrNull(row.lastPaymentAmount),
+        oldestDueDate: row.oldestDueDate ? str(row.oldestDueDate) : null,
       };
     }),
     totals: { amounts: amountsFor(totalsRaw), ...mapBuckets(r.totals) },
+    insights: ins
+      ? {
+          // `dso` on A/R and `dpo` on A/P — whichever arrived.
+          days:
+            ins.dso !== undefined
+              ? kpiOrNumber(ins.dso, 'dso', 'Days sales outstanding', 'days')
+              : kpiOrNumber(ins.dpo, 'dpo', 'Days payables outstanding', 'days'),
+          totalOpen: toNumber(ins.totalOpen as never),
+          overdue: toNumber(ins.overdue as never),
+          overduePct: numberOrNull(ins.overduePct),
+          weightedAvgDaysOverdue: numberOrNull(ins.weightedAvgDaysOverdue),
+          top5SharePct: numberOrNull(ins.top5SharePct),
+          schedule: lines(ins.schedule).map((raw) => {
+            const s = asRaw(raw);
+            return {
+              key: str(s.key),
+              label: str(s.label),
+              amount: toNumber(s.amount as never),
+              count: toNumber(s.count as never),
+            };
+          }),
+          assessments: {
+            overduePct: assessmentSerializer(asRaw(ins.assessments).overduePct),
+            weightedAvgDaysOverdue: assessmentSerializer(asRaw(ins.assessments).weightedAvgDaysOverdue),
+            top5SharePct: assessmentSerializer(asRaw(ins.assessments).top5SharePct),
+          },
+        }
+      : null,
   };
 };
 
@@ -1068,8 +1634,15 @@ export interface InventoryValuationRow {
   sku: string;
   category: string;
   qty: number;
-  cost: number;
+  /** Null when an as-of valuation could not tell what the item cost. */
+  cost: number | null;
   value: number;
+  /**
+   * False when an as-of valuation could not value the item — a movement on
+   * record carries no cost. `value` then reads 0 and is not in the total; the
+   * page shows a dash, never an estimate.
+   */
+  valueKnown: boolean;
 }
 
 /** One month on a value-over-time series. */
@@ -1206,6 +1779,9 @@ export interface ItemPerformancePoint {
   costKnown: boolean;
 }
 
+/** 'ok' | 'low' | 'out' — the Health tab's reorder rule, applied to one item. */
+export type ItemStockStatus = 'ok' | 'low' | 'out';
+
 /** The item as it stands today — stock figures are AS OF NOW. */
 export interface ItemFacts {
   category: string;
@@ -1218,6 +1794,25 @@ export interface ItemFacts {
   isActive: boolean;
   /** The last sale of any date, not only in the range. Null: never sold. */
   lastSoldDate: string | null;
+  /** Signed links to the item's photo; null without one, or from an older server. */
+  imageUrl: string | null;
+  thumbnailUrl: string | null;
+  /** Where the item is kept; null when it has no location. */
+  location: string | null;
+  /** Null from a server that predates it — the page then works it out from the figures. */
+  stockStatus: ItemStockStatus | null;
+  /** What the reorder list suggests ordering; null when no reorder is due. */
+  suggestedOrderQty: number | null;
+  /**
+   * The server's days of cover. Undefined from an older server (the page
+   * then works it out); null when nothing sold to measure against.
+   */
+  daysOfCover?: number | null;
+  /** Its verdict — the rule lives on the server, never guessed here. */
+  cover: KpiAssessment | null;
+  /** On hand, with nothing out in 180 days — the Health tab's dead stock. */
+  deadStock: boolean;
+  lastOutboundDate: string | null;
 }
 
 /** One buyer of the item over the range. */
@@ -1227,6 +1822,28 @@ export interface ItemCustomer {
   unitsSold: number;
   revenue: number;
   grossProfit: number;
+  /** Share of the window's revenue, 0–100; null for a negative part. */
+  sharePct: number | null;
+}
+
+/** How the item went out: invoiced directly, or on a delivery. */
+export interface ItemChannel {
+  key: 'invoice' | 'delivery';
+  unitsSold: number;
+  revenue: number;
+  grossProfit: number;
+  /** Invoices — a delivery is sold on the invoice it raised. */
+  documents: number;
+  /** Share of what went out before returns, 0–100. */
+  sharePct: number | null;
+}
+
+/** What came back on credit notes: every figure is negative. */
+export interface ItemReturns {
+  unitsSold: number;
+  revenue: number;
+  grossProfit: number;
+  documents: number;
 }
 
 export interface ItemPerformance {
@@ -1252,7 +1869,19 @@ export interface ItemPerformance {
   /** The top buyers over the range, largest first. */
   customers: ItemCustomer[];
   /** Everyone after the top few, folded. */
-  otherCustomers: { count: number; unitsSold: number; revenue: number; grossProfit: number };
+  otherCustomers: {
+    count: number;
+    unitsSold: number;
+    revenue: number;
+    grossProfit: number;
+    sharePct: number | null;
+  };
+  /**
+   * The same lines by document type; with `returns` they add up to `totals`.
+   * Null from a server that predates them.
+   */
+  channels: ItemChannel[] | null;
+  returns: ItemReturns | null;
 }
 
 const itemCustomerSerializer = (raw: unknown): ItemCustomer => {
@@ -1263,8 +1892,12 @@ const itemCustomerSerializer = (raw: unknown): ItemCustomer => {
     unitsSold: toNumber(c.unitsSold as never),
     revenue: toNumber(c.revenue as never),
     grossProfit: toNumber(c.grossProfit as never),
+    sharePct: numberOrNull(c.sharePct),
   };
 };
+
+const ITEM_STOCK_STATUSES: readonly ItemStockStatus[] = ['ok', 'low', 'out'];
+const ITEM_CHANNELS: readonly ItemChannel['key'][] = ['invoice', 'delivery'];
 
 export const itemPerformanceSerializer = (payload: unknown): ItemPerformance => {
   const r = asRaw(payload);
@@ -1310,6 +1943,19 @@ export const itemPerformanceSerializer = (payload: unknown): ItemPerformance => 
           reorderPoint: toNumber(item.reorderPoint as never),
           isActive: item.isActive !== false,
           lastSoldDate: item.lastSoldDate ? str(item.lastSoldDate) : null,
+          imageUrl: item.imageUrl ? str(item.imageUrl) : null,
+          thumbnailUrl: item.thumbnailUrl ? str(item.thumbnailUrl) : null,
+          location: item.location ? str(item.location) : null,
+          stockStatus: ITEM_STOCK_STATUSES.includes(item.stockStatus as ItemStockStatus)
+            ? (item.stockStatus as ItemStockStatus)
+            : null,
+          suggestedOrderQty: numberOrNull(item.suggestedOrderQty),
+          // Absent (an older server) stays undefined, so the page can tell it
+          // from "nothing sold" and work the figure out itself.
+          ...('daysOfCover' in item ? { daysOfCover: numberOrNull(item.daysOfCover) } : {}),
+          cover: assessmentSerializer(item.cover),
+          deadStock: item.deadStock === true,
+          lastOutboundDate: item.lastOutboundDate ? str(item.lastOutboundDate) : null,
         }
       : null,
     customers: lines(r.customers).map(itemCustomerSerializer),
@@ -1318,7 +1964,34 @@ export const itemPerformanceSerializer = (payload: unknown): ItemPerformance => 
       unitsSold: toNumber(others.unitsSold as never),
       revenue: toNumber(others.revenue as never),
       grossProfit: toNumber(others.grossProfit as never),
+      sharePct: numberOrNull(others.sharePct),
     },
+    channels: Array.isArray(r.channels)
+      ? lines(r.channels)
+          .map((raw) => {
+            const c = asRaw(raw);
+            return {
+              key: str(c.key) as ItemChannel['key'],
+              unitsSold: toNumber(c.unitsSold as never),
+              revenue: toNumber(c.revenue as never),
+              grossProfit: toNumber(c.grossProfit as never),
+              documents: toNumber(c.documents as never),
+              sharePct: numberOrNull(c.sharePct),
+            };
+          })
+          .filter((c) => ITEM_CHANNELS.includes(c.key))
+      : null,
+    returns: r.returns
+      ? (() => {
+          const x = asRaw(r.returns);
+          return {
+            unitsSold: toNumber(x.unitsSold as never),
+            revenue: toNumber(x.revenue as never),
+            grossProfit: toNumber(x.grossProfit as never),
+            documents: toNumber(x.documents as never),
+          };
+        })()
+      : null,
   };
 };
 
@@ -1530,13 +2203,52 @@ export interface InventoryValuationReport {
   rows: InventoryValuationRow[];
   byCategory: { category: string; totalValue: number }[];
   totalValue: number;
+  /** Set when the valuation was asked for as of a date; '' for today's snapshot. */
+  asOfDate: string;
+  /**
+   * The server's own tie-out against GL 1200 for that date. Null from a server
+   * that predates as-of valuation.
+   */
+  ledgerTie: { gl1200: number; valuation: number; gap: number } | null;
+  /**
+   * How much of the history carries a recorded value. Below 100 the server did
+   * not estimate the rest — the figure is what is known, and this says so.
+   */
+  coverage: { pct: number; message: string } | null;
 }
 
 export const inventoryValuationSerializer = (
   payload: unknown,
 ): InventoryValuationReport => {
   const r = asRaw(payload);
+  const tie = r.ledgerTie ? asRaw(r.ledgerTie) : null;
+  // `coverage` may be a bare percentage or `{ pct, message }`.
+  const cov = r.coverage;
+  const coverage =
+    cov === null || cov === undefined
+      ? null
+      : typeof cov === 'object'
+        ? {
+            pct: toNumber((asRaw(cov).pct ?? asRaw(cov).percent) as never),
+            // The contract counts the items it could not value rather than
+            // sending a sentence; the sentence is made here.
+            message:
+              str(asRaw(cov).message) ||
+              (toNumber(asRaw(cov).unvaluedItems as never) > 0
+                ? `${toNumber(asRaw(cov).unvaluedItems as never)} item${toNumber(asRaw(cov).unvaluedItems as never) === 1 ? ' has' : 's have'} no recorded value on that date`
+                : ''),
+          }
+        : { pct: toNumber(cov as never), message: '' };
   return {
+    asOfDate: str(r.asOfDate),
+    ledgerTie: tie
+      ? {
+          gl1200: toNumber(tie.gl1200 as never),
+          valuation: toNumber(tie.valuation as never),
+          gap: toNumber(tie.gap as never),
+        }
+      : null,
+    coverage,
     rows: lines(r.rows).map((raw) => {
       const row = asRaw(raw);
       return {
@@ -1545,8 +2257,9 @@ export const inventoryValuationSerializer = (
         sku: str(row.sku),
         category: str(row.category, 'Uncategorized'),
         qty: toNumber(row.qty as never),
-        cost: toNumber(row.cost as never),
+        cost: numberOrNull(row.cost),
         value: toNumber(row.value as never),
+        valueKnown: row.valueKnown === undefined ? row.value !== null : Boolean(row.valueKnown),
       };
     }),
     byCategory: lines(r.byCategory).map((raw) => {

@@ -28,6 +28,8 @@ export interface ValuationRow {
   unitCost: number;
   /** qty × unit cost, now. */
   value: number;
+  /** False when an as-of valuation could not value the item; `value` is then not shown. */
+  valueKnown?: boolean;
   /** Over the period. Zero when the item did not trade, or the server sent no sales. */
   unitsSold: number;
   revenue: number;
@@ -71,7 +73,7 @@ export const valuationRows = (
     sku: r.sku,
     category: r.category,
     qty: r.qty,
-    unitCost: r.cost,
+    unitCost: r.cost ?? 0,
     value: r.value,
     unitsSold: 0,
     revenue: 0,
@@ -80,6 +82,46 @@ export const valuationRows = (
     marginPct: null,
     lastSoldDate: null,
   }));
+};
+
+/**
+ * The rows with their STOCK figures taken from an as-of valuation (reports
+ * v2) — quantity, unit cost and value on that date — while the sales columns
+ * keep the period's figures. An item with stock on that date but no row here
+ * (since deleted, or not in the performance list) is added with no sales; an
+ * item with no stock on that date reads zero rather than today's quantity.
+ */
+export const withStockAsOf = (
+  rows: ValuationRow[],
+  snapshot: InventoryValuationReport | undefined,
+): ValuationRow[] => {
+  if (!snapshot) return rows;
+  const byId = new Map(snapshot.rows.map((r) => [r.itemId, r]));
+  const merged = rows.map((r) => {
+    const s = byId.get(r.itemId);
+    return { ...r, qty: s?.qty ?? 0, unitCost: s?.cost ?? r.unitCost, value: s?.value ?? 0, valueKnown: s?.valueKnown ?? true };
+  });
+  const seen = new Set(rows.map((r) => r.itemId));
+  for (const s of snapshot.rows) {
+    if (seen.has(s.itemId)) continue;
+    merged.push({
+      itemId: s.itemId,
+      itemName: s.itemName,
+      sku: s.sku,
+      category: s.category,
+      qty: s.qty,
+      unitCost: s.cost ?? 0,
+      value: s.value,
+      valueKnown: s.valueKnown,
+      unitsSold: 0,
+      revenue: 0,
+      cogs: 0,
+      grossProfit: 0,
+      marginPct: null,
+      lastSoldDate: null,
+    });
+  }
+  return merged;
 };
 
 /** Whether an item sold, or took a return, in the period. */

@@ -36,8 +36,10 @@ export function PanelHeader({
   action?: ReactNode;
 }) {
   return (
-    <CardHeader className="items-center">
-      <div className="min-w-0">
+    // The action drops under the title when there is no room beside it — a
+    // phone, or a card with several controls — rather than squeezing it.
+    <CardHeader className="flex-wrap items-center">
+      <div className="min-w-[min(100%,9rem)] flex-1">
         <CardTitle className="text-h5">{title}</CardTitle>
         {description && (
           <CardDescription className="mt-[2px] text-caption text-text-tertiary">

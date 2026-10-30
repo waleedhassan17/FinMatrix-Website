@@ -1,7 +1,9 @@
 // ═══════════════════════════════════════════════════════
 // FinMatrix Web — Financial statement logic
 // ═══════════════════════════════════════════════════════
-// The arithmetic and grouping a statement needs that the API does not do for us.
+// The little arithmetic a statement still needs on this side, and its row model.
+// Grouping is NOT here any more: reports v2 groups the balance sheet on the
+// server, by account subtype, and the client draws what it is sent.
 //
 // The governing rule here is that THE CLIENT NEVER FOOTS A COLUMN. The backend
 // sums every total from unrounded four-decimal figures and rounds once, precisely
@@ -13,172 +15,12 @@
 
 import { toDecimal } from '@/utils/money';
 
-export type AccountGroup =
-  | 'bank'
-  | 'ar'
-  | 'otherCurrentAsset'
-  | 'fixedAsset'
-  | 'currentLiability'
-  | 'longTermLiability'
-  | 'equity'
-  | 'income'
-  | 'cogs'
-  | 'expense'
-  | 'other';
-
 /** One account's contribution to a statement section, sign already applied. */
 export interface StatementLine {
   accountCode: string;
   accountName: string;
   amount: number;
 }
-
-/**
- * Which part of a statement an account number belongs to.
- *
- * The number is all there is to go on: `GET /reports/balance-sheet` sends each
- * line as `{accountCode, accountName, amount}` with no type or sub-type, so the
- * statement's shape has to be inferred from the chart's numbering convention.
- *
- * Several bands are wider than their names suggest. Inventory (1200), Goods in
- * Transit (1250) and Sales Tax Recoverable (1300) are all current assets;
- * Accounts Payable (2000), GRNI (2050), Sales Tax Payable (2300) and Customer
- * Advances (2400) are all current liabilities.
- *
- * **The current-liability band runs to 2699, not 2399.** The app's version cuts
- * at 2399 and files everything above as long-term, which puts account 2400 —
- * `Customer Advances (Unearned Revenue)`, a contract liability the server settles
- * when the goods are delivered — under "Long-Term Liabilities". It is money owed
- * within the operating cycle, so that overstates long-term debt and understates
- * current, which is exactly the distinction a reader checks a balance sheet for.
- * No seeded account sits above 2400, so 2700+ is left free for the genuinely
- * long-term items a user adds themselves.
- *
- * Anything non-numeric, or outside every band, is `'other'` — rendered under an
- * "Other" heading, never dropped.
- */
-export const classifyAccount = (code: string): AccountGroup => {
-  if (!/^\d+$/.test(code)) return 'other';
-  const n = Number(code);
-
-  if (n >= 1000 && n <= 1099) return 'bank';
-  if (n >= 1100 && n <= 1199) return 'ar';
-  if (n >= 1200 && n <= 1499) return 'otherCurrentAsset';
-  if (n >= 1500 && n <= 1999) return 'fixedAsset';
-  if (n >= 2000 && n <= 2699) return 'currentLiability';
-  if (n >= 2700 && n <= 2999) return 'longTermLiability';
-  if (n >= 3000 && n <= 3999) return 'equity';
-  if (n >= 4000 && n <= 4999) return 'income';
-  if (n >= 5000 && n <= 5999) return 'cogs';
-  if (n >= 6000 && n <= 7999) return 'expense';
-  return 'other';
-};
-
-export const ACCOUNT_GROUP_LABELS: Record<AccountGroup, string> = {
-  bank: 'Bank Accounts',
-  ar: 'Accounts Receivable',
-  otherCurrentAsset: 'Other Current Assets',
-  fixedAsset: 'Fixed Assets',
-  currentLiability: 'Current Liabilities',
-  longTermLiability: 'Long-Term Liabilities',
-  equity: 'Equity',
-  income: 'Income',
-  cogs: 'Cost of Goods Sold',
-  expense: 'Expenses',
-  other: 'Other',
-};
-
-/** Asset sub-sections, in the order a balance sheet presents them. */
-export const ASSET_GROUPS: AccountGroup[] = [
-  'bank',
-  'ar',
-  'otherCurrentAsset',
-  'fixedAsset',
-];
-
-/** Liability sub-sections, in presentation order. */
-export const LIABILITY_GROUPS: AccountGroup[] = [
-  'currentLiability',
-  'longTermLiability',
-];
-
-export interface GroupedSection {
-  group: AccountGroup;
-  label: string;
-  lines: StatementLine[];
-  /** Sum of this group's own lines — display only, never a tie-breaker. */
-  subtotal: number;
-}
-
-export interface BucketedLines {
-  sections: GroupedSection[];
-  /** Lines no requested group claimed, surfaced rather than discarded. */
-  leftover: StatementLine[];
-  leftoverSubtotal: number;
-}
-
-const byCode = (a: StatementLine, b: StatementLine) =>
-  a.accountCode.localeCompare(b.accountCode, undefined, { numeric: true });
-
-const sumLines = (lines: readonly StatementLine[]): number =>
-  lines
-    .reduce((acc, l) => acc.plus(toDecimal(l.amount)), toDecimal(0))
-    .toDecimalPlaces(2)
-    .toNumber();
-
-/**
- * Split a flat list of accounts into the sub-sections a statement shows.
- *
- * `GET /reports/balance-sheet` returns `assets`, `liabilities` and `equity` as
- * FLAT arrays — the server does no grouping at all — so this is the only place
- * the Balance Sheet's shape comes from.
- *
- * An account whose code matches none of the requested groups lands in
- * `leftover`, which the page renders as "Other Assets" / "Other Liabilities".
- * Nothing is allowed to vanish: an account missing from the statement because
- * somebody numbered it oddly is far worse than one shown under a vague heading,
- * and the section totals come from the server either way, so a misfiled line
- * cannot make the statement stop balancing.
- *
- * Empty groups are omitted entirely rather than printing a heading with no rows.
- */
-export const bucketStatementLines = (
-  lines: readonly StatementLine[] | undefined,
-  groups: readonly AccountGroup[],
-): BucketedLines => {
-  const safe = Array.isArray(lines) ? lines : [];
-  const wanted = new Set(groups);
-  const byGroup = new Map<AccountGroup, StatementLine[]>();
-  const leftover: StatementLine[] = [];
-
-  for (const line of safe) {
-    const group = classifyAccount(line.accountCode);
-    if (!wanted.has(group)) {
-      leftover.push(line);
-      continue;
-    }
-    const bucket = byGroup.get(group);
-    if (bucket) bucket.push(line);
-    else byGroup.set(group, [line]);
-  }
-
-  const sections: GroupedSection[] = [];
-  for (const group of groups) {
-    const found = byGroup.get(group);
-    if (!found || found.length === 0) continue;
-    const sorted = found.slice().sort(byCode);
-    sections.push({
-      group,
-      label: ACCOUNT_GROUP_LABELS[group],
-      lines: sorted,
-      subtotal: sumLines(sorted),
-    });
-  }
-
-  leftover.sort(byCode);
-
-  return { sections, leftover, leftoverSubtotal: sumLines(leftover) };
-};
 
 /**
  * Show the server's total, and say so loudly in development if our own sum of
@@ -270,7 +112,57 @@ export interface StatementRowData {
    * than a separate flag that could disagree with it.
    */
   accountCode?: string;
+
+  // ── StatementTable v2 ──────────────────────────────────────────────────
+  /**
+   * What the row is. Inferred from the older flags when absent (a heading has
+   * no amount, `isTotal` is a subtotal, `isGrand` the bottom line), so the
+   * P&L and cash flow keep drawing as they did.
+   *
+   * `synthetic` is a computed line no account holds — Net Income (current
+   * fiscal year), prior years' retained earnings — and carries an info mark
+   * that says so.
+   */
+  kind?: 'heading' | 'account' | 'subtotal' | 'grand' | 'synthetic';
+  /** The account name alone; the table prints `accountCode` muted before it. */
+  name?: string;
+  /** Server-supplied movement against `prior`. Preferred over `variance()`. */
+  change?: number | null;
+  changePct?: number | null;
+  /** Common-size: this figure as a percentage of the base (total assets …). */
+  pctOfTotal?: number | null;
+  /** On a synthetic row: what it is and how it was computed, in one sentence. */
+  note?: string;
+  /**
+   * On a heading: the section it opens, which makes the heading collapsible.
+   * On the rows under it: the same key, so they fold with it.
+   */
+  section?: string;
+  /**
+   * Whether `onRowActivate` opens this row. Account rows that carry a code
+   * default to true; set it on a synthetic row that has somewhere to go.
+   */
+  drill?: boolean;
 }
+
+/** The row's kind, read from `kind` or inferred from the older flags. */
+export const rowKind = (row: StatementRowData): NonNullable<StatementRowData['kind']> => {
+  if (row.kind) return row.kind;
+  if (row.isGrand) return 'grand';
+  if (row.isTotal) return 'subtotal';
+  if (row.amount === undefined) return 'heading';
+  return 'account';
+};
+
+/**
+ * A line that is zero on every date shown. Hidden unless "Show zero-balance
+ * accounts" is on — but only account lines: a subtotal of zero is a fact the
+ * statement must still state.
+ */
+export const isZeroRow = (row: StatementRowData): boolean =>
+  rowKind(row) === 'account' &&
+  (row.amount ?? 0) === 0 &&
+  (row.prior === undefined || row.prior === 0);
 
 /**
  * A ratio as a figure's caption prints it: "41.2%", "−3.1%", or "—" when the

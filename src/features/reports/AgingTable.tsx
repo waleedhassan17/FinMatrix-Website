@@ -2,7 +2,9 @@ import { ChevronRight } from 'lucide-react';
 import { Fragment, type ReactNode } from 'react';
 
 import { cn } from '@/lib/cn';
-import { agingPartyLabel, canDrillParty } from '@/models/reportAging';
+import { PAYMENT_TERMS_LABELS, paymentTermsFromApi } from '@/models/customer';
+import { AGING_STATUS_LABEL, agingPartyLabel, canDrillParty, type AgingStatus } from '@/models/reportAging';
+import { formatShortDate } from '@/models/reportPeriod';
 import type {
   AgingBucketDef,
   AgingRow,
@@ -49,7 +51,72 @@ export interface AgingTableProps {
    * the footer then covers parties that are not on screen either way.
    */
   filtered?: boolean;
+  /**
+   * Which columns: the age buckets (the report itself), or the account view —
+   * terms, credit limit, last payment and oldest due date (reports v2). One or
+   * the other, so a row never runs to a dozen columns.
+   */
+  columnsView?: 'buckets' | 'account';
+  /** A/R only: show the credit-limit column. */
+  showCreditLimit?: boolean;
+  /** Where each party stands — Current, Overdue, 90+ — for the chip by its name. */
+  statusOf?: (row: AgingRow) => AgingStatus;
   className?: string;
+}
+
+/** The account view's columns, before Total. */
+const accountColumns = (showCreditLimit: boolean) => [
+  'Terms',
+  ...(showCreditLimit ? ['Credit limit'] : []),
+  'Last payment',
+  'Oldest due',
+];
+
+const termsLabel = (raw: string) => (raw ? PAYMENT_TERMS_LABELS[paymentTermsFromApi(raw)] : '—');
+
+/** The account view's cells for one party, before Total. */
+const accountCells = (row: AgingRow, showCreditLimit: boolean) => [
+  termsLabel(row.paymentTerms),
+  ...(showCreditLimit
+    ? [
+        row.creditLimit !== null
+          ? `${formatAmount(row.creditLimit)}${row.creditUsedPct !== null ? ` · ${Math.round(row.creditUsedPct)}% used` : ''}`
+          : 'No limit',
+      ]
+    : []),
+  row.lastPaymentDate
+    ? `${formatShortDate(row.lastPaymentDate)}${row.lastPaymentAmount !== null ? ` · ${formatAmount(row.lastPaymentAmount)}` : ''}`
+    : 'None',
+  row.oldestDueDate ? formatShortDate(row.oldestDueDate) : '—',
+];
+
+const STATUS_CHIP: Record<AgingStatus, string> = {
+  current: 'bg-success-lighter text-success-hover',
+  overdue: 'bg-warning-lighter text-warning-hover',
+  '90plus': 'bg-danger-lighter text-danger-hover',
+};
+
+/** Where a party stands, in words — the colour only repeats what they say. */
+function StatusChip({ status }: { status: AgingStatus }) {
+  return (
+    <span
+      className={cn(
+        'ml-xs inline-flex shrink-0 items-center rounded-full px-xs text-label-sm whitespace-nowrap',
+        STATUS_CHIP[status],
+      )}
+    >
+      {AGING_STATUS_LABEL[status]}
+    </span>
+  );
+}
+
+/** Said beside the name in both views: the one party fact worth colour. */
+function OverLimitChip() {
+  return (
+    <span className="ml-xs inline-flex shrink-0 items-center rounded-full border border-warning-light bg-warning-lighter px-xs text-label-sm text-warning">
+      Over limit
+    </span>
+  );
 }
 
 /**
@@ -83,17 +150,23 @@ export function AgingTable({
   onToggleParty,
   renderDetail,
   filtered: filteredProp,
+  columnsView = 'buckets',
+  showCreditLimit = false,
+  statusOf,
   className,
 }: AgingTableProps) {
   const oldestKey = buckets[buckets.length - 1]?.key;
   const filtered = filteredProp ?? Boolean(selectedBucket);
-  // Counterparty + every bucket + Total. Computed, never a literal: the bucket
-  // set is configurable and runs from five columns to fourteen.
-  const columnCount = buckets.length + 2;
+  const accountView = columnsView === 'account';
+  const extra = accountColumns(showCreditLimit);
+  // Counterparty + every bucket (or the account columns) + Total. Computed,
+  // never a literal: the bucket set is configurable and runs to fourteen.
+  const columnCount = (accountView ? extra.length : buckets.length) + 2;
 
   return (
     <div className={cn('overflow-x-auto', className)}>
       <table className="w-full border-collapse">
+        <caption className="sr-only">{counterpartyHeader} aging</caption>
         <thead>
           <tr className="border-b border-border bg-surface-2">
             {/* The name column stays put while a wide bucket set scrolls under
@@ -101,7 +174,12 @@ export function AgingTable({
             <th className={cn(STICKY, 'min-w-[11rem] bg-surface-2 px-md py-sm text-left text-overline text-text-secondary')}>
               {counterpartyHeader}
             </th>
-            {buckets.map(({ key, label }) => (
+            {accountView && extra.map((h) => (
+              <th key={h} className="px-md py-sm text-right text-overline whitespace-nowrap text-text-secondary">
+                {h}
+              </th>
+            ))}
+            {!accountView && buckets.map(({ key, label }) => (
               <th
                 key={key}
                 aria-sort={key === selectedBucket ? 'descending' : undefined}
@@ -173,12 +251,23 @@ export function AgingTable({
                           )}
                         />
                         {label}
+                        {statusOf && <StatusChip status={statusOf(row)} />}
+                        {row.overLimit && <OverLimitChip />}
                       </button>
                     ) : (
-                      <span className="pl-xl text-label-md">{label}</span>
+                      <span className="pl-xl text-label-md">
+                        {label}
+                        {statusOf && <StatusChip status={statusOf(row)} />}
+                        {row.overLimit && <OverLimitChip />}
+                      </span>
                     )}
                   </td>
-                  {buckets.map(({ key }) => (
+                  {accountView && accountCells(row, showCreditLimit).map((cell, i) => (
+                    <td key={i} className="px-md py-sm text-right tabular text-body-sm whitespace-nowrap text-text-primary">
+                      {cell}
+                    </td>
+                  ))}
+                  {!accountView && buckets.map(({ key }) => (
                     <td
                       key={key}
                       className={cn(
@@ -228,7 +317,8 @@ export function AgingTable({
                   one is summed over parties that are not on screen. */}
               {filtered ? 'Total (all parties)' : 'Total'}
             </td>
-            {buckets.map(({ key }) => (
+            {accountView && extra.map((h) => <td key={h} />)}
+            {!accountView && buckets.map(({ key }) => (
               <td
                 key={key}
                 className={cn(
