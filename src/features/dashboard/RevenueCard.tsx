@@ -9,10 +9,10 @@ import { cn } from '@/lib/cn';
 import {
   REVENUE_WINDOW_MONTHS,
   buildMonthWindow,
+  revenueBarShades,
   summariseRevenue,
 } from '@/models/dashboard';
 import type { TrendPoint } from '@/serializers/reportSerializers';
-import { colors } from '@/theme/tokens';
 import { compactMoney, formatMoney } from '@/utils/money';
 
 function FooterStat({
@@ -46,9 +46,16 @@ function FooterStat({
  * between the months that do not exist — and the soft gradient fill was the
  * most template-looking thing on the page.
  *
- * The current month is picked out and the rest recede. It is still accruing, so
- * it is the bar most likely to be misread as a bad month; singling it out, with
- * a legend saying why, keeps that from happening.
+ * Each month is a step darker than the one before it, so the eye travels to
+ * the newest; the oldest keeps the pale step every past month used to share.
+ * Position already says which month is which, so the shading needs no legend.
+ * The current month is still accruing — the bar most likely to be misread as a
+ * bad month — so its tick says "MTD" right under it, and its tooltip does not
+ * compare a part-month against a whole one.
+ *
+ * Figures sit over the bars instead of on a y-axis, and a dashed line marks the
+ * monthly average once two months have closed, the same figure the footer
+ * names.
  */
 export function RevenueCard({
   points,
@@ -63,6 +70,7 @@ export function RevenueCard({
 }) {
   const slots = useMemo(() => buildMonthWindow(points ?? []), [points]);
   const summary = useMemo(() => summariseRevenue(slots), [slots]);
+  const shades = useMemo(() => revenueBarShades(slots), [slots]);
   const current = slots[slots.length - 1];
   const hasAny = slots.some((s) => s.hasData);
 
@@ -93,29 +101,24 @@ export function RevenueCard({
     );
   } else {
     body = (
-      <>
-        <div className="mb-sm flex items-center gap-md text-caption text-text-secondary">
-          <span className="inline-flex items-center gap-xxs">
-            <span aria-hidden="true" className="size-2 rounded-[2px] bg-primary" />
-            Month to date
-          </span>
-          <span className="inline-flex items-center gap-xxs">
-            <span aria-hidden="true" className="size-2 rounded-[2px] bg-primary-200" />
-            Previous months
-          </span>
-        </div>
-        <MonthlySeriesChart
-          points={slots.map((s) => ({
-            period: s.period,
-            label: s.label,
-            value: s.value,
-          }))}
-          format={(v) => formatMoney(v)}
-          compact={(v) => compactMoney(v)}
-          color={colors.primary}
-          highlight={current?.period}
-        />
-      </>
+      <MonthlySeriesChart
+        points={slots.map((s) => ({
+          period: s.period,
+          label: s.label,
+          fullLabel: s.fullLabel,
+          value: s.value,
+        }))}
+        format={(v) => formatMoney(v)}
+        compact={(v) => compactMoney(v)}
+        fills={shades}
+        inProgress={current?.period}
+        valueLabels
+        reference={
+          summary.average !== null && summary.completedMonthsWithData >= 2
+            ? { value: summary.average, label: 'Avg' }
+            : undefined
+        }
+      />
     );
   }
 

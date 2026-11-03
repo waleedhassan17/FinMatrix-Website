@@ -7,6 +7,7 @@
 import { format, isValid, parseISO } from 'date-fns';
 
 import type { DashboardAlert } from '@/serializers/dashboardSerializer';
+import { AGING_RAMP, colors, rampSteps } from '@/theme/tokens';
 
 /** How many calendar months the revenue chart draws, newest on the right. */
 export const REVENUE_WINDOW_MONTHS = 6;
@@ -94,6 +95,30 @@ export const summariseRevenue = (slots: MonthSlot[]): RevenueSummary => {
     total: slots.reduce((t, s) => t + s.value, 0),
   };
 };
+
+/**
+ * One fill per month, stepping light → dark along the navy ramp, oldest first.
+ *
+ * Every month used to take the same pale step except the current one, so five
+ * of six bars read as one undifferentiated block. Stepping by recency lets the
+ * eye travel left to right and land on the newest month, while the oldest
+ * keeps the pale step it always had. Sampled with `rampSteps`, so both ends are
+ * always the ends of the ramp, whatever the window.
+ *
+ * A month with nothing in it takes the border grey instead: it is drawn as a
+ * stub, present on the axis but plainly empty, rather than a small dark bar.
+ */
+export const revenueBarShades = (slots: readonly { value: number }[]): string[] => {
+  const ramp = rampSteps(slots.length, AGING_RAMP);
+  return slots.map((s, i) => (s.value > 0 ? ramp[i] : colors.border));
+};
+
+/**
+ * Percentage change from one month to the next. Null when the earlier month is
+ * missing or not above zero: a change off nothing is not a percentage.
+ */
+export const monthChange = (prev: number | null | undefined, value: number): number | null =>
+  prev !== null && prev !== undefined && prev > 0 ? ((value - prev) / prev) * 100 : null;
 
 const parseDay = (iso?: string): Date | null => {
   if (!iso) return null;

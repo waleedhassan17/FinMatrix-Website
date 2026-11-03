@@ -4,9 +4,12 @@ import {
   alertTarget,
   buildMonthWindow,
   displayDate,
+  monthChange,
   periodLabel,
+  revenueBarShades,
   summariseRevenue,
 } from '@/models/dashboard';
+import { AGING_RAMP, colors } from '@/theme/tokens';
 
 // Local time, mid-month: the window is built from the calendar, not the clock.
 const SEP_24_2026 = new Date(2026, 8, 24, 7, 4);
@@ -89,6 +92,49 @@ describe('summariseRevenue', () => {
       buildMonthWindow([{ label: 'Sep 26', value: 50 }], 6, SEP_24_2026),
     );
     expect(s.average).toBeNull();
+  });
+});
+
+describe('revenueBarShades', () => {
+  const full = (n: number) => Array.from({ length: n }, (_, i) => ({ value: (i + 1) * 100 }));
+
+  it('steps every month a shade darker, oldest palest', () => {
+    const shades = revenueBarShades(full(6));
+    // The oldest keeps the pale step every past month used to share.
+    expect(shades[0]).toBe(AGING_RAMP[0]);
+    expect(shades[5]).toBe(AGING_RAMP[AGING_RAMP.length - 1]);
+    expect(new Set(shades).size).toBe(6);
+    expect(shades).toEqual([...AGING_RAMP]);
+  });
+
+  it('keeps both ends of the ramp for a shorter window', () => {
+    const shades = revenueBarShades(full(5));
+    expect(shades[0]).toBe(AGING_RAMP[0]);
+    expect(shades[4]).toBe(AGING_RAMP[AGING_RAMP.length - 1]);
+    expect(new Set(shades).size).toBe(5);
+  });
+
+  it('draws an empty month as a grey stub, not a dark bar', () => {
+    const shades = revenueBarShades([{ value: 500 }, { value: 0 }, { value: -20 }, { value: 90 }]);
+    expect(shades[1]).toBe(colors.border);
+    expect(shades[2]).toBe(colors.border);
+    // The months around it keep their place on the ramp.
+    expect(shades[0]).toBe(AGING_RAMP[0]);
+    expect(shades[3]).toBe(AGING_RAMP[AGING_RAMP.length - 1]);
+  });
+});
+
+describe('monthChange', () => {
+  it('is the percentage move from the month before', () => {
+    expect(monthChange(100, 152)).toBeCloseTo(52);
+    expect(monthChange(200, 50)).toBeCloseTo(-75);
+  });
+
+  it('has nothing to say off a missing or empty month', () => {
+    expect(monthChange(0, 500)).toBeNull();
+    expect(monthChange(null, 500)).toBeNull();
+    expect(monthChange(undefined, 500)).toBeNull();
+    expect(monthChange(-10, 500)).toBeNull();
   });
 });
 
