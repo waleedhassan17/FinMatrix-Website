@@ -1,7 +1,7 @@
 import { ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
+import { Cell, Pie, PieChart, ResponsiveContainer, Sector, type PieSectorShapeProps } from 'recharts';
 
 import { cn } from '@/lib/cn';
 import { OTHER_KEY, sliceShare, type SlicePoint } from '@/models/chartSlices';
@@ -46,11 +46,18 @@ export interface DonutChartProps {
 
 const fmtShare = (pct: number | null) => (pct === null ? '—' : `${pct < 10 ? pct.toFixed(1) : Math.round(pct)}%`);
 
+/** The ring's outer edge, as a part of its box: the slice in focus grows to the edge. */
+const RING_OUTER = 0.95;
+
 /**
  * A part-to-whole picture: a ring of at most six slices plus a grey Other,
  * the whole in its centre, and beside it a table of every slice — its value,
  * its share and what it counts — which is also how a keyboard or a screen
  * reader uses the chart. Hovering a row lights its slice, and the reverse.
+ *
+ * The slice under the pointer is read in one place, the centre: no floating
+ * tooltip, which would land on the centre and say the same thing twice. The
+ * exact figure is on its lit row.
  *
  * Colour is never the only key: every slice is named in the table, with its
  * swatch, value and share.
@@ -89,171 +96,179 @@ export function DonutChart({
   const choosable = (s: SlicePoint) => !!onSelect && s.key !== OTHER_KEY;
 
   return (
-    <figure
-      aria-label={title}
-      className={cn('grid items-center gap-lg sm:grid-cols-[minmax(9rem,13rem)_minmax(0,1fr)]', className)}
-    >
-      <div className="relative mx-auto aspect-square w-full max-w-[13rem]">
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart accessibilityLayer={false}>
-            <Pie
-              data={drawn}
-              dataKey="value"
-              nameKey="label"
-              innerRadius="64%"
-              outerRadius="100%"
-              startAngle={90}
-              endAngle={-270}
-              stroke={colors.surface}
-              strokeWidth={2}
-              isAnimationActive={false}
-              onMouseEnter={(_, i) => setHoverKey(drawn[i]?.key ?? null)}
-              onMouseLeave={() => setHoverKey(null)}
-              onClick={(_, i) => {
-                const s = drawn[i];
-                if (s && choosable(s)) onSelect?.(s.key);
-              }}
-            >
-              {drawn.map((s) => (
-                <Cell
-                  key={s.key}
-                  fill={colorOf.get(s.key)}
-                  opacity={focusKey && focusKey !== s.key ? 0.3 : 1}
-                  style={{ cursor: choosable(s) ? 'pointer' : 'default', outline: 'none' }}
-                />
-              ))}
-            </Pie>
-            <Tooltip
-              content={({ active, payload }) => {
-                const s = active && payload?.[0] ? (payload[0].payload as SlicePoint) : null;
-                if (!s) return null;
-                return (
-                  <div
-                    className="min-w-[11rem] rounded-md bg-surface px-sm py-xs shadow-md"
-                    style={{ border: `1px solid ${colors.border}` }}
-                  >
-                    <p className="text-label-md text-text-primary">{s.label}</p>
-                    <p className="mt-[2px] flex justify-between gap-md text-caption">
-                      <span className="tabular text-text-primary">{format(s.value)}</span>
-                      <span className="tabular text-text-secondary">{fmtShare(sliceShare(s, whole))}</span>
-                    </p>
-                  </div>
-                );
-              }}
-            />
-          </PieChart>
-        </ResponsiveContainer>
-        {/* The whole, or the slice in focus. Text, not SVG: it wraps and scales with the type. */}
-        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-lg text-center">
-          <p className="max-w-full truncate text-h4 tabular text-text-primary">
-            {formatCenter(focus ? focus.value : whole)}
-          </p>
-          <p className="line-clamp-2 text-caption text-text-tertiary">
-            {focus ? `${focus.label} · ${fmtShare(sliceShare(focus, whole))}` : centerLabel}
-          </p>
-        </div>
-      </div>
-
-      <table className="w-full border-collapse text-body-sm">
-        <caption className="sr-only">{title}</caption>
-        <thead>
-          <tr className="border-b border-border-light text-overline text-text-tertiary">
-            <th scope="col" className="py-xxs text-left font-normal">
-              {labelHeader}
-            </th>
-            <th scope="col" className="py-xxs pl-sm text-right font-normal">
-              {valueHeader}
-            </th>
-            <th scope="col" className="w-14 py-xxs pl-sm text-right font-normal">
-              Share
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {slices.map((s) => {
-            const selected = selectedKey === s.key;
-            const href = s.key !== OTHER_KEY ? (hrefFor?.(s.key) ?? null) : null;
-            const swatch = (
-              <span
-                aria-hidden="true"
-                className="mt-[3px] size-2.5 shrink-0 rounded-[3px]"
-                style={{ backgroundColor: colorOf.get(s.key) }}
-              />
-            );
-            const name = (
-              <span className="min-w-0">
-                <span className="block truncate text-text-primary">{s.label}</span>
-                {countLabel && s.count !== undefined && (
-                  <span className="block text-caption text-text-tertiary">{countLabel(s.count)}</span>
+    <figure aria-label={title} className={cn('@container', className)}>
+      {/*
+        Side by side once the card has room for the table beside the ring — a
+        smaller ring until it is wide — and stacked below that, rather than
+        squeezing the figures. The ring never drops under 11rem, so the centre
+        always fits its hole.
+      */}
+      <div className="grid items-center gap-lg @[28rem]:grid-cols-[11rem_minmax(0,1fr)] @[40rem]:grid-cols-[13rem_minmax(0,1fr)]">
+        <div className="relative mx-auto aspect-square w-full max-w-[13rem]">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart accessibilityLayer={false}>
+              <Pie
+                data={drawn}
+                dataKey="value"
+                nameKey="label"
+                innerRadius="64%"
+                outerRadius={`${RING_OUTER * 100}%`}
+                startAngle={90}
+                endAngle={-270}
+                stroke={colors.surface}
+                strokeWidth={2}
+                isAnimationActive={false}
+                // The slice in focus stands proud of the ring, so it reads even
+                // when its colour is the palest — the newest age, say.
+                // Recharts hands the sector its React key among the props; it
+                // goes on the element, never through a spread.
+                shape={({ key, ...props }: PieSectorShapeProps) => (
+                  <Sector
+                    key={key}
+                    {...props}
+                    outerRadius={
+                      drawn[props.index]?.key === focusKey ? props.outerRadius / RING_OUTER : props.outerRadius
+                    }
+                  />
                 )}
-              </span>
-            );
-            return (
-              <tr
-                key={s.key}
-                onMouseEnter={() => setHoverKey(s.key)}
+                onMouseEnter={(_, i) => setHoverKey(drawn[i]?.key ?? null)}
                 onMouseLeave={() => setHoverKey(null)}
-                className={cn(
-                  'border-b border-border-light last:border-b-0',
-                  selected && 'bg-primary-tint',
-                  focusKey && focusKey !== s.key && 'text-text-tertiary',
-                )}
+                onClick={(_, i) => {
+                  const s = drawn[i];
+                  if (s && choosable(s)) onSelect?.(s.key);
+                }}
               >
-                <th scope="row" className="py-xs text-left font-normal">
-                  {href ? (
-                    <Link
-                      to={href}
-                      aria-label={`Open ${s.label}`}
-                      onFocus={() => setHoverKey(s.key)}
-                      onBlur={() => setHoverKey(null)}
-                      className="group flex w-full min-w-0 items-start gap-xs rounded-xs text-left focus-visible:outline-2 focus-visible:outline-border-focus"
-                    >
-                      {swatch}
-                      <span className="min-w-0 group-hover:underline">{name}</span>
-                      <ChevronRight className="mt-[2px] size-3.5 shrink-0 text-text-tertiary" aria-hidden="true" />
-                    </Link>
-                  ) : choosable(s) ? (
-                    <button
-                      type="button"
-                      aria-pressed={selected}
-                      aria-label={`${selectVerb} ${s.label}`}
-                      onClick={() => onSelect?.(s.key)}
-                      onFocus={() => setHoverKey(s.key)}
-                      onBlur={() => setHoverKey(null)}
-                      className="flex w-full min-w-0 items-start gap-xs rounded-xs text-left hover:underline focus-visible:outline-2 focus-visible:outline-border-focus"
-                    >
-                      {swatch}
-                      {name}
-                    </button>
-                  ) : (
-                    <span className="flex min-w-0 items-start gap-xs">
-                      {swatch}
-                      {name}
-                    </span>
+                {drawn.map((s) => (
+                  <Cell
+                    key={s.key}
+                    fill={colorOf.get(s.key)}
+                    opacity={focusKey && focusKey !== s.key ? 0.3 : 1}
+                    style={{ cursor: choosable(s) ? 'pointer' : 'default', outline: 'none' }}
+                  />
+                ))}
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
+          {/*
+            The whole, or the slice in focus. Text, not SVG: it wraps and scales
+            with the type. The hole is 64% of the ring; a block 48% wide keeps
+            even a two-line name clear of it.
+          */}
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <div className="w-[48%] text-center">
+              <p className="truncate text-h4 tabular text-text-primary">{formatCenter(focus ? focus.value : whole)}</p>
+              <p className="line-clamp-2 text-caption break-words text-text-secondary">
+                {focus ? focus.label : centerLabel}
+              </p>
+              {focus && <p className="text-caption tabular text-text-tertiary">{fmtShare(sliceShare(focus, whole))}</p>}
+            </div>
+          </div>
+        </div>
+
+        <table className="w-full border-collapse text-body-sm">
+          <caption className="sr-only">{title}</caption>
+          <thead>
+            <tr className="border-b border-border-light text-overline text-text-tertiary">
+              <th scope="col" className="py-xxs text-left font-normal">
+                {labelHeader}
+              </th>
+              <th scope="col" className="py-xxs pl-sm text-right font-normal">
+                {valueHeader}
+              </th>
+              <th scope="col" className="w-14 py-xxs pl-sm text-right font-normal">
+                Share
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {slices.map((s) => {
+              const selected = selectedKey === s.key;
+              const href = s.key !== OTHER_KEY ? (hrefFor?.(s.key) ?? null) : null;
+              const swatch = (
+                <span
+                  aria-hidden="true"
+                  className="mt-[3px] size-2.5 shrink-0 rounded-[3px]"
+                  style={{ backgroundColor: colorOf.get(s.key) }}
+                />
+              );
+              const name = (
+                <span className="min-w-0">
+                  <span className="block truncate text-text-primary" title={s.label}>
+                    {s.label}
+                  </span>
+                  {countLabel && s.count !== undefined && (
+                    <span className="block text-caption text-text-tertiary">{countLabel(s.count)}</span>
                   )}
-                </th>
-                <td className="py-xs pl-sm text-right align-top tabular whitespace-nowrap text-text-primary">
-                  {format(s.value)}
-                </td>
-                <td className="py-xs pl-sm text-right align-top tabular text-text-secondary">
-                  {fmtShare(sliceShare(s, whole))}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-        <tfoot>
-          <tr className="border-t border-border">
-            <th scope="row" className="py-xs text-left text-label-md text-text-primary">
-              Total
-            </th>
-            <td className="py-xs pl-sm text-right tabular whitespace-nowrap text-label-md text-text-primary">
-              {format(whole)}
-            </td>
-            <td className="py-xs pl-sm text-right tabular text-text-secondary">100%</td>
-          </tr>
-        </tfoot>
-      </table>
+                </span>
+              );
+              return (
+                <tr
+                  key={s.key}
+                  onMouseEnter={() => setHoverKey(s.key)}
+                  onMouseLeave={() => setHoverKey(null)}
+                  className={cn(
+                    'border-b border-border-light last:border-b-0',
+                    (selected || focusKey === s.key) && 'bg-primary-tint',
+                    focusKey && focusKey !== s.key && 'text-text-tertiary',
+                  )}
+                >
+                  {/* Takes what the figures leave, so a long name truncates rather than pushing them off the card. */}
+                  <th scope="row" className="w-full max-w-0 py-xs text-left font-normal">
+                    {href ? (
+                      <Link
+                        to={href}
+                        aria-label={`Open ${s.label}`}
+                        onFocus={() => setHoverKey(s.key)}
+                        onBlur={() => setHoverKey(null)}
+                        className="group flex w-full min-w-0 items-start gap-xs rounded-xs text-left focus-visible:outline-2 focus-visible:outline-border-focus"
+                      >
+                        {swatch}
+                        <span className="min-w-0 group-hover:underline">{name}</span>
+                        <ChevronRight className="mt-[2px] size-3.5 shrink-0 text-text-tertiary" aria-hidden="true" />
+                      </Link>
+                    ) : choosable(s) ? (
+                      <button
+                        type="button"
+                        aria-pressed={selected}
+                        aria-label={`${selectVerb} ${s.label}`}
+                        onClick={() => onSelect?.(s.key)}
+                        onFocus={() => setHoverKey(s.key)}
+                        onBlur={() => setHoverKey(null)}
+                        className="flex w-full min-w-0 items-start gap-xs rounded-xs text-left hover:underline focus-visible:outline-2 focus-visible:outline-border-focus"
+                      >
+                        {swatch}
+                        {name}
+                      </button>
+                    ) : (
+                      <span className="flex min-w-0 items-start gap-xs">
+                        {swatch}
+                        {name}
+                      </span>
+                    )}
+                  </th>
+                  <td className="py-xs pl-sm text-right align-top tabular whitespace-nowrap text-text-primary">
+                    {format(s.value)}
+                  </td>
+                  <td className="py-xs pl-sm text-right align-top tabular text-text-secondary">
+                    {fmtShare(sliceShare(s, whole))}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-border">
+              <th scope="row" className="py-xs text-left text-label-md text-text-primary">
+                Total
+              </th>
+              <td className="py-xs pl-sm text-right tabular whitespace-nowrap text-label-md text-text-primary">
+                {format(whole)}
+              </td>
+              <td className="py-xs pl-sm text-right tabular text-text-secondary">100%</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
     </figure>
   );
 }

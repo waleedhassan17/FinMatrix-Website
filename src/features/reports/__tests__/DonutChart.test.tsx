@@ -52,6 +52,23 @@ describe('DonutChart', () => {
     expect(screen.queryByRole('button', { name: /Other/ })).toBeNull();
   });
 
+  it('reads the slice in focus in the centre, a line each, and lights its row — no floating tooltip', () => {
+    const { container } = draw();
+    const table = screen.getByRole('table', { name: 'Stock value by category' });
+    const tools = within(table).getByText('Tools').closest('tr') as HTMLElement;
+    fireEvent.mouseEnter(tools);
+    // Its value, name and share each on a line of their own, never "Tools · 20%".
+    expect(screen.getByText('Rs 2.0K')).toBeInTheDocument();
+    expect(screen.getAllByText('Tools')).toHaveLength(2);
+    expect(screen.getAllByText('20%')).toHaveLength(2);
+    expect(screen.queryByText(/·/)).toBeNull();
+    expect(tools).toHaveClass('bg-primary-tint');
+    expect(container.querySelector('.recharts-tooltip-wrapper')).toBeNull();
+    fireEvent.mouseLeave(tools);
+    expect(screen.getByText('Stock value')).toBeInTheDocument();
+    expect(tools).not.toHaveClass('bg-primary-tint');
+  });
+
   it('reads the server’s share when it sent one', () => {
     draw({ slices: [{ key: 'rent', label: 'Rent', value: 30000, sharePct: 66.67 }] });
     expect(screen.getByText('67%')).toBeInTheDocument();
