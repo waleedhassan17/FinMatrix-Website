@@ -9,8 +9,8 @@ import { initialsOf } from '@/utils/initials';
 
 /**
  * Who is signed in, at a glance: the same initials as the top bar, the name,
- * the role, how they sign in and the company they are working in. The one
- * place on the page with colour — everything below it is plain settings, and
+ * the role, how they sign in and the company they are working in. Its band is
+ * the sidebar's navy; everything below it is plain settings, and
  * the detail (verified, company status) lives there rather than twice.
  */
 export function AccountHero({
@@ -53,10 +53,9 @@ export function AccountHero({
 
   return (
     <Card className="overflow-hidden">
-      <div aria-hidden="true" className="relative h-16 bg-linear-to-r from-primary-900 via-primary to-primary-600 sm:h-20">
-        {/* A faint dot grid that fades out to the left — texture, not decoration. */}
-        <div className="absolute inset-0 bg-[radial-gradient(var(--color-neutral-0)_1px,transparent_1px)] bg-size-[18px_18px] opacity-15 [mask-image:linear-gradient(to_left,black,transparent_75%)]" />
-      </div>
+      {/* The sidebar's own colours (--color-sidebar-from/-to, the tokens behind
+          SIDEBAR_GRADIENT), so the band reads as part of the app's chrome. */}
+      <div aria-hidden="true" className="h-16 bg-linear-to-b from-sidebar-from to-sidebar-to sm:h-20" />
 
       <div className="flex flex-col gap-md px-lg pb-lg sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 flex-col gap-sm sm:flex-row sm:items-start sm:gap-md">
