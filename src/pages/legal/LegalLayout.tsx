@@ -23,7 +23,7 @@ export function LegalLayout({
       <header className="border-b border-border-light bg-surface">
         <div className="mx-auto flex max-w-[760px] items-center justify-between px-lg py-md">
           <Link to="/" aria-label="FinMatrix home">
-            <Logo />
+            <Logo tone="dark" />
           </Link>
           <nav className="flex gap-md text-body-sm text-text-secondary">
             <Link to="/privacy" className="hover:text-text-primary">
