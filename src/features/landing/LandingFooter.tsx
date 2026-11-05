@@ -124,8 +124,14 @@ export function LandingFooter() {
         </div>
 
         <div className="mt-xxxl flex flex-col gap-sm border-t border-white/10 pt-lg md:flex-row md:items-center md:justify-between">
-          <p className="text-caption text-white/50">
-            © {new Date().getFullYear()} FinMatrix. All rights reserved.
+          <p className="flex flex-wrap items-center gap-x-md gap-y-xs text-caption text-white/50">
+            <span>© {new Date().getFullYear()} FinMatrix. All rights reserved.</span>
+            <Link to="/privacy" className="hover:text-text-inverse">
+              Privacy
+            </Link>
+            <Link to="/data-deletion" className="hover:text-text-inverse">
+              Data deletion
+            </Link>
           </p>
           <p className="flex items-center gap-xs text-caption text-white/50">
             <ShieldCheck className="size-4" aria-hidden="true" />

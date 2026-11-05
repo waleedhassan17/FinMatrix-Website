@@ -118,6 +118,8 @@ import {
   VendorFormPage,
   VendorListPage,
   VerifyEmailPage,
+  PrivacyPage,
+  DataDeletionPage,
 } from '@/app/lazyPages';
 import { AppLayout } from '@/features/shell/AppLayout';
 import { navHistory, SHELL_ROUTE_ID } from '@/features/shell/navHistory';
@@ -249,6 +251,9 @@ export const router = createBrowserRouter([
       },
       { path: '/forgot-password', element: <ForgotPasswordPage /> },
       { path: '/verify-email', element: <VerifyEmailPage /> },
+      // Public on purpose: Meta (WhatsApp) and app stores need these URLs.
+      { path: '/privacy', element: <PrivacyPage /> },
+      { path: '/data-deletion', element: <DataDeletionPage /> },
 
       // The company is gated. Outside RequireActiveCompany, or it would
       // redirect to itself forever — and outside RequireAuth too, because a
