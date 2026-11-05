@@ -109,6 +109,16 @@ export default function WhatsAppConnectPage() {
         </p>
       </div>
 
+      {!settings.available ? (
+        <Card className="p-lg">
+          <p className="text-label-lg text-text-primary">WhatsApp sending is being set up</p>
+          <p className="text-body-sm text-text-secondary">
+            It can be switched on as soon as FinMatrix&apos;s WhatsApp number is ready. Until then, the WhatsApp button on
+            each document opens a chat on your own phone, as before.
+          </p>
+        </Card>
+      ) : null}
+
       <Card className="flex items-center justify-between gap-md p-lg">
         <div>
           <p className="text-label-lg text-text-primary">Send documents on WhatsApp</p>
@@ -118,7 +128,7 @@ export default function WhatsAppConnectPage() {
         </div>
         <Switch
           checked={settings.enabled}
-          disabled={save.isPending}
+          disabled={save.isPending || (!settings.available && !settings.enabled)}
           onCheckedChange={(v) => save.mutate({ enabled: v })}
           label={<span className="sr-only">Send documents on WhatsApp</span>}
         />

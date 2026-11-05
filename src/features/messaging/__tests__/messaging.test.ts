@@ -69,6 +69,8 @@ describe('the plan allowance on the settings', () => {
   });
 
   it('is null from a server that does not send it', () => {
+    expect(messagingSettingsSerializer({ data: { enabled: true } }).available).toBe(true);
+    expect(messagingSettingsSerializer({ data: { available: false } }).available).toBe(false);
     expect(messagingSettingsSerializer({ data: { enabled: true } }).allowance).toBeNull();
     expect(messagingSettingsSerializer({ data: { allowance: { limit: 'x' } } }).allowance).toBeNull();
   });

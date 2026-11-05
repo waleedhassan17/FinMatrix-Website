@@ -71,6 +71,8 @@ export function messagingSettingsSerializer(payload: any): MessagingSettings {
     contactsOptInConfirmedAt: strOrNull(raw.contactsOptInConfirmedAt),
     timezone: str(raw.timezone, 'Asia/Karachi'),
     providerMode: raw.providerMode === 'live' ? 'live' : 'simulated',
+    // Older servers do not send it; they could always switch Connect on.
+    available: raw.available !== false,
     allowance:
       raw.allowance && Number.isFinite(Number(raw.allowance.limit))
         ? {
