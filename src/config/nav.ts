@@ -262,6 +262,12 @@ export const ADMIN_NAV: NavGroup[] = [
         capability: 'users.manage',
         feature: 'multiUser',
       },
+      {
+        title: 'WhatsApp',
+        path: '/settings/whatsapp',
+        capability: 'settings.manage',
+        feature: 'whatsappConnect',
+      },
     ],
   },
 ];

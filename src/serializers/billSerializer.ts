@@ -2,6 +2,8 @@
 // FinMatrix Web — Bill Serializer
 // ═══════════════════════════════════════════════════════
 
+import { lastMessageStatusSerializer } from '@/serializers/messagingSerializer';
+import type { LastMessageStatus } from '@/models/messaging';
 import {
   deriveBillStatus,
   isoToday,
@@ -114,6 +116,8 @@ export interface BillPaymentRow {
   proofFileName: string;
   proofMimeType: string;
   allocations: BillPaymentAllocation[];
+  /** FinMatrix Connect: the remittance advice's newest WhatsApp status. */
+  lastMessageStatus?: LastMessageStatus | null;
 }
 
 /**
@@ -178,6 +182,7 @@ export const billPaymentsSerializer = (
       proofFileName: str(proof.fileName ?? proof.originalName ?? r.proofFileName),
       proofMimeType: str(proof.mimeType ?? r.proofMimeType),
       allocations,
+      lastMessageStatus: lastMessageStatusSerializer(r.lastMessageStatus),
     };
   });
 };

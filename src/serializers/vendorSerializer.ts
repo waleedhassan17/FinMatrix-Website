@@ -45,6 +45,11 @@ export const mapVendor = (raw: unknown): Vendor => {
     notes: str(r.notes),
     createdAt: str(r.createdAt),
     updatedAt: str(r.updatedAt),
+    whatsappE164: (r.whatsappE164 as string | null | undefined) ?? null,
+    whatsappOptInAt: (r.whatsappOptInAt as string | null | undefined) ?? null,
+    whatsappOptOut: r.whatsappOptOut === true,
+    whatsappVerifiedAt: (r.whatsappVerifiedAt as string | null | undefined) ?? null,
+    preferredLanguage: r.preferredLanguage === 'ur' ? 'ur' : r.preferredLanguage === 'en' ? 'en' : null,
   };
 };
 
@@ -303,6 +308,10 @@ export interface VendorWritePayload {
   taxId?: string;
   defaultExpenseAccountId?: string;
   notes?: string;
+  /** FinMatrix Connect (see WhatsappContactFields). */
+  whatsappPhone?: string;
+  whatsappOptIn?: boolean;
+  preferredLanguage?: 'en' | 'ur';
 }
 
 /**

@@ -1,4 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { MessageStatusTicks } from '@/features/messaging/MessageStatusTicks';
+import { MessageTimeline } from '@/features/messaging/MessageTimeline';
+import { useConnect } from '@/features/messaging/useConnect';
 import { Banknote, CheckCircle2, FileText, Pencil, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -45,6 +48,8 @@ export default function BillDetailPage() {
     queryFn: () => getBillById(billId),
   });
 
+  // FinMatrix Connect: remittance ticks on each payment.
+  const { enabled: connectOn } = useConnect();
   const { data: payments = [], isLoading: paymentsLoading } = useQuery({
     queryKey: ['bills', billId, 'payments'],
     queryFn: () => getBillPayments(billId),
@@ -248,11 +253,21 @@ export default function BillDetailPage() {
                         </div>
                       </div>
                       <ProofLink proofId={p.proofId} fileName={p.proofFileName} mimeType={p.proofMimeType} />
+                      {connectOn && p.lastMessageStatus && (
+                        <span className="flex items-center justify-between gap-sm text-caption text-text-secondary">
+                          Remittance on WhatsApp
+                          <MessageStatusTicks status={p.lastMessageStatus.status} showLabel />
+                        </span>
+                      )}
                     </li>
                   ))}
                 </ul>
               )}
             </RailSection>
+          )}
+
+          {connectOn && !draft && payments.length > 0 && (
+            <MessageTimeline docType="bill_payment" docId={payments[0].id} title="Remittance on WhatsApp" />
           )}
 
           <RailSection title="Details">

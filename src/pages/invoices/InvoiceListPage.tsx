@@ -1,4 +1,6 @@
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { MessageStatusTicks } from '@/features/messaging/MessageStatusTicks';
+import { useConnect } from '@/features/messaging/useConnect';
 import { createColumnHelper } from '@tanstack/react-table';
 import { Clock, Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -102,6 +104,8 @@ export default function InvoiceListPage() {
     [invoices, tab],
   );
 
+  // FinMatrix Connect: a WhatsApp ticks column while Connect is on.
+  const { enabled: connectOn } = useConnect();
   const columns = useMemo(
     () => [
       columnHelper.accessor('invoiceNumber', {
@@ -136,8 +140,20 @@ export default function InvoiceListPage() {
           </span>
         ),
       }),
+      ...(connectOn
+        ? [
+            columnHelper.display({
+              id: 'whatsapp',
+              header: 'WhatsApp',
+              cell: (ctx) => {
+                const m = ctx.row.original.lastMessageStatus;
+                return m ? <MessageStatusTicks status={m.status} /> : <span className="text-text-tertiary">—</span>;
+              },
+            }),
+          ]
+        : []),
     ],
-    [],
+    [connectOn],
   ) as never;
 
   return (

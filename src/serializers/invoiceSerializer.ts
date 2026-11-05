@@ -5,6 +5,7 @@
 // are load-bearing — the wire and the UI disagree on several field names, and
 // list and detail responses are shaped differently from each other.
 
+import { lastMessageStatusSerializer } from '@/serializers/messagingSerializer';
 import { linesToPayload } from '@/serializers/documentLines';
 import {
   type DiscountType,
@@ -76,6 +77,7 @@ export const mapInvoice = (raw: unknown): Invoice => {
     notes: str(r.notes),
     createdAt: str(r.createdAt),
     updatedAt: str(r.updatedAt),
+    lastMessageStatus: lastMessageStatusSerializer(r.lastMessageStatus),
   };
 };
 

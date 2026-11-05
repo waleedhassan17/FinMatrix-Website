@@ -62,6 +62,9 @@ import {
   CompanyProfilePage,
   MyAccountPage,
   TeamPage,
+  WhatsAppConnectPage,
+  FixContactsPage,
+  CollectionsReportPage,
   EmployeeFormPage,
   EmployeeListPage,
   PayrollRunDetailPage,
@@ -483,6 +486,9 @@ export const router = createBrowserRouter([
           { path: 'settings', element: <Navigate to="/settings/company" replace /> },
           { path: 'settings/company', element: <CompanyProfilePage /> },
           { path: 'settings/users', element: <TeamPage /> },
+          // FinMatrix Connect — owner only (absent from STAFF_NAV, like all of /settings).
+          { path: 'settings/whatsapp', element: <WhatsAppConnectPage /> },
+          { path: 'contacts/health', element: <FixContactsPage /> },
           { path: 'account', element: <MyAccountPage /> },
 
           // ── Module 15: Chart of Accounts (admin only) ───────────
@@ -523,6 +529,7 @@ export const router = createBrowserRouter([
           { path: 'reports/general-ledger', element: <GeneralLedgerPage /> },
           { path: 'reports/ar-aging', element: <ArAgingPage /> },
           { path: 'reports/ap-aging', element: <ApAgingPage /> },
+          { path: 'reports/collections', element: <CollectionsReportPage /> },
           { path: 'reports/inventory-valuation', element: <InventoryValuationPage /> },
           // After the literal route above: the drill-down from a valuation row.
           {

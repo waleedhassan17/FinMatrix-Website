@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { Button } from '@/components/ui/Button';
 import {
@@ -30,6 +31,9 @@ import {
   type ShareableDocument,
 } from '@/features/share/shareDocument';
 import { cn } from '@/lib/cn';
+import { logManualShare, sendMessage } from '@/networks/messaging/messagingNetwork';
+import { messagingKeys, useConnect } from '@/features/messaging/useConnect';
+import type { SendableDocType } from '@/models/messaging';
 
 type Busy = 'print' | 'download' | 'share' | null;
 
@@ -43,6 +47,13 @@ export interface DocumentActionsProps {
   disabled?: boolean;
   /** Icon-only buttons at every width — for a row in a table. */
   compact?: boolean;
+  /**
+   * FinMatrix Connect: the document as the server knows it. With Connect on,
+   * the WhatsApp item sends it from the server (with the PDF); off, the wa.me
+   * hand-off runs as before and is recorded on the document's timeline.
+   * Left out, this component behaves exactly as it always has.
+   */
+  connect?: ConnectTarget;
 }
 
 /**
@@ -59,6 +70,7 @@ export function DocumentActions({
   cacheKey,
   disabled,
   compact = false,
+  connect,
 }: DocumentActionsProps) {
   const [busy, setBusy] = useState<Busy>(null);
   const cache = useRef<{ key: string; blob: Promise<Blob> } | null>(null);
@@ -196,14 +208,18 @@ export function DocumentActions({
               <DropdownMenuSeparator />
             </>
           )}
-          <DropdownMenuItem icon={<MessageCircle aria-hidden="true" />} onSelect={onWhatsApp}>
-            <span className="flex flex-col">
-              WhatsApp
-              {doc.partyPhone && (
-                <span className="text-caption text-text-tertiary">{doc.partyPhone}</span>
-              )}
-            </span>
-          </DropdownMenuItem>
+          {connect ? (
+            <ConnectWhatsAppItem target={connect} partyPhone={doc.partyPhone} onHandOff={onWhatsApp} />
+          ) : (
+            <DropdownMenuItem icon={<MessageCircle aria-hidden="true" />} onSelect={onWhatsApp}>
+              <span className="flex flex-col">
+                WhatsApp
+                {doc.partyPhone && (
+                  <span className="text-caption text-text-tertiary">{doc.partyPhone}</span>
+                )}
+              </span>
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem icon={<Mail aria-hidden="true" />} onSelect={onEmail}>
             <span className="flex min-w-0 flex-col">
               Email
@@ -215,6 +231,71 @@ export function DocumentActions({
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
+  );
+}
+
+/** What FinMatrix Connect needs to send or log this document. */
+export interface ConnectTarget {
+  docType: SendableDocType;
+  docId: string;
+  event?: string;
+}
+
+/**
+ * The WhatsApp menu item when the page passes `connect`. Kept a separate
+ * component so its hooks (session, queries) run only for pages that opt in.
+ */
+function ConnectWhatsAppItem({
+  target,
+  partyPhone,
+  onHandOff,
+}: {
+  target: ConnectTarget;
+  partyPhone?: string;
+  onHandOff: () => void;
+}) {
+  const { enabled, featureOn } = useConnect();
+  const queryClient = useQueryClient();
+  const send = useMutation({
+    mutationFn: () => sendMessage(target),
+    onSuccess: (r) => {
+      if (r.status === 'queued' || r.status === 'sending' || r.status === 'sent') {
+        toast.success('Queued', { description: 'WhatsApp sends it with the PDF in a few seconds.' });
+      } else {
+        toast.info('Not sent', { description: r.skipReason ?? 'WhatsApp did not take it.' });
+      }
+      void queryClient.invalidateQueries({ queryKey: messagingKeys.all });
+    },
+    onError: (e: Error) => toast.error('Could not send', { description: e.message }),
+  });
+
+  if (enabled) {
+    return (
+      <DropdownMenuItem icon={<MessageCircle aria-hidden="true" />} onSelect={() => send.mutate()}>
+        <span className="flex flex-col">
+          Send on WhatsApp
+          <span className="text-caption text-text-tertiary">From your business number, with the PDF</span>
+        </span>
+      </DropdownMenuItem>
+    );
+  }
+  return (
+    <DropdownMenuItem
+      icon={<MessageCircle aria-hidden="true" />}
+      onSelect={() => {
+        onHandOff();
+        if (featureOn && partyPhone) {
+          void logManualShare({ ...target, toPhone: partyPhone })
+            .then(() => queryClient.invalidateQueries({ queryKey: messagingKeys.all }))
+            .catch(() => undefined);
+        }
+      }}
+    >
+      <span className="flex flex-col">
+        WhatsApp
+        {partyPhone && <span className="text-caption text-text-tertiary">{partyPhone}</span>}
+      </span>
+    </DropdownMenuItem>
   );
 }
 

@@ -36,7 +36,10 @@ export type FeatureKey =
   | 'purchaseOrders'
   | 'salesOrders'
   | 'agencies'
-  | 'delivery';
+  | 'delivery'
+  // FinMatrix Connect (server-sent WhatsApp). Read STRICTLY — see useConnect:
+  // useFeature() treats an absent key as on, which must not offer Connect.
+  | 'whatsappConnect';
 
 export type Features = Partial<Record<FeatureKey, boolean>>;
 

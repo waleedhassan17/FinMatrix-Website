@@ -45,6 +45,12 @@ export interface Customer {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  /** FinMatrix Connect: the WhatsApp number (E.164), consent, opt-out, verification, language. */
+  whatsappE164?: string | null;
+  whatsappOptInAt?: string | null;
+  whatsappOptOut?: boolean;
+  whatsappVerifiedAt?: string | null;
+  preferredLanguage?: 'en' | 'ur' | null;
 }
 
 /** The extras GET /customers/:id returns alongside the record. */

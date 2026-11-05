@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ContactWhatsappStatus } from '@/features/messaging/ContactWhatsappStatus';
 import { Banknote, BookOpen, FileClock, FilePlus2, Pencil } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -297,6 +298,7 @@ function OverviewTab({
           <Row label="Contact person" value={vendor.contactPerson || '—'} />
           <Row label="Email" value={vendor.email || '—'} />
           <Row label="Phone" value={vendor.phone || '—'} />
+          <ContactWhatsappStatus partyType="vendor" partyId={vendor.id} className="py-xs" />
           <Row label="Tax ID" value={vendor.taxId || '—'} />
         </div>
       </Card>

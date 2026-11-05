@@ -1,4 +1,5 @@
 import type { UseQueryResult } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
 import { BarChart3, PieChart, X } from 'lucide-react';
 import { useMemo, useRef } from 'react';
 
@@ -75,6 +76,8 @@ export interface AgingReportViewProps {
   emptyHint: string;
   /** What an unsent document is called here — "invoice" or "bill". */
   documentNoun: string;
+  /** Extra header actions, e.g. the WhatsApp collections link on AR Aging. */
+  actions?: ReactNode;
   query: UseQueryResult<AgingReport, Error>;
   preset: AgingPresetKey | null;
   customBuckets: string;
@@ -142,6 +145,7 @@ const QUICK_LABELS: Record<AgingQuickFilter, string> = {
 export function AgingReportView({
   title,
   subtitle,
+  actions,
   counterpartyHeader,
   csvName,
   emptyTitle,
@@ -271,6 +275,7 @@ export function AgingReportView({
     <ReportShell
       title={title}
       subtitle={subtitle}
+      actions={actions}
       // The report's terms, stated as facts in the header. They used to be a
       // paragraph-long banner above the figures and a footnote below them.
       meta={report ? [asOf, 'Accrual basis', `Draft ${documentNoun}s excluded`] : undefined}

@@ -20,6 +20,7 @@ export {
   type FormLineItem,
 } from '@/models/document';
 
+import type { LastMessageStatus } from '@/models/messaging';
 import type { DiscountType, FormLineItem } from '@/models/document';
 
 export type InvoiceStatus =
@@ -65,6 +66,8 @@ export interface Invoice {
   notes: string;
   createdAt: string;
   updatedAt: string;
+  /** FinMatrix Connect: the newest WhatsApp message about it (lists and detail). */
+  lastMessageStatus?: LastMessageStatus | null;
 }
 
 export interface InvoiceFormData {

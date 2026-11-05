@@ -17,6 +17,9 @@ const FORBIDDEN = [
   '/settings',
   '/settings/company',
   '/settings/users',
+  // FinMatrix Connect: the WhatsApp settings and the contact clean-up are the owner's.
+  '/settings/whatsapp',
+  '/contacts/health',
   '/approvals',
   '/approvals/abc-123',
   '/reconciliations',

@@ -2,6 +2,7 @@
 // FinMatrix Web — Purchase Order model
 // ═══════════════════════════════════════════════════════
 
+import type { LastMessageStatus } from '@/models/messaging';
 import Decimal from 'decimal.js';
 
 import type { FormLineItem } from '@/models/document';
@@ -84,6 +85,8 @@ export interface PurchaseOrder {
   unbilledValueGross: number;
   createdAt: string;
   updatedAt: string;
+  /** FinMatrix Connect: the newest WhatsApp message about it (lists and detail). */
+  lastMessageStatus?: LastMessageStatus | null;
 }
 
 export interface PurchaseOrderFormData {

@@ -1,4 +1,7 @@
 import { CheckCircle2 } from 'lucide-react';
+import { MessageStatusTicks } from '@/features/messaging/MessageStatusTicks';
+import { MessageTimeline } from '@/features/messaging/MessageTimeline';
+import { useConnect, useTimeline } from '@/features/messaging/useConnect';
 import { useMemo } from 'react';
 import { Link, Navigate, useLocation } from 'react-router-dom';
 
@@ -36,6 +39,8 @@ export interface PaymentReceiptState {
   balanceAfter: number | null;
   reference: string;
   lines: ReceiptLine[];
+  /** The bill payment recorded (none for a credit-only settlement) — its remittance on WhatsApp. */
+  paymentId?: string;
 }
 
 /**
@@ -58,6 +63,11 @@ export default function PaymentReceiptPage() {
   const company = useDocumentCompany();
 
   const doc = useMemo(() => (state ? billPaymentAdviceDocument(state, company) : null), [state, company]);
+
+  // FinMatrix Connect: the remittance advice that went to the vendor.
+  const { enabled: connectOn } = useConnect();
+  const timeline = useTimeline('bill_payment', state?.paymentId, connectOn);
+  const remittance = timeline.data?.[0] ?? null;
 
   // Reached directly, or after a refresh — there is nothing to show.
   if (!state || !doc) return <Navigate to="/bills" replace />;
@@ -84,6 +94,14 @@ export default function PaymentReceiptPage() {
                 {docDate(state.paymentDate) || state.paymentDate}
                 {credit > 0 && ` — ${formatMoney(cash)} paid, ${formatMoney(credit)} from vendor credit`}
               </p>
+              {connectOn && remittance && (
+                <p className="mt-xxs flex items-center gap-xs text-body-sm text-text-secondary" aria-live="polite">
+                  {remittance.status === 'skipped' || remittance.status === 'cancelled'
+                    ? `Remittance not sent: ${remittance.reason ?? 'see the timeline'}`
+                    : `Remittance sent to ${remittance.recipientName || state.vendorName || 'the vendor'}`}
+                  <MessageStatusTicks status={remittance.status} />
+                </p>
+              )}
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-xs">
@@ -91,6 +109,7 @@ export default function PaymentReceiptPage() {
               document={doc.share}
               getPdf={() => documentPdfBlob(doc)}
               cacheKey={[state.reference, state.total, state.paymentDate, company.name, company.logo].join('|')}
+              connect={state.paymentId ? { docType: 'bill_payment', docId: state.paymentId, event: 'remittance' } : undefined}
             />
             <Button asChild variant="secondary" size="sm">
               <Link to="/bills/pay">Pay more bills</Link>
@@ -103,6 +122,9 @@ export default function PaymentReceiptPage() {
       }
       aside={
         <>
+          {connectOn && state.paymentId && (
+            <MessageTimeline docType="bill_payment" docId={state.paymentId} title="Remittance on WhatsApp" />
+          )}
           <AmountSummary
             label={credit > 0 ? 'Settled' : 'Paid'}
             amount={state.total}

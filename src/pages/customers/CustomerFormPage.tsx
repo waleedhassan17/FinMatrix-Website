@@ -1,6 +1,9 @@
 import { zodResolver } from '@hookform/resolvers/zod';
+import { WhatsappContactFields } from '@/features/messaging/WhatsappContactFields';
+import { emptyWhatsappFields, whatsappFieldError, whatsappFieldsFrom, whatsappPayload, type WhatsappFieldsState } from '@/features/messaging/whatsappFields';
+import { useConnect } from '@/features/messaging/useConnect';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -77,12 +80,24 @@ export default function CustomerFormPage() {
 
   const sameAsBilling = watch('sameAsBilling');
 
+  // FinMatrix Connect: WhatsApp number, consent and language (when the plan has
+  // it), beside the form; seeded once the customer loads, sent with the save.
+  const { featureOn: whatsappOn } = useConnect();
+  const [whatsapp, setWhatsapp] = useState<WhatsappFieldsState>(emptyWhatsappFields);
+  const [whatsappSeededFor, setWhatsappSeededFor] = useState<string | null>(null);
+  if (detail?.customer && whatsappSeededFor !== detail.customer.id) {
+    setWhatsappSeededFor(detail.customer.id);
+    setWhatsapp(whatsappFieldsFrom(detail.customer));
+  }
+  const phoneValue = watch('phone') ?? '';
+
   const save = useMutation({
     mutationFn: (values: CustomerSchema) => {
-      const payload = formDataToCustomerPayload({
+      const base = formDataToCustomerPayload({
         ...values,
         paymentTerms: values.paymentTerms as PaymentTerms,
       });
+      const payload = whatsappOn ? { ...base, ...whatsappPayload(whatsapp) } : base;
       return isEditing
         ? updateCustomer(customerId!, payload)
         : createCustomer(payload);
@@ -110,7 +125,14 @@ export default function CustomerFormPage() {
 
   return (
     <form
-      onSubmit={handleSubmit((v) => save.mutate(v))}
+      onSubmit={handleSubmit((v) => {
+        const whatsappError = whatsappOn ? whatsappFieldError(whatsapp, phoneValue) : null;
+        if (whatsappError) {
+          toast.error('WhatsApp number', { description: whatsappError });
+          return;
+        }
+        save.mutate(v);
+      })}
       className="mx-auto flex max-w-3xl flex-col gap-lg"
     >
       <div className="flex items-center gap-sm">
@@ -150,6 +172,9 @@ export default function CustomerFormPage() {
             {...register('email')}
           />
           <Input label="Phone" error={errors.phone?.message} {...register('phone')} />
+          {whatsappOn && (
+            <WhatsappContactFields party="customer" phone={phoneValue} state={whatsapp} onChange={setWhatsapp} />
+          )}
           <Input
             label="Contact person"
             error={errors.contactPerson?.message}

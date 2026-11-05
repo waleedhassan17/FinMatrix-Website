@@ -221,12 +221,17 @@ export default function PayBillsPage() {
 
   const save = useMutation({
     mutationFn: async () => {
+      // The payment id is kept for the receipt: FinMatrix Connect shows its
+      // remittance advice's WhatsApp status there. A settlement paid entirely
+      // from credit has no payment.
       if (creditUsed > 0) {
         const result = await settleBills(settleBillsPayload(form, spread.pieces), idempotencyKey.current);
-        return result.pending ? result : { pending: false as const };
+        return result.pending
+          ? result
+          : { pending: false as const, paymentId: result.settlement.payment ? String(result.settlement.payment.id ?? '') : '' };
       }
       const result = await payBills(payBillsFormToPayload(form));
-      return result.pending ? result : { pending: false as const };
+      return result.pending ? result : { pending: false as const, paymentId: String(result.payment.id ?? '') };
     },
     onSuccess: (result) => {
       if (result.pending) {
@@ -257,6 +262,7 @@ export default function PayBillsPage() {
           accountName: needsCash && payFrom ? `${payFrom.accountNumber} · ${payFrom.name}` : '',
           balanceAfter: needsCash ? balanceAfter : null,
           reference: form.reference.trim(),
+          paymentId: result.paymentId || undefined,
           lines: form.rows
             .filter((r) => r.checked && parseFloat(r.applied) > 0)
             .map((r) => ({

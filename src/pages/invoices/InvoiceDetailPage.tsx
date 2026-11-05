@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Ban, Banknote, Pencil, Plus, ReceiptText, Send, Trash2 } from 'lucide-react';
+import { Ban, Banknote, MessageCircle, Pencil, Plus, ReceiptText, Send, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -25,6 +25,11 @@ import {
   useDocumentCustomer,
 } from '@/features/documents/useDocumentContext';
 import { DocumentActions } from '@/features/share/DocumentActions';
+import { shareText } from '@/features/share/shareDocument';
+import { MessageTimeline } from '@/features/messaging/MessageTimeline';
+import { SendOnWhatsAppButton } from '@/features/messaging/SendOnWhatsAppButton';
+import { messagingKeys, useConnect, useContactWhatsapp } from '@/features/messaging/useConnect';
+import { maskWhatsapp } from '@/features/messaging/whatsappPreview';
 import { useAdminOnly, useCapability, useFeature } from '@/hooks/useCapability';
 import { cn } from '@/lib/cn';
 import { creditLimitError, type CreditAssessment } from '@/models/credit';
@@ -87,13 +92,25 @@ export default function InvoiceDetailPage() {
 
   const invalidate = () => invalidateAfterPosting(queryClient);
 
+  // FinMatrix Connect: who the invoice goes to on WhatsApp, and how.
+  const connect = useConnect();
+  const contact = useContactWhatsapp('customer', invoice?.customerId, connect.enabled);
+  const whatsappNumber = contact?.whatsappE164 ?? customer?.phone ?? null;
+  const canMessage =
+    !!contact?.whatsappE164 && contact.status !== 'opted_out' && contact.status !== 'not_on_whatsapp';
+  const offerPostAndSend = connect.enabled && connect.ruleFor('invoice_issued') === 'auto' && canMessage;
+
   const post = useMutation({
-    mutationFn: (overrideReason?: string) => sendInvoice(invoiceId, overrideReason),
-    onSuccess: () => {
+    mutationFn: (v: { overrideReason?: string; deliver?: boolean }) =>
+      sendInvoice(invoiceId, v.overrideReason, connect.enabled ? v.deliver : undefined),
+    onSuccess: (_r, v) => {
       setCreditIssue(null);
       invalidate();
+      void queryClient.invalidateQueries({ queryKey: messagingKeys.all });
       toast.success('Posted to the books', {
-        description: 'The sale is now recognised in your ledger.',
+        description: v.deliver
+          ? `The sale is in your ledger, and the invoice is on its way to ${contact?.name ?? 'the customer'} on WhatsApp.`
+          : 'The sale is now recognised in your ledger.',
       });
     },
     // The server's reason matters here — INSUFFICIENT_STOCK names the item and
@@ -195,10 +212,32 @@ export default function InvoiceDetailPage() {
                       Edit
                     </Link>
                   </Button>
-                  <Button size="sm" onClick={() => post.mutate(undefined)} disabled={post.isPending}>
-                    <Send className="size-4" />
-                    {post.isPending ? 'Posting…' : 'Post to books'}
-                  </Button>
+                  {offerPostAndSend ? (
+                    <>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => post.mutate({ deliver: false })}
+                        disabled={post.isPending}
+                      >
+                        Post only
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => post.mutate({ deliver: true })}
+                        disabled={post.isPending}
+                        title={`Sends it to ${[contact?.name, maskWhatsapp(whatsappNumber)].filter(Boolean).join(' · ')}`}
+                      >
+                        <MessageCircle className="size-4" />
+                        {post.isPending ? 'Posting…' : 'Post & send on WhatsApp'}
+                      </Button>
+                    </>
+                  ) : (
+                    <Button size="sm" onClick={() => post.mutate({})} disabled={post.isPending}>
+                      <Send className="size-4" />
+                      {post.isPending ? 'Posting…' : 'Post to books'}
+                    </Button>
+                  )}
                 </>
               )}
               {owing && creditOnAccount > 0 && applyCap.allowed && (
@@ -220,10 +259,22 @@ export default function InvoiceDetailPage() {
                   </Link>
                 </Button>
               )}
+              {owing && (connect.enabled || !!whatsappNumber) && (
+                <SendOnWhatsAppButton
+                  label={connect.enabled ? 'Send reminder' : 'Remind'}
+                  docType="invoice"
+                  docId={invoice.id}
+                  event="reminder"
+                  phone={whatsappNumber}
+                  optedOut={contact?.status === 'opted_out'}
+                  text={shareText(doc.share)}
+                />
+              )}
               <DocumentActions
                 document={doc.share}
                 getPdf={() => documentPdfBlob(doc, { linePhotos: inventoryEnabled })}
                 cacheKey={[invoice.id, invoice.updatedAt, invoice.status, company.name, company.logo, customer?.id].join('|')}
+                connect={editable ? undefined : { docType: 'invoice', docId: invoice.id, event: 'invoice_issued' }}
               />
               <MoreActionsMenu
                 actions={[
@@ -348,6 +399,8 @@ export default function InvoiceDetailPage() {
             )}
           </RailSection>
 
+          {connect.enabled && <MessageTimeline docType="invoice" docId={invoice.id} />}
+
           <RailSection title="Details">
             <KeyValueList
               items={[
@@ -367,7 +420,7 @@ export default function InvoiceDetailPage() {
         assessment={creditIssue}
         onOpenChange={(open) => !open && setCreditIssue(null)}
         busy={post.isPending}
-        onOverride={(reason) => post.mutate(reason)}
+        onOverride={(reason) => post.mutate({ overrideReason: reason, deliver: post.variables?.deliver })}
       />
 
       <ConfirmDialog

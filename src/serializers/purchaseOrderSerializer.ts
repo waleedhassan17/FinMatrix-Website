@@ -2,6 +2,7 @@
 // FinMatrix Web — Purchase Order Serializer
 // ═══════════════════════════════════════════════════════
 
+import { lastMessageStatusSerializer } from '@/serializers/messagingSerializer';
 import type {
   PurchaseOrder,
   PurchaseOrderFormData,
@@ -78,6 +79,7 @@ export const mapPurchaseOrder = (raw: unknown): PurchaseOrder => {
     unbilledValueGross: toNumber(r.unbilledValueGross as never),
     createdAt: str(r.createdAt),
     updatedAt: str(r.updatedAt),
+    lastMessageStatus: lastMessageStatusSerializer(r.lastMessageStatus),
   };
 };
 

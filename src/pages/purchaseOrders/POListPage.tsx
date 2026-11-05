@@ -1,4 +1,6 @@
 import { createColumnHelper } from '@tanstack/react-table';
+import { MessageStatusTicks } from '@/features/messaging/MessageStatusTicks';
+import { useConnect } from '@/features/messaging/useConnect';
 import { Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -80,6 +82,8 @@ export default function POListPage() {
     [list.extras, data],
   );
 
+  // FinMatrix Connect: a WhatsApp ticks column while Connect is on.
+  const { enabled: connectOn } = useConnect();
   const columns = useMemo(
     () => [
       columnHelper.accessor('poNumber', {
@@ -127,8 +131,20 @@ export default function POListPage() {
         header: 'Status',
         cell: (ctx) => <StatusBadge status={ctx.getValue()} />,
       }),
+      ...(connectOn
+        ? [
+            columnHelper.display({
+              id: 'whatsapp',
+              header: 'WhatsApp',
+              cell: (ctx) => {
+                const m = ctx.row.original.lastMessageStatus;
+                return m ? <MessageStatusTicks status={m.status} /> : <span className="text-text-tertiary">—</span>;
+              },
+            }),
+          ]
+        : []),
     ],
-    [],
+    [connectOn],
   ) as never;
 
   return (

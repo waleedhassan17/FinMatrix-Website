@@ -152,6 +152,11 @@ export const BudgetDetailPage = lazyWithReload(() => import('@/pages/budgets/Bud
 // Settings — owner only. My Account is both roles.
 export const CompanyProfilePage = lazyWithReload(() => import('@/pages/settings/CompanyProfilePage'));
 export const TeamPage = lazyWithReload(() => import('@/pages/settings/TeamPage'));
+// FinMatrix Connect (WhatsApp). Settings and Fix contacts are owner only;
+// the collections report is a report (both roles).
+export const WhatsAppConnectPage = lazyWithReload(() => import('@/pages/settings/WhatsAppConnectPage'));
+export const FixContactsPage = lazyWithReload(() => import('@/pages/messaging/FixContactsPage'));
+export const CollectionsReportPage = lazyWithReload(() => import('@/pages/reports/CollectionsReportPage'));
 export const MyAccountPage = lazyWithReload(() => import('@/pages/account/MyAccountPage'));
 
 // Chart of accounts — admin only, so staff never download these chunks either.

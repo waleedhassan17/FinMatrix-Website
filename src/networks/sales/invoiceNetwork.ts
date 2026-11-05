@@ -136,12 +136,17 @@ export const updateInvoice = async (
  * past the customer's credit limit (refused otherwise with
  * CREDIT_LIMIT_EXCEEDED).
  */
-export const sendInvoice = async (id: string, creditOverrideReason?: string): Promise<Invoice> => {
+export const sendInvoice = async (
+  id: string,
+  creditOverrideReason?: string,
+  /** FinMatrix Connect: false = post only; true = post and send on WhatsApp now. */
+  deliverWhatsapp?: boolean,
+): Promise<Invoice> => {
   try {
-    const response = await api.post(
-      `/invoices/${id}/send`,
-      creditOverrideReason ? { creditOverride: { reason: creditOverrideReason } } : {},
-    );
+    const response = await api.post(`/invoices/${id}/send`, {
+      ...(creditOverrideReason ? { creditOverride: { reason: creditOverrideReason } } : {}),
+      ...(deliverWhatsapp === undefined ? {} : { deliver: { whatsapp: deliverWhatsapp } }),
+    });
     return mapInvoice(unwrapEnvelope(response.data));
   } catch (e) {
     throw toApiError(e);

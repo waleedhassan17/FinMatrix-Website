@@ -1,7 +1,10 @@
 import { zodResolver } from '@hookform/resolvers/zod';
+import { WhatsappContactFields } from '@/features/messaging/WhatsappContactFields';
+import { emptyWhatsappFields, whatsappFieldError, whatsappFieldsFrom, whatsappPayload, type WhatsappFieldsState } from '@/features/messaging/whatsappFields';
+import { useConnect } from '@/features/messaging/useConnect';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo } from 'react';
-import { Controller, useForm } from 'react-hook-form';
+import { useEffect, useMemo, useState } from 'react';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { z } from 'zod';
@@ -139,12 +142,24 @@ export default function VendorFormPage() {
     if (vendor) reset(vendorToFormData(vendor));
   }, [vendor, reset]);
 
+  // FinMatrix Connect: WhatsApp number, consent and language (when the plan has
+  // it), beside the form; seeded once the vendor loads, sent with the save.
+  const { featureOn: whatsappOn } = useConnect();
+  const [whatsapp, setWhatsapp] = useState<WhatsappFieldsState>(emptyWhatsappFields);
+  const [whatsappSeededFor, setWhatsappSeededFor] = useState<string | null>(null);
+  if (vendor && whatsappSeededFor !== vendor.id) {
+    setWhatsappSeededFor(vendor.id);
+    setWhatsapp(whatsappFieldsFrom(vendor));
+  }
+  const phoneValue = useWatch({ control, name: 'phone' }) ?? '';
+
   const save = useMutation({
     mutationFn: (values: VendorSchema) => {
-      const payload = vendorFormToPayload({
+      const base = vendorFormToPayload({
         ...values,
         paymentTerms: values.paymentTerms as PaymentTerms,
       });
+      const payload = whatsappOn ? { ...base, ...whatsappPayload(whatsapp) } : base;
       return isEditing ? updateVendor(vendorId!, payload) : createVendor(payload);
     },
     onSuccess: (saved) => {
@@ -184,7 +199,14 @@ export default function VendorFormPage() {
 
   return (
     <form
-      onSubmit={handleSubmit((v) => save.mutate(v))}
+      onSubmit={handleSubmit((v) => {
+        const whatsappError = whatsappOn ? whatsappFieldError(whatsapp, phoneValue) : null;
+        if (whatsappError) {
+          toast.error('WhatsApp number', { description: whatsappError });
+          return;
+        }
+        save.mutate(v);
+      })}
       className="mx-auto flex max-w-3xl flex-col gap-lg"
     >
       <BackButton fallback={{ to: isEditing ? `/vendors/${vendorId}` : '/vendors', label: 'Back' }} />
@@ -233,6 +255,11 @@ export default function VendorFormPage() {
             containerClassName="sm:col-span-2"
             {...register('phone')}
           />
+          {whatsappOn && (
+            <div className="sm:col-span-2">
+              <WhatsappContactFields party="vendor" phone={phoneValue} state={whatsapp} onChange={setWhatsapp} />
+            </div>
+          )}
         </div>
       </Card>
 

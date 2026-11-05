@@ -2,6 +2,8 @@ import { NavLink } from 'react-router-dom';
 
 import { useFeature } from '@/hooks/useCapability';
 import { cn } from '@/lib/cn';
+import { useAppSelector } from '@/store/store';
+import { selectFeatures } from '@/store/authSlice';
 
 /**
  * Company · Team. Owner only — the whole of /settings is absent from the staff
@@ -9,9 +11,12 @@ import { cn } from '@/lib/cn';
  */
 export function SettingsTabs() {
   const multiUser = useFeature('multiUser');
+  // FinMatrix Connect, read strictly: useFeature treats an absent key as on.
+  const whatsapp = useAppSelector(selectFeatures)?.whatsappConnect === true;
   const tabs: Array<[string, string]> = [
     ['/settings/company', 'Company'],
     ...(multiUser ? ([['/settings/users', 'Team']] as Array<[string, string]>) : []),
+    ...(whatsapp ? ([['/settings/whatsapp', 'WhatsApp']] as Array<[string, string]>) : []),
   ];
 
   return (

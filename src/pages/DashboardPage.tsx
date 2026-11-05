@@ -1,4 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
+import { CollectionsCard } from '@/features/messaging/CollectionsCard';
+import { useConnect } from '@/features/messaging/useConnect';
 import { format } from 'date-fns';
 import { AlertCircle, RotateCw } from 'lucide-react';
 
@@ -28,6 +30,8 @@ import { getAnalytics } from '@/networks/reports/analyticsNetwork';
  * taking a perfectly good revenue chart down with it.
  */
 export default function DashboardPage() {
+  // FinMatrix Connect: the collections card shows only while it is switched on.
+  const { enabled: connectOn } = useConnect();
   const isOwner = useIsOwner();
   const deliveryOn = useFeature('delivery');
   const inventoryOn = useFeature('inventory');
@@ -199,6 +203,7 @@ export default function DashboardPage() {
             failed={analytics.isError}
             onRetry={() => void analytics.refetch()}
           />
+          {connectOn && <CollectionsCard />}
           {/* Counts, not money: with no summary there is nothing honest to
               draw, so the card waits for the retry rather than showing zeros. */}
           {!summaryFailed && (

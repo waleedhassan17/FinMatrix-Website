@@ -146,9 +146,14 @@ export const updatePurchaseOrder = async (
 export const setPurchaseOrderStatus = async (
   id: string,
   status: PurchaseOrderStatus,
+  /** FinMatrix Connect: false marks it sent without messaging the vendor. */
+  deliverWhatsapp?: boolean,
 ): Promise<PurchaseOrder> => {
   try {
-    const response = await api.patch(`/purchase-orders/${id}/status`, { status });
+    const response = await api.patch(
+      `/purchase-orders/${id}/status`,
+      deliverWhatsapp === undefined ? { status } : { status, deliver: { whatsapp: deliverWhatsapp } },
+    );
     return mapPurchaseOrder(unwrapEnvelope(response.data));
   } catch (e) {
     throw toApiError(e);

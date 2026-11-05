@@ -1,4 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { MessageTimeline } from '@/features/messaging/MessageTimeline';
+import { messagingKeys, useConnect, useContactWhatsapp } from '@/features/messaging/useConnect';
+import { maskWhatsapp } from '@/features/messaging/whatsappPreview';
 import {
   FileText,
   PackageCheck,
@@ -100,11 +103,23 @@ export default function PODetailPage() {
     enabled: needsExpenseAccount,
   });
 
+  // FinMatrix Connect: who gets the PO on WhatsApp, with a "Don't send" choice.
+  const connect = useConnect();
+  const vendorContact = useContactWhatsapp('vendor', po?.vendorId, connect.enabled);
+  const offerWhatsapp =
+    connect.enabled &&
+    connect.ruleFor('po_issued') === 'auto' &&
+    !!vendorContact?.whatsappE164 &&
+    vendorContact.status !== 'opted_out' &&
+    vendorContact.status !== 'not_on_whatsapp';
+  const [sendOnWhatsapp, setSendOnWhatsapp] = useState(true);
+
   const changeStatus = useMutation({
-    mutationFn: (status: 'sent' | 'closed') =>
-      setPurchaseOrderStatus(poId, status),
+    mutationFn: (v: { status: 'sent' | 'closed'; deliver?: boolean }) =>
+      setPurchaseOrderStatus(poId, v.status, v.deliver),
     onSuccess: (updated) => {
       invalidate();
+      void queryClient.invalidateQueries({ queryKey: messagingKeys.all });
       // ConfirmDialog stays open until its caller closes it (so it can show
       // "Working…" and survive an error). Left open, a second Send PATCHed the
       // order again.
@@ -364,6 +379,8 @@ export default function PODetailPage() {
             </RailSection>
           )}
 
+          {connect.enabled && <MessageTimeline docType="purchase_order" docId={po.id} />}
+
           <RailSection title="Details">
             <KeyValueList
               items={[
@@ -423,8 +440,28 @@ export default function PODetailPage() {
         description="It becomes a purchase order that goods can be received against. It posts nothing to the ledger — a purchase order is a commitment, not a transaction."
         confirmLabel="Approve & send"
         busy={changeStatus.isPending}
-        onConfirm={() => changeStatus.mutate('sent')}
-      />
+        onConfirm={() =>
+          changeStatus.mutate({ status: 'sent', deliver: offerWhatsapp ? sendOnWhatsapp : undefined })
+        }
+      >
+        {offerWhatsapp && (
+          <label className="flex items-start gap-sm text-body-sm text-text-secondary">
+            <input
+              type="checkbox"
+              className="mt-xxs size-4 accent-[color:var(--color-primary)]"
+              checked={sendOnWhatsapp}
+              onChange={(e) => setSendOnWhatsapp(e.target.checked)}
+            />
+            <span>
+              Send it on WhatsApp to{' '}
+              <span className="text-text-primary">
+                {[vendorContact?.name, maskWhatsapp(vendorContact?.whatsappE164)].filter(Boolean).join(' · ')}
+              </span>
+              , with the PDF. Untick for “Don’t send”.
+            </span>
+          </label>
+        )}
+      </ConfirmDialog>
 
       <ConfirmDialog
         open={confirmClose}
@@ -439,7 +476,7 @@ export default function PODetailPage() {
         }
         confirmLabel="Close order"
         busy={changeStatus.isPending}
-        onConfirm={() => changeStatus.mutate('closed')}
+        onConfirm={() => changeStatus.mutate({ status: 'closed' })}
       />
 
       <ConfirmDialog

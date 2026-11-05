@@ -1,4 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { MessageTimeline } from '@/features/messaging/MessageTimeline';
+import { useConnect } from '@/features/messaging/useConnect';
 import { FileText, ReceiptText, RotateCcw } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -36,6 +38,8 @@ export default function PaymentDetailPage() {
   const [applyOpen, setApplyOpen] = useState(false);
   const applyCap = useCapability('payment.receive');
 
+  // FinMatrix Connect: the receipt's WhatsApp messages.
+  const { enabled: connectOn } = useConnect();
   const { data: payment, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['payments', paymentId],
     queryFn: () => getPaymentById(paymentId),
@@ -112,6 +116,7 @@ export default function PaymentDetailPage() {
                 document={doc.share}
                 getPdf={() => documentPdfBlob(doc)}
                 cacheKey={[payment.id, payment.amount, payment.allocated, company.name, company.logo, customer?.id].join('|')}
+                connect={{ docType: 'payment', docId: payment.id, event: 'payment_received' }}
               />
               <MoreActionsMenu
                 actions={[
@@ -190,6 +195,8 @@ export default function PaymentDetailPage() {
               </ul>
             )}
           </RailSection>
+
+          {connectOn && <MessageTimeline docType="payment" docId={payment.id} title="Receipt on WhatsApp" />}
 
           <RailSection title="Details">
             <KeyValueList
