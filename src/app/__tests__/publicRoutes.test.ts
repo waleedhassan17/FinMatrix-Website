@@ -75,6 +75,8 @@ describe('the public (pre-auth) routes', () => {
       '/register',
       '/forgot-password',
       '/verify-email',
+      '/privacy',
+      '/data-deletion',
     ];
 
     for (const path of expected) {

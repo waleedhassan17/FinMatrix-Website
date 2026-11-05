@@ -105,7 +105,7 @@ export default function WhatsAppConnectPage() {
         <p className="text-body-md text-text-secondary">
           {settings.providerMode === 'simulated'
             ? 'Simulated: messages are tracked here but nothing reaches WhatsApp yet.'
-            : 'Documents go out from your WhatsApp Business number, with the PDF, and you see when they are read.'}
+            : "Documents go out from FinMatrix's WhatsApp number, always in your company's name and with the PDF, and you see when they are read."}
         </p>
       </div>
 
@@ -181,6 +181,7 @@ export default function WhatsAppConnectPage() {
 
       <Card className="flex flex-col gap-sm p-lg">
         <SectionHeader title="This month" />
+        {settings.allowance ? <AllowanceBar allowance={settings.allowance} /> : null}
         {stats.data ? (
           <p className="text-body-sm text-text-secondary">
             <span className="text-label-lg text-text-primary">
@@ -274,3 +275,41 @@ function ScheduleCard({
     </Card>
   );
 }
+
+/**
+ * How much of the plan's WhatsApp allowance is used. FinMatrix pays Meta for
+ * these messages, so at the limit automatic sending pauses until next month;
+ * the document's own Share button still works.
+ */
+function AllowanceBar({ allowance }: { allowance: { limit: number; used: number } }) {
+  const { limit, used } = allowance;
+  const pct = limit > 0 ? Math.min(100, (used / limit) * 100) : 100;
+  const full = used >= limit;
+  const tone = full ? 'bg-danger' : pct >= 80 ? 'bg-warning' : 'bg-primary';
+  return (
+    <div>
+      <p className="text-body-sm text-text-secondary">
+        <span className="text-label-lg text-text-primary">
+          {used} of {limit}
+        </span>{' '}
+        WhatsApp messages included in your plan this month
+      </p>
+      <div
+        className="mt-xs h-2 overflow-hidden rounded-full bg-neutral-100"
+        role="progressbar"
+        aria-label="WhatsApp messages used this month"
+        aria-valuemin={0}
+        aria-valuemax={limit}
+        aria-valuenow={Math.min(used, limit)}
+      >
+        <div className={`h-full rounded-full ${tone}`} style={{ width: `${pct}%` }} />
+      </div>
+      {full ? (
+        <p className="mt-xs text-caption text-danger">
+          Used up: documents will go out on WhatsApp again next month. You can still share them by hand.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+

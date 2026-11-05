@@ -60,6 +60,20 @@ describe('messaging serializers', () => {
   });
 });
 
+describe('the plan allowance on the settings', () => {
+  it('reads the limit, the use and the month', () => {
+    const s = messagingSettingsSerializer({
+      data: { enabled: true, allowance: { limit: 200, used: '37', period: '2026-11' } },
+    });
+    expect(s.allowance).toEqual({ limit: 200, used: 37, period: '2026-11' });
+  });
+
+  it('is null from a server that does not send it', () => {
+    expect(messagingSettingsSerializer({ data: { enabled: true } }).allowance).toBeNull();
+    expect(messagingSettingsSerializer({ data: { allowance: { limit: 'x' } } }).allowance).toBeNull();
+  });
+});
+
 describe('ticks', () => {
   it('one check sent, two delivered, two in the accent read, alert failed', () => {
     expect(tickSpec('sent')).toMatchObject({ icon: 'check', double: false });

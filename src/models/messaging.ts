@@ -71,6 +71,11 @@ export interface MessagingSettings {
   contactsOptInConfirmedAt: string | null;
   timezone: string;
   providerMode: 'simulated' | 'live';
+  /**
+   * WhatsApp messages a month included in the company's plan (FinMatrix pays
+   * Meta for them) and this month's use. Null from a server without it.
+   */
+  allowance: { limit: number; used: number; period: string } | null;
 }
 
 export interface MessageStatusEventEntry {

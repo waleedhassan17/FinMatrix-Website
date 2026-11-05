@@ -71,6 +71,14 @@ export function messagingSettingsSerializer(payload: any): MessagingSettings {
     contactsOptInConfirmedAt: strOrNull(raw.contactsOptInConfirmedAt),
     timezone: str(raw.timezone, 'Asia/Karachi'),
     providerMode: raw.providerMode === 'live' ? 'live' : 'simulated',
+    allowance:
+      raw.allowance && Number.isFinite(Number(raw.allowance.limit))
+        ? {
+            limit: num(raw.allowance.limit),
+            used: num(raw.allowance.used),
+            period: str(raw.allowance.period),
+          }
+        : null,
   };
 }
 
