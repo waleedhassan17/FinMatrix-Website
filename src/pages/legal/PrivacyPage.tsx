@@ -3,42 +3,85 @@ import { CONTACT_EMAIL_PRIMARY } from '@/features/landing/constants';
 import { LegalLayout, LegalSection } from './LegalLayout';
 
 const list = 'flex list-disc flex-col gap-xs pl-lg';
+const strong = 'text-text-primary';
 
-/** /privacy: what FinMatrix keeps, why, and who else touches it. */
+/**
+ * /privacy. Every statement here was checked against what FinMatrix actually
+ * does (backend, web and mobile code, 6 Nov 2026). When a feature changes what
+ * is collected, stored or shared, change this page and its date with it.
+ */
 export default function PrivacyPage() {
+  const email = (
+    <a className="text-primary underline" href={`mailto:${CONTACT_EMAIL_PRIMARY}`}>
+      {CONTACT_EMAIL_PRIMARY}
+    </a>
+  );
   return (
     <LegalLayout title="Privacy policy" updated="6 November 2026">
       <p>
-        FinMatrix is accounting, inventory, purchasing and delivery software used by businesses. This page explains what
-        information FinMatrix holds, why, and the choices you have.
+        FinMatrix provides accounting, inventory, purchasing, payroll and delivery software to businesses, through our
+        website, web app, mobile app and WhatsApp messaging (together, &ldquo;FinMatrix&rdquo;). This policy explains
+        what information FinMatrix holds, why, who it is shared with, and the choices you have.
       </p>
 
-      <LegalSection title="Who this covers">
-        <ul className={list}>
-          <li>
-            <strong className="text-text-primary">Businesses that use FinMatrix</strong> and their team members and
-            delivery riders.
-          </li>
-          <li>
-            <strong className="text-text-primary">Their customers and suppliers</strong>, whose details a business
-            enters into FinMatrix and who may receive documents from that business.
-          </li>
-        </ul>
+      <LegalSection title="Who is responsible for your information">
         <p>
-          For the records a business keeps about its customers and suppliers, that business decides what is entered and
-          why. FinMatrix stores and processes those records for the business.
+          FinMatrix is responsible for the information it needs to run your account, such as your sign-in details and
+          your company&apos;s subscription.
+        </p>
+        <p>
+          The business records a company keeps in FinMatrix &mdash; about its customers, suppliers, employees and
+          transactions &mdash; belong to that company. FinMatrix stores and processes them on the company&apos;s behalf
+          and on its instructions. The company decides what to enter and is responsible for having the right to do so,
+          including telling the people concerned and getting any consent they need to give.
+        </p>
+        <p>
+          If you are a customer, supplier, employee or rider of a business that uses FinMatrix, please contact that
+          business first about your information.
         </p>
       </LegalSection>
 
-      <LegalSection title="What we hold">
+      <LegalSection title="What we collect">
         <ul className={list}>
-          <li>Account details: name, email address, phone number, company name and address.</li>
           <li>
-            Business records a company enters: customers, suppliers, invoices, payments, bills, purchase orders,
-            inventory, deliveries and reports.
+            <strong className={strong}>Account and company details:</strong> names, email addresses, phone numbers and
+            passwords (stored only in hashed form, so we never see them); company name, address, tax registration number
+            and logo; team members&apos; usernames and roles.
           </li>
-          <li>Delivery data: while a rider is on a delivery, the app records the delivery&apos;s location and status.</li>
-          <li>Security logs: sign-ins and important changes, to protect accounts and investigate problems.</li>
+          <li>
+            <strong className={strong}>Business records:</strong> customers and suppliers (names, contact details,
+            addresses, WhatsApp numbers and messaging consent), invoices, estimates, sales and purchase orders, bills and
+            payments (with any proof of payment attached), bank and cash entries, inventory with item photos, budgets, tax settings and reports.
+          </li>
+          <li>
+            <strong className={strong}>Payroll records:</strong> when a company runs payroll in FinMatrix, its
+            employees&apos; names, contact details, job details, start and leaving dates, salaries or pay rates, tax
+            numbers, bank account details and deductions.
+          </li>
+          <li>
+            <strong className={strong}>Delivery records:</strong> delivery addresses and recipients, status updates,
+            photos riders take of bills, and amounts collected.
+          </li>
+          <li>
+            <strong className={strong}>Rider location:</strong> the FinMatrix mobile app collects a rider&apos;s precise
+            location, including while the app is in the background, but only while the rider is on duty or working a
+            delivery. The rider&apos;s company sees it to follow its deliveries, and it is kept with the delivery
+            records. Tracking stops when the rider goes off duty.
+          </li>
+          <li>
+            <strong className={strong}>Payments for FinMatrix:</strong> proof-of-payment images you upload when you pay
+            for a subscription.
+          </li>
+          <li>
+            <strong className={strong}>Technical and security information:</strong> the IP address and browser or
+            device details recorded with sign-ins and important changes, server logs, and error reports we use to fix
+            problems.
+          </li>
+          <li>
+            <strong className={strong}>On your device:</strong> the web app and mobile app keep your sign-in session and
+            preferences in your browser&apos;s or the app&apos;s storage. FinMatrix does not use advertising or tracking
+            cookies.
+          </li>
         </ul>
       </LegalSection>
 
@@ -46,72 +89,129 @@ export default function PrivacyPage() {
         <p>
           When a business switches on WhatsApp in FinMatrix, FinMatrix sends that business&apos;s documents (such as
           invoices, receipts, purchase orders, statements and payment reminders) to its customers and suppliers from
-          FinMatrix&apos;s WhatsApp number. Every message names the business it comes from and attaches its document.
+          FinMatrix&apos;s WhatsApp number. Every message names the business it comes from.
         </p>
         <ul className={list}>
+          <li>Messages go only to contacts the business has recorded as agreeing to receive them on WhatsApp.</li>
           <li>
-            Messages go only to contacts the business has recorded as agreeing to receive them on WhatsApp.
+            To send them we use the recipient&apos;s name, WhatsApp number and the document. Meta&apos;s WhatsApp
+            Business Platform delivers each message and tells us whether it was delivered and read; it may also give us
+            a WhatsApp user ID, which we use only to recognise that contact&apos;s replies.
           </li>
           <li>
-            To deliver them we use the recipient&apos;s name, WhatsApp number and the document. Meta&apos;s WhatsApp
-            Business Platform carries the message and tells us whether it was delivered and read.
+            Reply <strong className={strong}>STOP</strong> at any time and no more messages will be sent to your number.
+            Reply <strong className={strong}>START</strong> to receive them again.
           </li>
           <li>
-            Reply <strong className="text-text-primary">STOP</strong> at any time and no more messages will be sent to
-            your number. Reply <strong className="text-text-primary">START</strong> to receive them again.
+            Any other reply gets at most one automatic answer a day, with the business&apos;s own contact details.
+            Replies are not read by FinMatrix staff.
           </li>
           <li>
-            Other replies get one automatic answer with the business&apos;s own contact details; replies are not read by
-            a person at FinMatrix.
+            Information we receive from Meta is used only to deliver messages, show their status, answer replies and
+            honour opt-outs.
           </li>
         </ul>
       </LegalSection>
 
-      <LegalSection title="How we use it">
-        <p>
-          To run the service a business signed up for, keep accounts secure, send the documents and notices described
-          above, and answer support requests. We do not sell personal information and we do not use it for advertising.
-        </p>
+      <LegalSection title="How we use information">
+        <ul className={list}>
+          <li>To provide FinMatrix: keep the books, run payroll, produce documents and reports, and manage deliveries.</li>
+          <li>To send the documents and notices a business asks us to send, by WhatsApp or email.</li>
+          <li>
+            To send service emails, such as verification codes and account and subscription notices. We do not send
+            marketing emails.
+          </li>
+          <li>To keep accounts secure, prevent fraud and misuse, and find and fix problems.</li>
+          <li>To answer support requests and to bill for subscriptions.</li>
+          <li>To meet our legal obligations.</li>
+        </ul>
+        <p>We do not sell personal information, and we do not use it for advertising.</p>
       </LegalSection>
 
-      <LegalSection title="Who else handles it">
+      <LegalSection title="Who we share it with">
+        <ul className={list}>
+          <li>
+            <strong className={strong}>Within your company:</strong> the people the owner adds, with the access their
+            role allows.
+          </li>
+          <li>
+            <strong className={strong}>Service providers</strong> that run parts of FinMatrix for us, and only for that
+            purpose: cloud hosting and databases (such as Heroku and Vercel), file storage (Cloudinary), email delivery,
+            maps (Google Maps, which receives delivery addresses to place them on the map), WhatsApp delivery (Meta),
+            and error monitoring (such as Sentry, set up not to collect personal information).
+          </li>
+          <li>
+            <strong className={strong}>FinMatrix staff:</strong> only authorised staff, to approve accounts, manage
+            subscriptions, give the support you ask for, and keep FinMatrix secure.
+          </li>
+          <li>
+            <strong className={strong}>When the law requires it</strong>, or to protect the rights, property or safety of
+            FinMatrix, our users or others.
+          </li>
+          <li>
+            <strong className={strong}>If FinMatrix changes ownership:</strong> in a merger, acquisition or sale of
+            assets, information may be transferred as part of the business, and this policy will continue to apply to
+            it.
+          </li>
+        </ul>
+      </LegalSection>
+
+      <LegalSection title="Where it is stored">
         <p>
-          The providers that host FinMatrix and store its files and emails, and Meta for WhatsApp delivery. Each only
-          receives what it needs for its part of the service. We share information with others only when the law
-          requires it.
+          Our service providers store and process information in data centres outside Pakistan, including in the United
+          States. We choose providers that protect it with industry-standard security.
         </p>
       </LegalSection>
 
       <LegalSection title="How long we keep it">
+        <ul className={list}>
+          <li>For as long as the company&apos;s account is open.</li>
+          <li>
+            When an account is closed or deletion is requested, we delete its information from our active systems within
+            30 days of confirming the request, except what we must keep by law or need to resolve disputes, prevent fraud
+            or keep FinMatrix secure. Backups are overwritten on a rolling schedule.
+          </li>
+          <li>
+            Businesses often have to keep financial records for several years under tax law, so export what you need
+            before asking for deletion.
+          </li>
+        </ul>
         <p>
-          While the business&apos;s account is open. When an account is closed, or deletion is requested, we delete its
-          data (see <a className="text-primary underline" href="/data-deletion">data deletion</a>), except what we must
-          keep by law. Backups are overwritten within a limited period.
+          How to ask: see <a className="text-primary underline" href="/data-deletion">deleting your data</a>.
+        </p>
+      </LegalSection>
+
+      <LegalSection title="Security">
+        <p>
+          Connections to FinMatrix are encrypted, passwords are stored hashed, each person&apos;s access within a
+          company follows their role and is checked on our servers, secrets such as access tokens are stored encrypted,
+          and important changes are recorded in an audit trail. No system is completely secure; if a breach affects your
+          information, we will tell you as the law requires.
         </p>
       </LegalSection>
 
       <LegalSection title="Your choices">
         <ul className={list}>
+          <li>See and correct most of your information in FinMatrix, and export your reports and lists.</li>
+          <li>Ask us for a copy of your information, or for it to be deleted, at {email}.</li>
           <li>
-            Customers and suppliers of a business: ask that business to correct or remove your details, or reply STOP
-            to stop WhatsApp messages.
+            Riders can change location permission in their phone&apos;s settings; without it, their company cannot
+            follow their deliveries.
           </li>
-          <li>
-            Account holders: you can see and correct your details in FinMatrix, and ask us for a copy or for deletion
-            at <a className="text-primary underline" href={`mailto:${CONTACT_EMAIL_PRIMARY}`}>{CONTACT_EMAIL_PRIMARY}</a>.
-          </li>
+          <li>Reply STOP to any WhatsApp message from FinMatrix to stop them.</li>
+          <li>Depending on where you live, you may have further rights over your information; contact us to use them.</li>
         </ul>
       </LegalSection>
 
-      <LegalSection title="Security">
-        <p>
-          Connections are encrypted, access inside a company follows each person&apos;s role and is checked on the
-          server, and secrets such as WhatsApp access tokens are stored encrypted.
-        </p>
+      <LegalSection title="Children">
+        <p>FinMatrix is made for businesses and is not meant for anyone under 18.</p>
       </LegalSection>
 
-      <LegalSection title="Changes">
-        <p>When this policy changes, the date at the top changes with it.</p>
+      <LegalSection title="Changes to this policy">
+        <p>
+          When our practices change we update this page and the date at the top. For significant changes we will also
+          tell account owners in FinMatrix or by email.
+        </p>
       </LegalSection>
     </LegalLayout>
   );
