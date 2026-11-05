@@ -118,7 +118,7 @@ export function LandingNav() {
             tone="inherit"
             className={cn(
               'transition-colors duration-300',
-              solid ? 'text-primary-900' : 'text-text-inverse',
+              solid ? 'text-brand-ink' : 'text-text-inverse',
             )}
           />
         </Link>

@@ -27,9 +27,10 @@
 //     /start a business/ — and `getByText(/team member portal/i)` throws on a
 //     second match, so the teal panel must not repeat the eyebrow's phrase.
 
-import { BarChart3, Check, ShieldCheck } from 'lucide-react';
+import { Check, ShieldCheck } from 'lucide-react';
 import type { ReactNode } from 'react';
 
+import { Logo } from '@/components/brand/Logo';
 import { cn } from '@/lib/cn';
 import { compactMoney } from '@/utils/money';
 
@@ -74,14 +75,7 @@ function DarkTexture() {
 
 /** Always drawn on a dark ground in this frame. Deliberately not a link. */
 function Wordmark() {
-  return (
-    <div className="flex items-center gap-sm">
-      <span className="flex size-10 items-center justify-center rounded-lg bg-white/10 ring-1 ring-inset ring-white/20">
-        <BarChart3 className="size-5 text-text-inverse" aria-hidden="true" />
-      </span>
-      <span className="text-h2 text-text-inverse">FinMatrix</span>
-    </div>
-  );
+  return <Logo tone="light" />;
 }
 
 /** A small, honest picture of the product — not a claim about anyone's usage. */

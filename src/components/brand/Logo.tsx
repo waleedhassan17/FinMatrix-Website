@@ -1,31 +1,22 @@
 // ═══════════════════════════════════════════════════════
 // FinMatrix — the brand mark
 // ═══════════════════════════════════════════════════════
-// What stood here before was `BarChart3` from lucide-react in a rounded box:
-// an icon from an open-source set that thousands of other sites also ship, used
-// as a logo. A buyer who has seen any other Lucide site recognises it on sight,
-// and the product reads as a template. A company selling financial software
-// internationally needs a mark that is its own.
+// THE MARK is a rounded "m" over a red rule — the FinMatrix logo. It replaces an
+// F monogram (and, before that, lucide's BarChart3 in a box).
 //
-// THE MARK is an F monogram built from ledger rules. The stem and the top rule
-// are the primary record; the shorter middle rule is the second one, aligned to
-// it — which is the whole product claim ("your stock and your books, the same
-// number"). It is geometric rather than drawn so it holds at 16px in a browser
-// tab, and the radius is deliberately small: a pill-shaped rule reads friendly,
-// and this is meant to read precise.
+// THE GEOMETRY is one stroke of width 20: three stems 40 apart, two arches with
+// a centreline radius of 20 (so the counters are exactly half a stroke wide),
+// round ends, and the rule beneath. It was fitted to the logo artwork to the
+// pixel. The same geometry is in public/favicon.svg, the app's BrandMark.tsx and
+// both apps' launcher icons — change one, change all of them.
 //
-// IT IS MONOCHROME, and the second rule is separated by opacity rather than by
-// the brand teal. Teal is not free in this system — it is the staff portal's
-// wayfinding colour ("a different door to a different surface"), and spending it
-// on the logo would blunt that meaning everywhere it is actually load-bearing.
-// Opacity also survives every ground the mark lands on; #0f766e on navy does not.
+// COLOUR: the "m" is `currentColor`, so the parent sets it with an ordinary
+// text colour class — white on the navy sidebar, the logo's ink on a light
+// ground. The rule is always the logo's red, through the `brand-red` token:
+// scripts/check-design-tokens.js gates .tsx and would fail the build on a hex.
 //
-// COLOUR is `currentColor` throughout, never a hex — scripts/check-design-tokens.js
-// gates .tsx and would fail the build on one. The consequence worth knowing: the
-// parent sets the mark's colour with an ordinary text colour class.
-//
-// The public/favicon.svg is this same geometry with the token hexes inlined,
-// since a file in public/ cannot import anything.
+// public/favicon.svg inlines the token hexes, since a file in public/ cannot
+// import anything.
 
 import type { ComponentProps } from 'react';
 
@@ -43,24 +34,29 @@ type MarkProps = {
  */
 export function LogoMark({ className }: MarkProps) {
   return (
+    // The mark's box is x -3.86…103.86, y 0…91.61; the square viewBox centres it
+    // with a little air, so it sits in a `size-*` square like any icon.
     <svg
-      viewBox="0 0 32 32"
+      viewBox="-12 -16.2 124 124"
       fill="none"
       aria-hidden="true"
       className={cn('size-8 shrink-0', className)}
     >
-      {/* Stem and top rule — the primary record. */}
-      <rect x="7" y="5" width="5" height="22" rx="1.6" fill="currentColor" />
-      <rect x="7" y="5" width="18" height="5" rx="1.6" fill="currentColor" />
-      {/* The second record, aligned to the first. */}
+      {/* The "m": three stems, two arches, one stroke. */}
+      <path
+        d="M10 62.36V30a20 20 0 0 1 40 0v32.36M50 30a20 20 0 0 1 40 0v32.36"
+        stroke="currentColor"
+        strokeWidth="20"
+        strokeLinecap="round"
+      />
+      {/* The rule beneath — always the logo's red. */}
       <rect
-        x="7"
-        y="13.5"
-        width="12"
-        height="5"
-        rx="1.6"
-        fill="currentColor"
-        opacity="0.55"
+        x="-3.86"
+        y="79.25"
+        width="107.72"
+        height="12.36"
+        rx="6.18"
+        className="fill-brand-red"
       />
     </svg>
   );
@@ -91,8 +87,8 @@ type LogoProps = ComponentProps<'span'> & {
 const TONE: Record<NonNullable<LogoProps['tone']>, string> = {
   // On a dark ground.
   light: 'text-text-inverse',
-  // On a light ground.
-  dark: 'text-primary-900',
+  // On a light ground: the logo's own ink.
+  dark: 'text-brand-ink',
   inherit: '',
 };
 

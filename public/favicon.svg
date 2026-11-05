@@ -1,24 +1,26 @@
 <!--
-  FinMatrix favicon.
+  FinMatrix favicon: the logo, a rounded "m" over a red rule, on its own canvas.
 
-  What was here before was the stock Vite scaffold icon — a purple blob in
-  Vite's own brand purple (#863bff). Every visitor's browser tab showed the
-  build tool's logo instead of the product's.
+  The same geometry as src/components/brand/Logo.tsx (one stroke of width 20,
+  three stems 40 apart, arches of centreline radius 20, the rule beneath). The
+  hexes are inlined because a file in public/ cannot import the theme. They are
+  the brand canvas (#f6f7f9), brand ink (#1b1f28) and brand red (#b40d0d)
+  tokens; if one moves in src/theme/tokens.ts, change it here by hand.
 
-  This is the same F monogram as src/components/brand/Logo.tsx: a stem and a top
-  rule (the primary record) with a shorter rule aligned beneath it (the second
-  one). The hexes are inlined because a file in public/ cannot import the theme —
-  they are --color-primary (#1f4e79) and white. If the navy ever moves in
-  src/theme/tokens.ts, it has to be changed here by hand.
+  NEVER write two hyphens in a row inside this comment, so no CSS variable
+  names. XML forbids them in a comment, and a browser then rejects the whole
+  file and shows no favicon at all. The previous version named its colour
+  variables here and was broken that way, silently.
 
-  Filled tile rather than a bare mark: a transparent favicon disappears against
-  a dark browser chrome, which is the case this has to survive.
+  Filled tile rather than a bare mark: a transparent favicon with a dark "m"
+  disappears against a dark browser chrome, which is the case this has to
+  survive. The mark fills more of the tile than it does on the launcher icon,
+  so the counters stay open at 16px.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" fill="none">
-  <rect width="32" height="32" rx="7" fill="#1f4e79" />
-  <g transform="translate(3.52 3.52) scale(0.78)" fill="#ffffff">
-    <rect x="7" y="5" width="5" height="22" rx="1.6" />
-    <rect x="7" y="5" width="18" height="5" rx="1.6" />
-    <rect x="7" y="13.5" width="12" height="5" rx="1.6" opacity="0.55" />
+  <rect width="32" height="32" rx="7" fill="#f6f7f9" />
+  <g transform="translate(4.711 5.658) scale(0.22577)">
+    <path d="M10 62.36V30a20 20 0 0 1 40 0v32.36M50 30a20 20 0 0 1 40 0v32.36" stroke="#1b1f28" stroke-width="20" stroke-linecap="round" />
+    <rect x="-3.86" y="79.25" width="107.72" height="12.36" rx="6.18" fill="#b40d0d" />
   </g>
 </svg>

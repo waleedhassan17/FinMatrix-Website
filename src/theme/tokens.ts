@@ -91,6 +91,14 @@ const palette = {
 
   blue600: '#2563EB',
   blueLight: '#DCE7FE',
+
+  // The brand mark's own colours, sampled from the logo artwork: the ink of the
+  // "m", the red rule beneath it, and the canvas it was drawn on. Mirrored in
+  // the app's theme.ts. The red belongs to the logo alone — it is not a status
+  // colour, and `danger` stays the one that means "something is wrong".
+  brandInk: '#1B1F28',
+  brandRed: '#B40D0D',
+  brandCanvas: '#F6F7F9',
 } as const;
 
 // ───────────────────────────────────────────────
@@ -178,6 +186,11 @@ export const colors = {
   textTertiary: '#94A3B8',
   textDisabled: '#CBD5E1',
   textInverse: '#FFFFFF',
+
+  // Brand mark — consumed by <LogoMark> only (as the brand-* utilities).
+  brandInk: palette.brandInk,
+  brandRed: palette.brandRed,
+  brandCanvas: palette.brandCanvas,
 
   // ── Interaction states ──────────────────────────────────────────────
   // The app defines primaryHover as teal600 (#0E8C80) — a leftover from when

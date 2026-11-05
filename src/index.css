@@ -140,6 +140,13 @@
   --color-text-inverse: #ffffff;
   --color-text-link: #0f766e;
 
+  /* ── Brand mark ───────────────────────────────────────
+     The logo's own ink, red rule and canvas (tokens.ts brandInk / brandRed /
+     brandCanvas). Used by the LogoMark only; the red is not a status colour. */
+  --color-brand-ink: #1b1f28;
+  --color-brand-red: #b40d0d;
+  --color-brand-canvas: #f6f7f9;
+
   /* ── Header / sidebar ─────────────────────────────── */
   --color-header: #111d28;
   --color-sidebar-from: #1a365d;

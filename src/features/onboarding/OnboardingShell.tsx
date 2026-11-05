@@ -11,10 +11,11 @@
 // a draft, or has lapsed, so every link in AppLayout would point at a screen whose
 // requests 403.
 
-import { ArrowLeft, BarChart3, Check } from 'lucide-react';
+import { ArrowLeft, Check } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
+import { Logo } from '@/components/brand/Logo';
 import { cn } from '@/lib/cn';
 
 // BILLING-DISABLED BUILD: onboarding is one step. A three-dot rail reading
@@ -56,12 +57,7 @@ export function OnboardingShell({
 
         <div className="mx-auto max-w-[1040px] px-lg">
           <div className="flex h-[72px] items-center justify-between gap-md">
-            <div className="flex items-center gap-sm">
-              <span className="flex size-9 items-center justify-center rounded-lg bg-white/10 ring-1 ring-inset ring-white/20">
-                <BarChart3 className="size-5 text-text-inverse" aria-hidden="true" />
-              </span>
-              <span className="text-h3 text-text-inverse">FinMatrix</span>
-            </div>
+            <Logo tone="light" wordmarkClassName="text-h3" />
             {step && (
               <p className="text-label-sm text-white/60">
                 Step {step} of {ONBOARDING_STEPS.length}
