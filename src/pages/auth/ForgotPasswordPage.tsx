@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { AuthShell } from '@/features/auth/AuthShell';
+import { PasswordRequirements } from '@/features/auth/PasswordRequirements';
 import { useSignOut } from '@/features/auth/useSignOut';
 import {
   authForgotPassword,
@@ -15,6 +16,7 @@ import {
 import { ApiError } from '@/networks/network/apiHelpers';
 import { selectIsAuthenticated } from '@/store/authSlice';
 import { useAppSelector } from '@/store/store';
+import { meetsPasswordPolicy } from '@/utils/password';
 
 /**
  * All three reset steps in one screen, as the app does it: request an OTP,
@@ -88,6 +90,12 @@ export default function ForgotPasswordPage() {
   const submitPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    // The server would refuse it anyway; saying so here keeps the reset token
+    // (and the person's place in the flow) intact.
+    if (!meetsPasswordPolicy(password)) {
+      setError('Choose a password that meets every requirement below.');
+      return;
+    }
     if (password !== confirm) {
       setError('The two passwords do not match.');
       return;
@@ -201,6 +209,7 @@ export default function ForgotPasswordPage() {
             onChange={(e) => setPassword(e.target.value)}
             required
           />
+          <PasswordRequirements password={password} />
           <Input
             label="Confirm new password"
             type="password"

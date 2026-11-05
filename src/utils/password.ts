@@ -29,9 +29,26 @@ export const generatePassword = (length = 10): string => {
   return chars.join('');
 };
 
+export interface PasswordCheck {
+  key: 'length' | 'lower' | 'upper' | 'digit';
+  label: string;
+  met: boolean;
+}
+
+/**
+ * The server's password rule, one requirement at a time, so a form can tick
+ * them off as the person types instead of refusing the whole thing on submit.
+ */
+export const passwordChecks = (password: string): PasswordCheck[] => [
+  { key: 'length', label: 'At least 8 characters', met: password.length >= 8 },
+  { key: 'upper', label: 'An uppercase letter', met: /[A-Z]/.test(password) },
+  { key: 'lower', label: 'A lowercase letter', met: /[a-z]/.test(password) },
+  { key: 'digit', label: 'A number', met: /\d/.test(password) },
+];
+
 /** The server's PASSWORD_REGEX plus its 8-character minimum. */
 export const meetsPasswordPolicy = (password: string): boolean =>
-  password.length >= 8 && /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password);
+  passwordChecks(password).every((check) => check.met);
 
 /** `Imran Khan` → `imran.khan`: a username the server's rule accepts, from a name. */
 export const suggestUsername = (name: string): string =>

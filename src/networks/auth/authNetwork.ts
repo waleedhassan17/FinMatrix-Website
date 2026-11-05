@@ -323,6 +323,28 @@ export const authMe = async (): Promise<MeResponse> => {
 };
 
 /**
+ * Save the signed-in user's own name and phone (PATCH /auth/me).
+ *
+ * The form sends the whole profile: leaving `phone` out removes the one on
+ * file. The server answers with the same payload as GET /auth/me, so the
+ * caller can hand the result straight to `setIdentity`.
+ */
+export const authUpdateProfile = async (input: {
+  displayName: string;
+  phone?: string;
+}): Promise<MeResponse> => {
+  try {
+    const response = await api.patch('/auth/me', input);
+    const data = unwrapEnvelope<RawAuthPayload & { companies?: unknown }>(
+      response.data,
+    );
+    return { ...identitySerializer(data), companies: companiesSerializer(data?.companies) };
+  } catch (e) {
+    throw toApiError(e);
+  }
+};
+
+/**
  * Sign out. Best-effort by design: the local session is cleared whatever the
  * server says, because a user who clicked "sign out" must end up signed out
  * even if the network is down.

@@ -1,50 +1,41 @@
 import { useQuery } from '@tanstack/react-query';
 import {
-  BadgeCheck,
-  Building2,
-  Check,
-  ChevronRight,
-  CircleCheck,
-  Clock3,
-  Copy,
   // BILLING-DISABLED BUILD: only the Subscription shortcut + Renew button.
   // CreditCard,
   Inbox,
   KeyRound,
-  LayoutDashboard,
   Lock,
+  LogIn,
   LogOut,
-  MailWarning,
+  MonitorSmartphone,
   Settings,
   ShieldCheck,
   Users,
-  type LucideIcon,
 } from 'lucide-react';
-// BILLING-DISABLED BUILD: ReactNode was only PlanRow's `value` type.
-import { useId, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { toast } from 'sonner';
+import { useState } from 'react';
 
+import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/Card';
+import { Card } from '@/components/ui/Card';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { AccountHero } from '@/features/account/AccountHero';
+import {
+  CopyButton,
+  InfoRow,
+  QuietPill,
+  SettingRow,
+  ShortcutLink,
+  StaffAccess,
+  VerifiedBadge,
+} from '@/features/account/AccountParts';
+import { AccountSection } from '@/features/account/AccountSection';
+import { ChangePasswordPanel } from '@/features/account/ChangePasswordPanel';
+import { EditProfilePanel } from '@/features/account/EditProfilePanel';
 import { useSignOut } from '@/features/auth/useSignOut';
 import { useFeature, useIsOwner } from '@/hooks/useCapability';
-import { cn } from '@/lib/cn';
 // BILLING-DISABLED BUILD: subscriptionSummary and SubscriptionTone were
 // only used by the commented-out PlanDetails block.
-import {
-  staffAccessSummary,
-  // subscriptionSummary,
-  // type SubscriptionTone,
-} from '@/models/accountAccess';
+// import { subscriptionSummary, type SubscriptionTone } from '@/models/accountAccess';
 import { fetchPendingApprovalCount } from '@/networks/approvals/approvalsNetwork';
 // BILLING-DISABLED BUILD: un-comment with the billing query below.
 // import { getBillingStatus, type BillingStatus } from '@/networks/billing/billingNetwork';
@@ -56,14 +47,19 @@ import {
 } from '@/store/authSlice';
 import { useAppSelector } from '@/store/store';
 import { initialsOf } from '@/utils/initials';
+import { formatPkPhoneForDisplay } from '@/utils/phone';
+
+const pendingLine = (count: number, suffix: string): string =>
+  count === 0 ? 'Nothing pending' : `${count} ${count === 1 ? 'request' : 'requests'} ${suffix}`;
 
 /**
- * Who is signed in, how they sign in, how to change the password, and the
- * company they are working in — for both roles.
+ * Who is signed in, how they sign in, and the company they work in — for
+ * both roles, laid out as settings: one identity card, then sections with
+ * their label on the left and the card on the right.
  *
- * Nothing here is edited in place: the server has no self-service profile
- * endpoint. The owner changes their password through the emailed-code flow;
- * a team member's password is reset by the owner, and the page says so rather
+ * Name and phone are edited in a side panel (PATCH /auth/me). The owner
+ * changes their password in a panel too, through the emailed-code flow; a
+ * team member's password is reset by the owner, and the page says so rather
  * than leaving them to find out. Team members also see what their role lets
  * them do, read from the same capability map the buttons use.
  */
@@ -76,7 +72,7 @@ export default function MyAccountPage() {
   const multiUser = useFeature('multiUser');
   // BILLING-DISABLED BUILD: only fed PlanDetails' rider allowance row.
   // const delivery = useFeature('delivery');
-  const { signOut } = useSignOut();
+  const { signOut, signingOut } = useSignOut();
 
   // BILLING-DISABLED BUILD: nothing on this page reads the billing status
   // any more, so the request goes too.
@@ -93,440 +89,288 @@ export default function MyAccountPage() {
   });
   const pendingCount = pending.data ?? 0;
 
-  const name = user?.displayName || user?.username || 'Your account';
-
-  return (
-    <div className="flex max-w-5xl flex-col gap-lg">
-      <div>
-        <h1 className="text-h2 text-text-primary">My account</h1>
-        <p className="text-body-sm text-text-secondary">
-          {isOwner
-            ? 'Your sign-in, your password and your company’s plan.'
-            : 'Your sign-in, what your role lets you do, and who to ask for help.'}
-        </p>
-      </div>
-
-      <div className="grid gap-lg lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
-        <div className="flex min-w-0 flex-col gap-lg">
-          {/* ── Who ── */}
-          <Card className="p-lg">
-            <div className="flex flex-col gap-md sm:flex-row sm:items-start">
-              <span
-                aria-hidden="true"
-                className="flex size-16 shrink-0 items-center justify-center rounded-full bg-primary-tint text-h3 text-primary"
-              >
-                {initialsOf(name)}
-              </span>
-
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-xs">
-                  <h2 className="min-w-0 break-words text-h3 text-text-primary">{name}</h2>
-                  <RolePill owner={isOwner} />
-                </div>
-
-                <p className="mt-xxs flex flex-wrap items-center gap-xs text-body-sm text-text-secondary">
-                  {isOwner ? (
-                    <>
-                      <span className="break-words">{user?.email}</span>
-                      {user?.email && <VerifiedBadge verified={user.isEmailVerified} />}
-                    </>
-                  ) : (
-                    user?.username && <span className="break-words">@{user.username}</span>
-                  )}
-                </p>
-
-                {/* The Company card sits beside this on wide screens; on a phone
-                    it is far below, so the company is named here too. */}
-                {company?.name && (
-                  <p className="mt-sm flex flex-wrap items-center gap-xs lg:hidden">
-                    <Building2 className="size-4 shrink-0 text-text-tertiary" aria-hidden="true" />
-                    <span className="text-label-md text-text-primary">{company.name}</span>
-                    {companyStatus && <StatusBadge status={companyStatus} />}
-                  </p>
-                )}
-              </div>
-
-              <Button variant="secondary" onClick={signOut} className="w-full shrink-0 sm:w-auto">
-                <LogOut className="size-4" />
-                Sign out
-              </Button>
-            </div>
-          </Card>
-
-          {/* ── Staff: what the role allows ── */}
-          {!isOwner && (
-            <StaffAccessCard
-              features={features}
-              pendingCount={pendingCount}
-              pendingLoading={pending.isLoading}
-            />
-          )}
-
-          {/* ── How they sign in ── */}
-          <Card>
-            <CardHeader>
-              <div>
-                <CardTitle>Sign-in details</CardTitle>
-                <CardDescription>
-                  {isOwner
-                    ? 'How you sign in to FinMatrix on the web and on the Android app.'
-                    : 'The sign-in your company owner set up for you.'}
-                </CardDescription>
-              </div>
-            </CardHeader>
-            <CardContent className="py-xs">
-              <dl className="divide-y divide-border-light">
-                {isOwner ? (
-                  <>
-                    {user?.email && <DetailRow label="Email" value={user.email} />}
-                    <DetailRow label="Signs in with" value="Email and password" />
-                  </>
-                ) : (
-                  <>
-                    {user?.username && <DetailRow label="Username" value={user.username} copyable />}
-                    <DetailRow label="Signs in at" value="Team member sign-in · username and password" />
-                  </>
-                )}
-                {user?.phone && <DetailRow label="Phone" value={user.phone} />}
-                <DetailRow
-                  label="Role"
-                  value={isOwner ? 'Owner · full access, approves requests' : 'Team member'}
-                />
-              </dl>
-            </CardContent>
-          </Card>
-
-          {/* ── Password ── */}
-          <Card>
-            <CardHeader>
-              <div>
-                <CardTitle>Password</CardTitle>
-                <CardDescription>
-                  {isOwner
-                    ? 'Change it any time with a code sent to your email.'
-                    : 'Team member passwords are managed by the company owner.'}
-                </CardDescription>
-              </div>
-            </CardHeader>
-            {isOwner ? (
-              <CardContent className="flex flex-col gap-md sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-start gap-sm">
-                  <IconTile icon={KeyRound} />
-                  <p className="text-body-sm text-text-secondary">
-                    We email a 6-digit code to{' '}
-                    <span className="break-words text-text-primary">{user?.email || 'your email'}</span>.
-                    Enter it, choose a new password, then sign in again.
-                  </p>
-                </div>
-                <Button asChild variant="secondary" className="w-full shrink-0 sm:w-auto">
-                  <Link
-                    to={
-                      user?.email
-                        ? `/forgot-password?email=${encodeURIComponent(user.email)}`
-                        : '/forgot-password'
-                    }
-                  >
-                    <KeyRound className="size-4" />
-                    Change password
-                  </Link>
-                </Button>
-              </CardContent>
-            ) : (
-              <CardContent>
-                <div className="flex items-start gap-sm rounded-md bg-primary-50 p-md">
-                  <Lock className="mt-[2px] size-4 shrink-0 text-primary" aria-hidden="true" />
-                  <p className="text-body-sm text-text-secondary">
-                    Only the company owner can reset your password. If you forget it or want a new
-                    one, ask them to reset it from{' '}
-                    <span className="text-text-primary">Settings → Team</span> — they will give you
-                    the new password to sign in with.
-                  </p>
-                </div>
-              </CardContent>
-            )}
-          </Card>
-        </div>
-
-        <div className="flex min-w-0 flex-col gap-lg">
-          {/* ── Company ── */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Company</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-md">
-              <div className="flex items-center gap-sm">
-                <span
-                  aria-hidden="true"
-                  className="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary text-label-lg text-text-inverse"
-                >
-                  {initialsOf(company?.name)}
-                </span>
-                <div className="min-w-0">
-                  <p className="break-words text-label-lg text-text-primary">
-                    {company?.name || 'No company'}
-                  </p>
-                  {companyStatus && <StatusBadge status={companyStatus} className="mt-xxs" />}
-                </div>
-              </div>
-
-              {/* BILLING-DISABLED BUILD: the owner's plan block is gone, so
-                  only the team-member line is left — and it no longer claims
-                  the owner manages a plan. */}
-              {!isOwner && (
-                <p className="text-body-sm text-text-secondary">
-                  You work here as a team member. The owner manages the company’s settings.
-                </p>
-              )}
-              {/* {isOwner ? (
-                <PlanDetails
-                  data={billing.data}
-                  isLoading={billing.isLoading}
-                  isError={billing.isError}
-                  showRiders={delivery}
-                />
-              ) : (
-                <p className="text-body-sm text-text-secondary">
-                  You work here as a team member. The owner manages the company’s plan and settings.
-                </p>
-              )} */}
-            </CardContent>
-          </Card>
-
-          {/* ── Shortcuts ── */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Shortcuts</CardTitle>
-            </CardHeader>
-            <nav aria-label="Account shortcuts" className="flex flex-col p-xxs">
-              {isOwner ? (
-                <>
-                  <ShortcutLink
-                    to="/settings/company"
-                    icon={Settings}
-                    title="Company profile"
-                    description="Name, address and tax details"
-                  />
-                  {multiUser && (
-                    <ShortcutLink
-                      to="/settings/users"
-                      icon={Users}
-                      title="Team"
-                      description="Add staff and reset their passwords"
-                    />
-                  )}
-                  <ShortcutLink
-                    to="/approvals"
-                    icon={Inbox}
-                    title="Approvals"
-                    description={pendingLine(pendingCount, 'waiting for you')}
-                    count={pendingCount}
-                  />
-                  {/* BILLING-DISABLED BUILD: /account/renew is deregistered. */}
-                  {/* <ShortcutLink
-                    to="/account/renew"
-                    icon={CreditCard}
-                    title="Subscription"
-                    description="Plan, payment and renewal"
-                  /> */}
-                </>
-              ) : (
-                <>
-                  <ShortcutLink
-                    to="/my-requests"
-                    icon={Inbox}
-                    title="My requests"
-                    description={pendingLine(pendingCount, 'waiting for the owner')}
-                    count={pendingCount}
-                  />
-                  <ShortcutLink
-                    to="/dashboard"
-                    icon={LayoutDashboard}
-                    title="Dashboard"
-                    description="Back to today’s numbers"
-                  />
-                </>
-              )}
-            </nav>
-          </Card>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-const pendingLine = (count: number, suffix: string): string =>
-  count === 0 ? 'Nothing pending' : `${count} ${count === 1 ? 'request' : 'requests'} ${suffix}`;
-
-function RolePill({ owner }: { owner: boolean }) {
-  const Icon = owner ? ShieldCheck : Users;
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-xxs rounded-full px-sm py-[2px] text-label-sm',
-        owner ? 'bg-primary-tint text-primary' : 'bg-neutral-100 text-text-secondary',
-      )}
-    >
-      <Icon className="size-3.5" aria-hidden="true" />
-      {owner ? 'Owner' : 'Team member'}
-    </span>
-  );
-}
-
-function VerifiedBadge({ verified }: { verified: boolean }) {
-  const Icon = verified ? BadgeCheck : MailWarning;
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-xxs rounded-full px-xs py-[2px] text-label-sm',
-        verified ? 'bg-success-lighter text-success' : 'bg-warning-lighter text-warning',
-      )}
-    >
-      <Icon className="size-3.5" aria-hidden="true" />
-      {verified ? 'Verified' : 'Not verified'}
-    </span>
-  );
-}
-
-function IconTile({ icon: Icon }: { icon: LucideIcon }) {
-  return (
-    <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary">
-      <Icon className="size-4" aria-hidden="true" />
-    </span>
-  );
-}
-
-function DetailRow({
-  label,
-  value,
-  copyable = false,
-}: {
-  label: string;
-  value: string;
-  copyable?: boolean;
-}) {
-  return (
-    <div className="flex flex-col gap-xxs py-sm sm:flex-row sm:items-center sm:justify-between sm:gap-md">
-      <dt className="text-body-sm text-text-secondary">{label}</dt>
-      <dd className="flex min-w-0 items-center gap-xs text-body-sm text-text-primary sm:justify-end sm:text-right">
-        <span className="break-words">{value}</span>
-        {copyable && <CopyButton label={label} value={value} />}
-      </dd>
-    </div>
-  );
-}
-
-function CopyButton({ label, value }: { label: string; value: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      toast.success(`${label} copied`);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // Clipboard access can be refused; the value is on screen to copy by hand.
-      toast.error('Could not copy', { description: 'Select the text and copy it instead.' });
-    }
+  // Each opening mounts a fresh panel (new key), so it starts from the saved
+  // profile / step one; closing keeps it mounted for the slide-out.
+  const [editOpen, setEditOpen] = useState(false);
+  const [editKey, setEditKey] = useState(0);
+  const openEdit = () => {
+    setEditKey((k) => k + 1);
+    setEditOpen(true);
+  };
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [passwordKey, setPasswordKey] = useState(0);
+  const openPassword = () => {
+    setPasswordKey((k) => k + 1);
+    setPasswordOpen(true);
   };
 
-  return (
-    <button
-      type="button"
-      onClick={copy}
-      aria-label={`Copy ${label.toLowerCase()}`}
-      className="flex size-7 shrink-0 items-center justify-center rounded-md text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-secondary"
-    >
-      {copied ? (
-        <Check className="size-4 text-success" aria-hidden="true" />
-      ) : (
-        <Copy className="size-4" aria-hidden="true" />
-      )}
-    </button>
-  );
-}
-
-function StaffAccessCard({
-  features,
-  pendingCount,
-  pendingLoading,
-}: {
-  features: Parameters<typeof staffAccessSummary>[0];
-  pendingCount: number;
-  pendingLoading: boolean;
-}) {
-  const access = staffAccessSummary(features);
+  const name = user?.displayName || user?.username || 'Your account';
+  const phone = user?.phone ? formatPkPhoneForDisplay(user.phone) || user.phone : '';
+  // Riders never reach this console; the server refuses their edits anyway.
+  const canEdit = !!user && (user.role === 'admin' || user.role === 'staff');
+  const canChangePassword = isOwner && !!user?.email;
 
   return (
-    <Card>
-      <CardHeader>
-        <div>
-          <CardTitle>What you can do</CardTitle>
-          <CardDescription>
-            Set by your role. Anything that moves money waits for the owner’s approval.
-          </CardDescription>
-        </div>
-      </CardHeader>
-      <CardContent className="grid gap-lg md:grid-cols-3">
-        <AccessGroup icon={CircleCheck} tone="success" title="Do directly" items={access.direct} />
-        <AccessGroup
-          icon={Clock3}
-          tone="warning"
-          title="Sent for approval"
-          items={access.request}
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-xl">
+      <PageHeader
+        title="My account"
+        description={
+          isOwner
+            ? 'Your profile, how you sign in, and the company you run.'
+            : 'Your profile, how you sign in, and what your role lets you do.'
+        }
+      />
+
+      <AccountHero
+        user={user}
+        name={name}
+        isOwner={isOwner}
+        company={company}
+        onEdit={canEdit ? openEdit : undefined}
+      />
+
+      {/* ── Profile ── */}
+      <AccountSection
+        title="Profile"
+        description="Your name and phone, as your team sees them and on the records you create."
+      >
+        <Card>
+          <dl className="divide-y divide-border-light px-lg">
+            <InfoRow label="Full name">
+              <span className="min-w-0 break-words">{name}</span>
+            </InfoRow>
+            {isOwner ? (
+              user?.email && (
+                <InfoRow label="Email">
+                  <span className="min-w-0 break-all">{user.email}</span>
+                  <VerifiedBadge verified={user.isEmailVerified} />
+                </InfoRow>
+              )
+            ) : (
+              user?.username && (
+                <InfoRow label="Username">
+                  <span className="min-w-0 break-all">{user.username}</span>
+                  <CopyButton label="Username" value={user.username} />
+                </InfoRow>
+              )
+            )}
+            <InfoRow
+              label="Phone"
+              action={
+                !phone && canEdit ? (
+                  <Button variant="text" size="sm" onClick={openEdit}>
+                    Add phone
+                  </Button>
+                ) : undefined
+              }
+            >
+              {phone ? (
+                <span className="tabular">{phone}</span>
+              ) : (
+                <span className="text-text-tertiary">Not added</span>
+              )}
+            </InfoRow>
+          </dl>
+        </Card>
+      </AccountSection>
+
+      {/* ── Sign-in & security ── */}
+      <AccountSection
+        title="Sign-in & security"
+        description={
+          isOwner
+            ? 'How you sign in to FinMatrix on the web and on the Android app.'
+            : 'The sign-in your company owner set up for you.'
+        }
+      >
+        <Card>
+          <ul className="divide-y divide-border-light">
+            {isOwner ? (
+              <SettingRow
+                icon={KeyRound}
+                title="Password"
+                description={
+                  <>
+                    Reset with a 6-digit code sent to{' '}
+                    <span className="break-all text-text-primary">{user?.email || 'your email'}</span>.
+                  </>
+                }
+                action={
+                  canChangePassword && (
+                    <Button variant="secondary" size="sm" onClick={openPassword}>
+                      Change password
+                    </Button>
+                  )
+                }
+              />
+            ) : (
+              <SettingRow
+                icon={Lock}
+                title="Password"
+                description={
+                  <>
+                    Only your company owner can reset it, from{' '}
+                    <span className="text-text-primary">Settings → Team</span>. They’ll give you the
+                    new one to sign in with.
+                  </>
+                }
+                action={<QuietPill icon={ShieldCheck}>Managed by owner</QuietPill>}
+              />
+            )}
+            <SettingRow
+              icon={LogIn}
+              title="Sign-in method"
+              description={
+                isOwner
+                  ? 'Email and password, on the web and the Android app.'
+                  : 'Team member sign-in, with your username and password.'
+              }
+            />
+          </ul>
+        </Card>
+      </AccountSection>
+
+      {/* ── Company & access ── */}
+      <AccountSection
+        title={isOwner ? 'Company' : 'Company & access'}
+        description={
+          isOwner
+            ? 'The business you run in FinMatrix, and where to manage it.'
+            : 'Where you work, and what your role covers.'
+        }
+      >
+        <Card>
+          <div className="flex items-center gap-md px-lg py-md">
+            <span
+              aria-hidden="true"
+              className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-primary text-h4 text-text-inverse"
+            >
+              {initialsOf(company?.name)}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="break-words text-label-lg text-text-primary">
+                {company?.name || 'No company'}
+              </p>
+              <p className="mt-[2px] text-body-sm text-text-secondary">
+                {isOwner
+                  ? 'You own this company · full access, approves requests'
+                  : 'You work here as a team member. The owner manages its settings.'}
+              </p>
+            </div>
+            {companyStatus && <StatusBadge status={companyStatus} className="shrink-0" />}
+          </div>
+
+          {/* BILLING-DISABLED BUILD: the owner's plan block sat under the
+              company row. Restore with PlanDetails at the bottom of this file.
+          {isOwner && (
+            <div className="border-t border-border-light px-lg py-md">
+              <PlanDetails
+                data={billing.data}
+                isLoading={billing.isLoading}
+                isError={billing.isError}
+                showRiders={delivery}
+              />
+            </div>
+          )} */}
+
+          {!isOwner && (
+            <div className="border-t border-border-light px-lg py-md">
+              <StaffAccess features={features} />
+            </div>
+          )}
+
+          <nav aria-label="Company shortcuts" className="flex flex-col border-t border-border-light p-xxs">
+            {isOwner ? (
+              <>
+                <ShortcutLink
+                  to="/settings/company"
+                  icon={Settings}
+                  title="Company profile"
+                  description="Name, address and tax details"
+                />
+                {multiUser && (
+                  <ShortcutLink
+                    to="/settings/users"
+                    icon={Users}
+                    title="Team"
+                    description="Add staff and reset their passwords"
+                  />
+                )}
+                <ShortcutLink
+                  to="/approvals"
+                  icon={Inbox}
+                  title="Approvals"
+                  description={pending.isLoading ? 'Checking…' : pendingLine(pendingCount, 'waiting for you')}
+                  count={pendingCount}
+                />
+                {/* BILLING-DISABLED BUILD: /account/renew is deregistered. */}
+                {/* <ShortcutLink
+                  to="/account/renew"
+                  icon={CreditCard}
+                  title="Subscription"
+                  description="Plan, payment and renewal"
+                /> */}
+              </>
+            ) : (
+              <ShortcutLink
+                to="/my-requests"
+                icon={Inbox}
+                title="My requests"
+                description={
+                  pending.isLoading ? 'Checking…' : pendingLine(pendingCount, 'waiting for the owner')
+                }
+                count={pendingCount}
+              />
+            )}
+          </nav>
+        </Card>
+      </AccountSection>
+
+      {/* ── Session ── */}
+      <AccountSection title="Session" description="This browser’s sign-in.">
+        <Card>
+          <ul>
+            <SettingRow
+              icon={MonitorSmartphone}
+              title="Signed in on this browser"
+              description={
+                <>
+                  As{' '}
+                  <span className="break-all text-text-primary">
+                    {(isOwner ? user?.email : user?.username) || name}
+                  </span>
+                  . Sign out when you’re done on a shared computer.
+                </>
+              }
+              action={
+                <Button variant="secondary" size="sm" onClick={signOut} disabled={signingOut}>
+                  <LogOut className="size-4" />
+                  Sign out
+                </Button>
+              }
+            />
+          </ul>
+        </Card>
+      </AccountSection>
+
+      {user && canEdit && (
+        <EditProfilePanel
+          key={`edit-${editKey}`}
+          open={editOpen}
+          onOpenChange={setEditOpen}
+          user={user}
+          isOwner={isOwner}
         />
-        <AccessGroup icon={Lock} tone="neutral" title="Owner only" items={access.ownerOnly} />
-      </CardContent>
-      <CardFooter className="flex-wrap justify-between">
-        <p className="text-body-sm text-text-secondary">
-          {pendingLoading ? 'Checking your requests…' : pendingLine(pendingCount, 'waiting for the owner') + '.'}
-        </p>
-        <Button asChild variant="text" size="sm">
-          <Link to="/my-requests">
-            My requests
-            <ChevronRight className="size-4" />
-          </Link>
-        </Button>
-      </CardFooter>
-    </Card>
-  );
-}
-
-const GROUP_TONE = {
-  success: 'bg-success-lighter text-success',
-  warning: 'bg-warning-lighter text-warning',
-  neutral: 'bg-neutral-100 text-text-secondary',
-} as const;
-
-function AccessGroup({
-  icon: Icon,
-  tone,
-  title,
-  items,
-}: {
-  icon: LucideIcon;
-  tone: keyof typeof GROUP_TONE;
-  title: string;
-  items: string[];
-}) {
-  const headingId = useId();
-  return (
-    <section aria-labelledby={headingId}>
-      <h3 id={headingId} className="flex items-center gap-xs text-label-md text-text-primary">
-        <span className={cn('flex size-6 items-center justify-center rounded-full', GROUP_TONE[tone])}>
-          <Icon className="size-3.5" aria-hidden="true" />
-        </span>
-        {title}
-      </h3>
-      <ul className="mt-sm flex flex-col gap-xs">
-        {items.map((item) => (
-          <li key={item} className="flex gap-xs text-body-sm text-text-secondary">
-            <span aria-hidden="true" className="mt-[8px] size-1 shrink-0 rounded-full bg-border-strong" />
-            {item}
-          </li>
-        ))}
-      </ul>
-    </section>
+      )}
+      {canChangePassword && user?.email && (
+        <ChangePasswordPanel
+          key={`password-${passwordKey}`}
+          open={passwordOpen}
+          onOpenChange={setPasswordOpen}
+          email={user.email}
+        />
+      )}
+    </div>
   );
 }
 
@@ -534,7 +378,8 @@ function AccessGroup({
 // The owner's plan block: plan name, renewal line, rider allowance and the
 // Renew/Subscribe button. All three helpers go together — TONE_TEXT and
 // PlanRow have no other caller, and `tsc -b` runs with noUnusedLocals, so
-// leaving any of them behind fails the build.
+// leaving any of them behind fails the build. Restoring it also needs
+// ReactNode, Link and CreditCard imported again.
 /*
 const TONE_TEXT: Record<SubscriptionTone, string> = {
   normal: 'text-text-primary',
@@ -604,39 +449,3 @@ function PlanRow({ label, value, sub }: { label: string; value: ReactNode; sub?:
   );
 }
 */
-
-function ShortcutLink({
-  to,
-  icon,
-  title,
-  description,
-  count = 0,
-}: {
-  to: string;
-  icon: LucideIcon;
-  title: string;
-  description: string;
-  count?: number;
-}) {
-  return (
-    <Link
-      to={to}
-      className="group flex items-center gap-sm rounded-md px-sm py-sm transition-colors outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-primary"
-    >
-      <IconTile icon={icon} />
-      <span className="min-w-0 flex-1">
-        <span className="block text-label-md text-text-primary">{title}</span>
-        <span className="block truncate text-caption text-text-secondary">{description}</span>
-      </span>
-      {count > 0 && (
-        <span className="min-w-5 rounded-full bg-danger px-xxs text-center text-label-sm text-text-inverse tabular">
-          {count > 99 ? '99+' : count}
-        </span>
-      )}
-      <ChevronRight
-        className="size-4 shrink-0 text-text-tertiary transition-colors group-hover:text-text-secondary"
-        aria-hidden="true"
-      />
-    </Link>
-  );
-}
