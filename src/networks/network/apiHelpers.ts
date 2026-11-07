@@ -33,7 +33,7 @@ import {
 //
 export const API_BASE_URL =
   import.meta.env.VITE_API_URL?.trim() ||
-  'https://finmatrix-api-prod-665c6b5cb6a1.herokuapp.com/api/v1';
+  'https://finmatrix-api.duckdns.org/api/v1';
 
 // Re-exported so domain network files import everything from one module,
 // matching the app's convention.

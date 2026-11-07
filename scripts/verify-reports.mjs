@@ -17,7 +17,7 @@
 
 const API =
   process.env.API_BASE ||
-  'https://finmatrix-api-prod-665c6b5cb6a1.herokuapp.com/api/v1';
+  'https://finmatrix-api.duckdns.org/api/v1';
 const EMAIL = process.env.ADMIN_EMAIL;
 const PASSWORD = process.env.ADMIN_PASSWORD;
 
