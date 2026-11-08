@@ -8,8 +8,12 @@
 //
 // Every claim maps to a module that exists in this repo or the Android app.
 // Nothing aspirational: a feature grid that oversells is a support queue later.
+//
+// Eight cards since Nov 2026: customers and vendors, and reports, were always
+// in the product but had no card, so the page never said FinMatrix did them.
 
 import {
+  BarChart3,
   BookOpen,
   CheckCircle2,
   ChevronRight,
@@ -18,6 +22,7 @@ import {
   Package,
   ShieldCheck,
   Truck,
+  Users,
   type LucideIcon,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -67,7 +72,19 @@ const ACCOUNTING: Module = {
 const APPROVALS: Module = {
   icon: ShieldCheck,
   title: 'Approvals before it posts',
-  body: 'Staff submit; an owner approves. Maker-checker on the documents that move money or stock, with who-did-what kept on the record.',
+  body: 'Staff submit; an owner approves. Maker-checker on the documents that change your books or stock, with who-did-what kept on the record.',
+};
+
+const PARTIES: Module = {
+  icon: Users,
+  title: 'Customers and vendors',
+  body: 'Every customer and supplier gets an ID, a balance, a statement and their own ledger, so what each one owes or is owed is one click away.',
+};
+
+const REPORTS: Module = {
+  icon: BarChart3,
+  title: 'Reports and analytics',
+  body: 'A dashboard for the day, and the reports for the month: profit & loss, balance sheet, trial balance, cash flow, ageing and inventory valuation, plus analytics.',
 };
 
 function FeatureCard({
@@ -157,6 +174,34 @@ function StockLedgerVisual() {
   );
 }
 
+/** The report shelf, as the product names it — "reports", shown. */
+function ReportsVisual() {
+  const reports = [
+    'Profit & loss',
+    'Balance sheet',
+    'Trial balance',
+    'General ledger',
+    'Receivables ageing',
+    'Payables ageing',
+    'Inventory valuation',
+    'Cash flow',
+  ];
+
+  return (
+    <ul aria-hidden="true" className="grid grid-cols-2 gap-xs">
+      {reports.map((name) => (
+        <li
+          key={name}
+          className="flex items-center gap-xs truncate rounded-md border border-border-light bg-surface-2 px-sm py-xs text-label-sm text-text-primary"
+        >
+          <BarChart3 className="size-3.5 shrink-0 text-primary" />
+          <span className="truncate">{name}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** Submit → review → post, with the product's own status badges. */
 function ApprovalFlowVisual() {
   const steps = [
@@ -211,7 +256,7 @@ export function ModulesSection() {
         <SectionIntro
           id="modules-heading"
           overline="The system"
-          title="One place for stock, suppliers, customers and cash"
+          title="Inventory, sales, purchases, accounting, deliveries and reports in one system"
           body="Stock lives in one sheet, invoices in another, and an accountant reconciles the two once a month. FinMatrix replaces all three with one set of records."
         />
 
@@ -230,6 +275,14 @@ export function ModulesSection() {
           </Reveal>
           <Reveal as="li" delay={210}>
             <FeatureCard module={ACCOUNTING} />
+          </Reveal>
+          {/* Full width on tablets, where the five single cards above would
+              otherwise leave a hole; one column of three on desktop. */}
+          <Reveal as="li" className="md:col-span-2 lg:col-span-1">
+            <FeatureCard module={PARTIES} />
+          </Reveal>
+          <Reveal as="li" delay={70} className="md:col-span-2">
+            <FeatureCard module={REPORTS} visual={<ReportsVisual />} split />
           </Reveal>
           <Reveal as="li" className="md:col-span-2 lg:col-span-3">
             <FeatureCard module={APPROVALS} visual={<ApprovalFlowVisual />} split />
