@@ -25,6 +25,7 @@ import { LandingNav } from '@/features/landing/LandingNav';
 import { ModulesSection } from '@/features/landing/ModulesSection';
 // BILLING-DISABLED BUILD: un-comment with the section in the page below.
 // import { PricingSection } from '@/features/landing/PricingSection';
+import { ProductTourSection } from '@/features/landing/ProductTourSection';
 import { ProofStrip } from '@/features/landing/ProofStrip';
 import { RolesSection } from '@/features/landing/RolesSection';
 import { WorkflowSection } from '@/features/landing/WorkflowSection';
@@ -80,6 +81,8 @@ export default function LandingPage() {
         <HeroSection />
         <ProofStrip />
         <ModulesSection />
+        {/* Real pages of the platform, after the claims they back up. */}
+        <ProductTourSection />
         <WorkflowSection />
         {/* The dark anchor in the middle of the page, and the answer to "why
             should I believe the figures". It sits where PricingSection used to,
