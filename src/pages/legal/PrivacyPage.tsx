@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom';
+
 import { CONTACT_EMAIL_PRIMARY } from '@/features/landing/constants';
 
 import { LegalLayout, LegalSection } from './LegalLayout';
@@ -6,9 +8,11 @@ const list = 'flex list-disc flex-col gap-xs pl-lg';
 const strong = 'text-text-primary';
 
 /**
- * /privacy. Every statement here was checked against what FinMatrix actually
- * does (backend, web and mobile code, 6 Nov 2026). When a feature changes what
- * is collected, stored or shared, change this page and its date with it.
+ * /privacy-policy (and its older address /privacy, which Meta's app settings
+ * still use). Every statement here was checked against what FinMatrix actually
+ * does (backend, web and mobile code, 6 Nov 2026; WhatsApp status re-checked
+ * 8 Nov 2026). When a feature changes what is collected, stored or shared,
+ * change this page and its date with it.
  */
 export default function PrivacyPage() {
   const email = (
@@ -17,7 +21,7 @@ export default function PrivacyPage() {
     </a>
   );
   return (
-    <LegalLayout title="Privacy policy" updated="6 November 2026">
+    <LegalLayout title="Privacy policy" updated="8 November 2026">
       <p>
         FinMatrix provides accounting, inventory, purchasing, payroll and delivery software to businesses, through our
         website, web app, mobile app and WhatsApp messaging (together, &ldquo;FinMatrix&rdquo;). This policy explains
@@ -87,9 +91,15 @@ export default function PrivacyPage() {
 
       <LegalSection title="WhatsApp messages">
         <p>
-          When a business switches on WhatsApp in FinMatrix, FinMatrix sends that business&apos;s documents (such as
-          invoices, receipts, purchase orders, statements and payment reminders) to its customers and suppliers from
-          FinMatrix&apos;s WhatsApp number. Every message names the business it comes from.
+          Sending from FinMatrix&apos;s own WhatsApp number is being set up and is not yet available to businesses;
+          this section describes how it will handle information once it is. When a business switches on WhatsApp in
+          FinMatrix, FinMatrix sends that business&apos;s documents (such as invoices, receipts, purchase orders,
+          statements and payment reminders) to its customers and suppliers from FinMatrix&apos;s WhatsApp number. Every
+          message names the business it comes from. The rules for these messages are in our{' '}
+          <Link className="text-primary underline" to="/acceptable-use-policy#whatsapp">
+            WhatsApp messaging policy
+          </Link>
+          .
         </p>
         <ul className={list}>
           <li>Messages go only to contacts the business has recorded as agreeing to receive them on WhatsApp.</li>

@@ -1,43 +1,34 @@
 import type { ReactNode } from 'react';
-import { Link } from 'react-router-dom';
 
-import { Logo } from '@/components/brand/Logo';
 import { CONTACT_EMAIL_PRIMARY } from '@/features/landing/constants';
+import { PublicLayout } from '@/features/site/PublicLayout';
 
 /**
- * The frame for FinMatrix's public legal pages (/privacy, /data-deletion).
- * Public on purpose: Meta's WhatsApp Business Platform and the app stores
- * need to open them without an account.
+ * The frame for FinMatrix's public policy pages (/privacy-policy,
+ * /terms-of-service, /acceptable-use-policy, /data-deletion). Public on purpose:
+ * Meta's WhatsApp Business Platform and the app stores need to open them
+ * without an account. The header and footer are the homepage's, via
+ * PublicLayout; this adds the narrow reading column, the date and the contact
+ * line every policy ends with.
  */
 export function LegalLayout({
   title,
   updated,
+  intro,
   children,
 }: {
   title: string;
   updated: string;
+  /** Optional lead paragraph under the title, before the sections. */
+  intro?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border-light bg-surface">
-        <div className="mx-auto flex max-w-[760px] items-center justify-between px-lg py-md">
-          <Link to="/" aria-label="FinMatrix home">
-            <Logo tone="dark" />
-          </Link>
-          <nav className="flex gap-md text-body-sm text-text-secondary">
-            <Link to="/privacy" className="hover:text-text-primary">
-              Privacy
-            </Link>
-            <Link to="/data-deletion" className="hover:text-text-primary">
-              Data deletion
-            </Link>
-          </nav>
-        </div>
-      </header>
-      <main className="mx-auto max-w-[760px] px-lg py-xxl">
+    <PublicLayout>
+      <article className="mx-auto max-w-[760px] px-lg py-xxl">
         <h1 className="text-h1 text-text-primary">{title}</h1>
         <p className="mt-xs text-body-sm text-text-tertiary">Last updated {updated}</p>
+        {intro && <div className="mt-lg text-body-lg text-text-secondary">{intro}</div>}
         <div className="mt-xl flex flex-col gap-xl text-body-md text-text-secondary">{children}</div>
         <p className="mt-xxl border-t border-border-light pt-lg text-body-sm text-text-secondary">
           Questions about this page:{' '}
@@ -45,14 +36,23 @@ export function LegalLayout({
             {CONTACT_EMAIL_PRIMARY}
           </a>
         </p>
-      </main>
-    </div>
+      </article>
+    </PublicLayout>
   );
 }
 
-export function LegalSection({ title, children }: { title: string; children: ReactNode }) {
+export function LegalSection({
+  title,
+  id,
+  children,
+}: {
+  title: string;
+  /** Anchor for a deep link, e.g. /acceptable-use-policy#whatsapp. */
+  id?: string;
+  children: ReactNode;
+}) {
   return (
-    <section className="flex flex-col gap-sm">
+    <section id={id} className="flex scroll-mt-24 flex-col gap-sm">
       <h2 className="text-h3 text-text-primary">{title}</h2>
       {children}
     </section>

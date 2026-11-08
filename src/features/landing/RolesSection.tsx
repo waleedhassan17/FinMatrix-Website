@@ -46,7 +46,7 @@ const ROLES: Role[] = [
     body: 'Signs in with a username the owner issues — no email needed — and handles day-to-day sales and warehouse work.',
     points: [
       'Sales, stock and purchasing',
-      'Money movements go for approval',
+      'Payments they record go for approval',
       'Sees only what the role allows',
     ],
   },

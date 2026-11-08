@@ -16,11 +16,20 @@
 //
 // The mobile menu is Radix Dialog, already a dependency: focus trap, Escape,
 // scroll lock and aria-modal are four things a hand-rolled drawer gets wrong.
+//
+// THE SAME BAR HEADS EVERY PUBLIC PAGE. On /about, /contact and the policies
+// (`onPage`) there is no dark hero under it, so it starts solid, and the section
+// links become plain links back to the homepage's sections — a full load, which
+// lands on the anchor, where a client-side navigation would land at the top.
+//
+// The links collapse into the menu below `lg` rather than `md`: with About and
+// Contact added there are six, and at tablet width six links, the logo and two
+// buttons do not fit on one line.
 
 import * as Dialog from '@radix-ui/react-dialog';
 import { ArrowRight, Menu, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 
 import { Logo } from '@/components/brand/Logo';
 import { Button } from '@/components/ui/Button';
@@ -36,6 +45,12 @@ const LINKS = [
   // would scroll nowhere and the scroll-spy would never highlight it.
   // { id: 'pricing', label: 'Pricing' },
   { id: 'faq', label: 'FAQ' },
+] as const;
+
+/** Pages of their own, after the homepage's sections. */
+const PAGE_LINKS = [
+  { to: '/about', label: 'About' },
+  { to: '/contact', label: 'Contact' },
 ] as const;
 
 function useActiveSection(): string {
@@ -78,12 +93,16 @@ function linkClasses(solid: boolean, current: boolean): string {
     : 'text-white/75 hover:bg-white/10 hover:text-text-inverse';
 }
 
-export function LandingNav() {
+export function LandingNav({ onPage = false }: { onPage?: boolean }) {
   const scrollY = useScrollY();
   const active = useActiveSection();
+  const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
 
-  const solid = scrollY > 12;
+  // No dark hero under the bar on a page of its own, so white text would sit on
+  // white from the first frame.
+  const solid = onPage || scrollY > 12;
+  const sectionHref = (id: string) => (onPage ? `/#${id}` : `#${id}`);
 
   return (
     <header
@@ -123,13 +142,13 @@ export function LandingNav() {
           />
         </Link>
 
-        <ul className="hidden items-center gap-xxs md:flex">
+        <ul className="hidden items-center gap-xxs lg:flex">
           {LINKS.map((link) => {
-            const current = active === link.id;
+            const current = !onPage && active === link.id;
             return (
               <li key={link.id}>
                 <a
-                  href={`#${link.id}`}
+                  href={sectionHref(link.id)}
                   aria-current={current ? 'true' : undefined}
                   className={cn(
                     'block rounded-full px-md py-xs text-label-md transition-colors',
@@ -141,9 +160,26 @@ export function LandingNav() {
               </li>
             );
           })}
+          {PAGE_LINKS.map((link) => {
+            const current = pathname === link.to;
+            return (
+              <li key={link.to}>
+                <Link
+                  to={link.to}
+                  aria-current={current ? 'page' : undefined}
+                  className={cn(
+                    'block rounded-full px-md py-xs text-label-md transition-colors',
+                    linkClasses(solid, current),
+                  )}
+                >
+                  {link.label}
+                </Link>
+              </li>
+            );
+          })}
         </ul>
 
-        <div className="hidden items-center gap-xs md:flex">
+        <div className="hidden items-center gap-xs lg:flex">
           <Button
             size="sm"
             variant="text"
@@ -171,7 +207,7 @@ export function LandingNav() {
               type="button"
               aria-label="Open menu"
               className={cn(
-                'flex size-10 items-center justify-center rounded-md transition-colors md:hidden',
+                'flex size-10 items-center justify-center rounded-md transition-colors lg:hidden',
                 solid
                   ? 'text-text-primary hover:bg-primary-50'
                   : 'text-text-inverse hover:bg-white/10',
@@ -187,7 +223,7 @@ export function LandingNav() {
                 data-state="open"/"closed" on this node and holds the exit until
                 the animation finishes, so a short fade and slide is all it takes.
                 Both states need an animation or the close is instant again. */}
-            <Dialog.Content className="fixed inset-0 z-[60] flex flex-col overflow-y-auto surface-mesh-navy px-lg pb-xl text-text-inverse data-[state=closed]:animate-drawer-out data-[state=open]:animate-drawer-in motion-reduce:animate-none md:hidden">
+            <Dialog.Content className="fixed inset-0 z-[60] flex flex-col overflow-y-auto surface-mesh-navy px-lg pb-xl text-text-inverse data-[state=closed]:animate-drawer-out data-[state=open]:animate-drawer-in motion-reduce:animate-none lg:hidden">
               <div
                 aria-hidden="true"
                 className="pointer-events-none absolute inset-0 pattern-grid-dark fade-mask-b"
@@ -209,20 +245,32 @@ export function LandingNav() {
               </div>
 
               <Dialog.Description className="sr-only">
-                Jump to a section, or sign in.
+                Jump to a section or page, or sign in.
               </Dialog.Description>
 
               <ul className="relative mt-xl flex flex-col gap-xxs">
                 {LINKS.map((link) => (
                   <li key={link.id}>
                     <a
-                      href={`#${link.id}`}
+                      href={sectionHref(link.id)}
                       onClick={() => setOpen(false)}
                       className="flex items-center justify-between rounded-lg px-md py-md text-h3 text-text-inverse transition-colors hover:bg-white/10"
                     >
                       {link.label}
                       <ArrowRight className="size-5 text-white/40" aria-hidden="true" />
                     </a>
+                  </li>
+                ))}
+                {PAGE_LINKS.map((link) => (
+                  <li key={link.to}>
+                    <Link
+                      to={link.to}
+                      onClick={() => setOpen(false)}
+                      className="flex items-center justify-between rounded-lg px-md py-md text-h3 text-text-inverse transition-colors hover:bg-white/10"
+                    >
+                      {link.label}
+                      <ArrowRight className="size-5 text-white/40" aria-hidden="true" />
+                    </Link>
                   </li>
                 ))}
               </ul>

@@ -34,14 +34,14 @@ import { lazyWithReload } from '@/app/lazyWithReload';
 // small request after the click; the saving comes off the page whose load time
 // decides whether there is a click at all.
 //
-// LandingPage is the ONE page that stays eagerly imported in router.tsx.
+// LandingPage and the rest of the public site (about, contact, the policies)
+// stay eagerly imported in router.tsx: they are prerendered to static HTML, and
+// an eager page replaces that HTML with no spinner in between.
 export const RoleSelectPage = lazyWithReload(() => import('@/pages/auth/RoleSelectPage'));
 export const LoginPage = lazyWithReload(() => import('@/pages/auth/LoginPage'));
 export const RegisterPage = lazyWithReload(() => import('@/pages/auth/RegisterPage'));
 export const ForgotPasswordPage = lazyWithReload(() => import('@/pages/auth/ForgotPasswordPage'));
 export const VerifyEmailPage = lazyWithReload(() => import('@/pages/auth/VerifyEmailPage'));
-export const PrivacyPage = lazyWithReload(() => import('@/pages/legal/PrivacyPage'));
-export const DataDeletionPage = lazyWithReload(() => import('@/pages/legal/DataDeletionPage'));
 export const AccountStatusPage = lazyWithReload(() => import('@/pages/auth/AccountStatusPage'));
 
 export const DashboardPage = lazyWithReload(() => import('@/pages/DashboardPage'));

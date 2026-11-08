@@ -1,7 +1,7 @@
 {
   "name": "FinMatrix",
   "short_name": "FinMatrix",
-  "description": "Inventory, purchasing, deliveries and accounting on one ledger.",
+  "description": "ERP software for inventory, sales, purchases, accounting, deliveries and reporting.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f4f6f9",

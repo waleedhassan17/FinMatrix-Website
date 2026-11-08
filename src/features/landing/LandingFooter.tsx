@@ -6,6 +6,11 @@
 //
 // Every link goes somewhere real. A footer full of href="#" placeholders looks
 // complete in a screenshot and is broken the moment anyone clicks.
+//
+// It is the footer of every public page, not only the homepage, so the section
+// links are written "/#modules" rather than "#modules": from /about they load
+// the homepage at that section, and on the homepage the browser treats them as
+// an in-page jump.
 
 import { Globe2, Mail, MessageCircle, ShieldCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -20,12 +25,28 @@ import {
 import { normalizeWhatsappPhone } from '@/features/share/shareDocument';
 
 const PRODUCT = [
-  { label: 'Features', href: '#modules' },
-  { label: 'How it works', href: '#how-it-works' },
-  { label: 'How it holds up', href: '#how-it-holds-up' },
+  { label: 'Features', href: '/#modules' },
+  { label: 'Product tour', href: '/#product-tour' },
+  { label: 'How it works', href: '/#how-it-works' },
+  { label: 'How it holds up', href: '/#how-it-holds-up' },
   // BILLING-DISABLED BUILD: dead anchor, see LandingPage.
-  // { label: 'Pricing', href: '#pricing' },
-  { label: 'Questions', href: '#faq' },
+  // { label: 'Pricing', href: '/#pricing' },
+  { label: 'Questions', href: '/#faq' },
+];
+
+const COMPANY = [
+  { label: 'About FinMatrix', to: '/about' },
+  { label: 'Contact', to: '/contact' },
+  { label: 'Sign in', to: '/get-started' },
+  { label: 'Create an account', to: '/register' },
+];
+
+const LEGAL = [
+  { label: 'Privacy policy', to: '/privacy-policy' },
+  { label: 'Terms of service', to: '/terms-of-service' },
+  { label: 'Acceptable use', to: '/acceptable-use-policy' },
+  { label: 'WhatsApp messaging', to: '/acceptable-use-policy#whatsapp' },
+  { label: 'Data deletion', to: '/data-deletion' },
 ];
 
 const linkClass = 'text-body-sm text-white/65 transition-colors hover:text-text-inverse';
@@ -42,12 +63,12 @@ export function LandingFooter() {
       />
 
       <div className="mx-auto max-w-[1280px] px-xl pt-xxxxl pb-xl lg:pt-section">
-        <div className="grid gap-xxxl md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="grid gap-xxxl sm:grid-cols-2 lg:grid-cols-[minmax(0,1.5fr)_repeat(3,minmax(0,1fr))_minmax(0,1.4fr)] lg:gap-xxl">
           <div>
             <Logo tone="light" />
             <p className="mt-lg max-w-[380px] text-body-sm text-white/65">
-              Accounting, inventory, purchasing and deliveries on one ledger, for
-              businesses that move physical stock.
+              ERP software for businesses: inventory, sales, purchases,
+              accounting, deliveries and reporting in one system.
             </p>
             {/* Origin, kept and kept quiet. It used to read "Built in Pakistan ·
                 Prices in PKR" — a single currency stated as a fact is a hard
@@ -68,6 +89,36 @@ export function LandingFooter() {
                   <a href={link.href} className={linkClass}>
                     {link.label}
                   </a>
+                </li>
+              ))}
+            </ul>
+          </nav>
+
+          <nav aria-labelledby="footer-company">
+            <p id="footer-company" className="text-overline text-white/45">
+              Company
+            </p>
+            <ul className="mt-md flex flex-col gap-sm">
+              {COMPANY.map((link) => (
+                <li key={link.to}>
+                  <Link to={link.to} className={linkClass}>
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
+
+          <nav aria-labelledby="footer-legal">
+            <p id="footer-legal" className="text-overline text-white/45">
+              Legal
+            </p>
+            <ul className="mt-md flex flex-col gap-sm">
+              {LEGAL.map((link) => (
+                <li key={link.to}>
+                  <Link to={link.to} className={linkClass}>
+                    {link.label}
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -111,14 +162,6 @@ export function LandingFooter() {
                   <span className="tabular">{CONTACT_WHATSAPP_DISPLAY}</span>
                 </a>
               </li>
-              <li className="mt-xs flex flex-wrap items-center gap-x-md gap-y-xs">
-                <Link to="/get-started" className={linkClass}>
-                  Sign in
-                </Link>
-                <Link to="/register" className={linkClass}>
-                  Create an account
-                </Link>
-              </li>
             </ul>
           </nav>
         </div>
@@ -126,12 +169,7 @@ export function LandingFooter() {
         <div className="mt-xxxl flex flex-col gap-sm border-t border-white/10 pt-lg md:flex-row md:items-center md:justify-between">
           <p className="flex flex-wrap items-center gap-x-md gap-y-xs text-caption text-white/50">
             <span>© {new Date().getFullYear()} FinMatrix. All rights reserved.</span>
-            <Link to="/privacy" className="hover:text-text-inverse">
-              Privacy
-            </Link>
-            <Link to="/data-deletion" className="hover:text-text-inverse">
-              Data deletion
-            </Link>
+            <span>ERP software · Not a bank or payment provider</span>
           </p>
           <p className="flex items-center gap-xs text-caption text-white/50">
             <ShieldCheck className="size-4" aria-hidden="true" />

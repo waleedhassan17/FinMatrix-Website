@@ -3,6 +3,8 @@ import {
   createBrowserRouter,
   Navigate,
   Outlet,
+  Route,
+  Routes,
   ScrollRestoration,
   useRouteError,
 } from 'react-router-dom';
@@ -17,6 +19,17 @@ import {
   SessionGate,
 } from '@/features/auth/SessionGate';
 import LandingPage from '@/pages/LandingPage';
+// The public site — eager, like LandingPage, so the prerendered HTML is replaced
+// by an identical page with no spinner in between (see scripts/prerender.mjs).
+import AcceptableUsePage from '@/pages/legal/AcceptableUsePage';
+import DataDeletionPage from '@/pages/legal/DataDeletionPage';
+import PrivacyPage from '@/pages/legal/PrivacyPage';
+import TermsPage from '@/pages/legal/TermsPage';
+import AboutPage from '@/pages/site/AboutPage';
+import ContactPage from '@/pages/site/ContactPage';
+import NotFoundPage from '@/pages/site/NotFoundPage';
+import { selectAuthStatus } from '@/store/authSlice';
+import { useAppSelector } from '@/store/store';
 import { reportError } from '@/app/observability';
 import {
   AccountStatusPage,
@@ -121,8 +134,6 @@ import {
   VendorFormPage,
   VendorListPage,
   VerifyEmailPage,
-  PrivacyPage,
-  DataDeletionPage,
 } from '@/app/lazyPages';
 import { AppLayout } from '@/features/shell/AppLayout';
 import { navHistory, SHELL_ROUTE_ID } from '@/features/shell/navHistory';
@@ -207,6 +218,51 @@ function Root() {
   );
 }
 
+/**
+ * The signed-in shell: guards, then the sidebar layout. Used by the shell route
+ * below and, for an address no screen answers, by NotFoundRoute, so a signed-in
+ * user's "Page not found" still sits inside the same shell it always did.
+ */
+const shellElement = (
+  <RequireAuth>
+    <RequireVerifiedEmail>
+      <RequireActiveCompany>
+        <RequireRouteAccess>
+          <AppLayout />
+        </RequireRouteAccess>
+      </RequireActiveCompany>
+    </RequireVerifiedEmail>
+  </RequireAuth>
+);
+
+/**
+ * An address no route answers.
+ *
+ * This used to be a `*` child of the signed-in shell, so a signed-out visitor
+ * on a mistyped link was bounced to /login, which explains nothing. It sits one
+ * level up now, under SessionGate (so the session has settled by the time it
+ * renders) and outside the guards:
+ *
+ * - signed out: the public "Page not found", with the site's header and footer;
+ * - signed in: exactly what it was, ModulePlaceholder inside the shell, rendered
+ *   through a nested <Routes> because a data route cannot fall through to a
+ *   sibling.
+ *
+ * Only addresses that match no route reach this. Real routes, and their guards,
+ * are untouched: /invoices/123 signed out still goes to /login and comes back.
+ */
+function NotFoundRoute() {
+  const status = useAppSelector(selectAuthStatus);
+  if (status !== 'authenticated') return <NotFoundPage />;
+  return (
+    <Routes>
+      <Route element={shellElement}>
+        <Route path="*" element={<ModulePlaceholder />} />
+      </Route>
+    </Routes>
+  );
+}
+
 export const router = createBrowserRouter([
   // ── The landing page, OUTSIDE SessionGate ───────────────────────────
   //
@@ -224,6 +280,30 @@ export const router = createBrowserRouter([
   // Being a sibling also means it does not inherit Root's errorElement, so it
   // carries its own — this is the page a first-time visitor sees.
   { path: '/', element: <LandingPage />, errorElement: <RouteError /> },
+
+  // ── The rest of the public site, OUTSIDE SessionGate for the same reason ──
+  //
+  // About, contact and the policies. They make no API calls, so the reason the
+  // auth screens sit under SessionGate (its session handlers must exist before
+  // anything can 401) does not apply, and a visitor carrying a stale token
+  // should not watch a spinner before reading a privacy policy. Meta, the app
+  // stores and search engines all need to open these with no account; each is
+  // also rendered to static HTML at build time (scripts/prerender.mjs), listed
+  // in src/features/site/siteMeta.ts.
+  //
+  // /privacy is the older address of /privacy-policy and stays: Meta's app
+  // settings point at it.
+  { path: '/about', element: <AboutPage />, errorElement: <RouteError /> },
+  { path: '/contact', element: <ContactPage />, errorElement: <RouteError /> },
+  { path: '/privacy-policy', element: <PrivacyPage />, errorElement: <RouteError /> },
+  { path: '/privacy', element: <PrivacyPage />, errorElement: <RouteError /> },
+  { path: '/terms-of-service', element: <TermsPage />, errorElement: <RouteError /> },
+  {
+    path: '/acceptable-use-policy',
+    element: <AcceptableUsePage />,
+    errorElement: <RouteError />,
+  },
+  { path: '/data-deletion', element: <DataDeletionPage />, errorElement: <RouteError /> },
 
   {
     element: <Root />,
@@ -254,9 +334,6 @@ export const router = createBrowserRouter([
       },
       { path: '/forgot-password', element: <ForgotPasswordPage /> },
       { path: '/verify-email', element: <VerifyEmailPage /> },
-      // Public on purpose: Meta (WhatsApp) and app stores need these URLs.
-      { path: '/privacy', element: <PrivacyPage /> },
-      { path: '/data-deletion', element: <DataDeletionPage /> },
 
       // The company is gated. Outside RequireActiveCompany, or it would
       // redirect to itself forever — and outside RequireAuth too, because a
@@ -343,17 +420,7 @@ export const router = createBrowserRouter([
         // navHistory only counts pages under this route as places Back can
         // return to.
         id: SHELL_ROUTE_ID,
-        element: (
-          <RequireAuth>
-            <RequireVerifiedEmail>
-              <RequireActiveCompany>
-                <RequireRouteAccess>
-                  <AppLayout />
-                </RequireRouteAccess>
-              </RequireActiveCompany>
-            </RequireVerifiedEmail>
-          </RequireAuth>
-        ),
+        element: shellElement,
         // Its own boundary, matching AppLayout's own <Suspense>. Note this
         // REPLACES AppLayout rather than rendering inside it — an errorElement
         // stands in for its own route's element, so the sidebar goes with it.
@@ -575,13 +642,12 @@ export const router = createBrowserRouter([
           { path: 'approvals/:approvalId', element: <ApprovalDetailPage /> },
           { path: 'my-requests', element: <MyRequestsPage /> },
           { path: 'my-requests/:approvalId', element: <ApprovalDetailPage /> },
-
-          // Everything modules 6-24 will build. Inside the guard above, so a
-          // staff member reaching an admin-only path is redirected rather than
-          // shown a placeholder for a screen they will never have.
-          { path: '*', element: <ModulePlaceholder /> },
         ],
       },
+
+      // An address no route answers: the public 404 signed out, the in-shell
+      // "Page not found" signed in. See NotFoundRoute.
+      { path: '*', element: <NotFoundRoute /> },
     ],
   },
 ]);

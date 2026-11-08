@@ -16,6 +16,7 @@
 import { useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 
+import { AboutBandSection } from '@/features/landing/AboutBandSection';
 import { AssuranceSection } from '@/features/landing/AssuranceSection';
 import { CtaSection } from '@/features/landing/CtaSection';
 import { FaqSection } from '@/features/landing/FaqSection';
@@ -29,6 +30,8 @@ import { ProductTourSection } from '@/features/landing/ProductTourSection';
 import { ProofStrip } from '@/features/landing/ProofStrip';
 import { RolesSection } from '@/features/landing/RolesSection';
 import { WorkflowSection } from '@/features/landing/WorkflowSection';
+import { DEFAULT_PAGE } from '@/features/site/siteMeta';
+import { usePageMeta } from '@/features/site/usePageMeta';
 import { hasSession } from '@/utils/storage';
 
 /**
@@ -59,6 +62,9 @@ export default function LandingPage() {
   // Called before the redirect below, so the hook order never changes between
   // renders.
   useSmoothAnchorScrolling();
+  // index.html already carries the homepage's tags; this puts them back after a
+  // visitor arrives here from /about or a policy without a reload.
+  usePageMeta(DEFAULT_PAGE);
 
   // Read once per mount, before paint. A signed-in owner who types the bare
   // domain wants their dashboard, not the pitch.
@@ -89,6 +95,8 @@ export default function LandingPage() {
             which is also what keeps the light sections from running five deep. */}
         <AssuranceSection />
         <RolesSection />
+        {/* The business facts, on the homepage where a reviewer looks first. */}
+        <AboutBandSection />
         {/* BILLING-DISABLED BUILD: the public plan grid. Nothing is for
             sale during the warehouse testing phase. */}
         {/* <PricingSection /> */}

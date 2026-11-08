@@ -73,7 +73,9 @@ export function WorkflowSection() {
           id="how-heading"
           overline="Getting started"
           title="From sign-up to your first invoice"
-          body="Four steps. The only wait is ours: we verify your payment, and then the whole system is yours."
+          // BILLING-DISABLED BUILD: was "…we verify your payment…". Nothing is paid
+          // during the testing phase; the wait is the company review in step 03.
+          body="Four steps. The only wait is ours: we review your company, and then the whole system is yours."
         />
 
         <div className="relative mt-xxxxl">

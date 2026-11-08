@@ -1,6 +1,10 @@
-# The public site is the landing page; everything else sits behind sign-in.
+# The public site is the homepage, /about, /contact and the policies (all listed
+# in the sitemap). Everything else sits behind sign-in.
 User-agent: *
 Allow: /
 Disallow: /dashboard
 Disallow: /account
 Disallow: /settings
+Disallow: /dev/
+
+Sitemap: https://finmatrix-theta.vercel.app/sitemap.xml

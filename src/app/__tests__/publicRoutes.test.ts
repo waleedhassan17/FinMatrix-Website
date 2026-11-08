@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { router } from '@/app/router';
+import { PUBLIC_PAGES } from '@/features/site/siteMeta';
 
 /**
  * The public surface, asserted rather than assumed.
@@ -58,10 +59,41 @@ describe('/join is gone and stays gone', () => {
 });
 
 describe('the ungated surface', () => {
-  it('is the landing page and nothing else', () => {
+  it('is the public site and nothing else', () => {
+    // The homepage, about, contact and the policies: pages that make no API
+    // call, so there is nothing for SessionGate's session handlers to catch.
+    // They are ungated so a visitor with a stale token never waits on a
+    // spinner, and each is prerendered to static HTML (scripts/prerender.mjs).
+    //
     // Everything else — including /login — sits under SessionGate so the axios
     // client's session handlers are registered before anything can 401.
-    expect(UNGATED).toEqual(['/']);
+    expect(UNGATED).toEqual([
+      '/',
+      '/about',
+      '/contact',
+      '/privacy-policy',
+      '/privacy',
+      '/terms-of-service',
+      '/acceptable-use-policy',
+      '/data-deletion',
+    ]);
+  });
+
+  it('matches the prerendered page list exactly', () => {
+    expect([...UNGATED].sort()).toEqual(PUBLIC_PAGES.map((p) => p.path).sort());
+  });
+});
+
+describe('an address no route answers', () => {
+  it('is caught under SessionGate, outside the signed-in shell', () => {
+    // So a signed-out visitor gets the public 404 instead of a bounce to
+    // /login; signed in, NotFoundRoute renders the in-shell page as before.
+    const root = (router.routes as RouteLike[]).find((r) => r.path === undefined && r.children);
+    const rootLevel = (root?.children ?? []).map((r) => r.path);
+    expect(rootLevel).toContain('*');
+
+    const shell = (root?.children ?? []).find((r) => r.path === undefined && r.children);
+    expect((shell?.children ?? []).map((r) => r.path)).not.toContain('*');
   });
 });
 
@@ -75,7 +107,12 @@ describe('the public (pre-auth) routes', () => {
       '/register',
       '/forgot-password',
       '/verify-email',
+      '/about',
+      '/contact',
+      '/privacy-policy',
       '/privacy',
+      '/terms-of-service',
+      '/acceptable-use-policy',
       '/data-deletion',
     ];
 

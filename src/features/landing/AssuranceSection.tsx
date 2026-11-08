@@ -58,7 +58,7 @@ const ASSURANCES = [
     icon: ScrollText,
     title: 'Approvals, and a record of what happened',
     body:
-      'Documents that move money can be made to wait for a second person before they count. What was approved, by whom and when stays on the record afterwards.',
+      'Bills, recorded payments and stock adjustments can be made to wait for a second person before they count. What was approved, by whom and when stays on the record afterwards.',
   },
 ];
 
