@@ -14,6 +14,12 @@
 // it within 24 hours, and the line under the buttons says so. Paid plans still run
 // through a bank transfer and a human review; there is no card processor.
 //
+// THE HEADLINE SAYS WHAT FINMATRIX IS, IN THE FIRST LINE (Nov 2026). It used to
+// be the brand line "Your stock and books, the same number." — memorable, but a
+// first-time visitor, and Meta's business review, could read the whole hero
+// without learning the product category. The category now leads ("ERP
+// platform"), and the brand line is the supporting sentence under it.
+//
 // THE EYEBROW NO LONGER NAMES A COUNTRY. It read "Built in Pakistan for warehouse
 // & distribution", under a map pin, as the first line a visitor met — which fixed
 // both the market and the industry before the product had been described at all.
@@ -82,7 +88,7 @@ export function HeroSection() {
               <span className="flex size-6 items-center justify-center rounded-full bg-white/10">
                 <Layers className="size-3.5 text-success-bright" aria-hidden="true" />
               </span>
-              ERP for businesses that move stock
+              FinMatrix · ERP software for businesses
             </p>
           </Reveal>
 
@@ -100,18 +106,24 @@ export function HeroSection() {
                 copy gave a word and the type gave 6px, and it sets as two even
                 lines. "finally" went too: it argued with an objection the
                 reader had not raised yet. */}
-            <h1 className="mt-xl max-w-[720px] text-balance text-hero-md text-text-inverse sm:text-hero-lg lg:text-hero-xl">
-              Your stock and books,{' '}
-              <span className="gradient-text-light">the same number.</span>
+            {/* hero-lg at most: the category headline is longer than the brand
+                line it replaced, and at hero-xl it ran to four lines. */}
+            <h1 className="mt-xl max-w-[720px] text-balance text-hero-md text-text-inverse sm:text-hero-lg">
+              Complete business management on one integrated{' '}
+              <span className="gradient-text-light">ERP platform.</span>
             </h1>
           </Reveal>
 
           <Reveal delay={120}>
             <p className="mt-lg max-w-[600px] text-pretty text-body-lg text-white/75">
-              FinMatrix runs inventory, purchasing, deliveries and accounting on
-              one ledger. Receive a purchase order and the stock, the supplier
-              bill and the journal entry all move together — so month-end is a
-              report you open, not a reconciliation you dread.
+              FinMatrix helps businesses simplify their daily operations through
+              an integrated ERP platform for inventory management, sales,
+              purchases, accounting, deliveries and business reporting. Manage
+              your business activities from one centralized system.
+            </p>
+            <p className="mt-sm max-w-[600px] text-pretty text-body-md text-white/65">
+              Your stock and books, the same number: receive a purchase order and
+              the stock, the supplier bill and the journal entry all move together.
             </p>
           </Reveal>
 
