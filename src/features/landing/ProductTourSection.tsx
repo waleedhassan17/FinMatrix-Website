@@ -15,8 +15,19 @@
 // through the API, and contact details on the reserved example.com domain.
 // Never recapture these from a real company's account.
 //
-// Plain <img> with width/height (no layout shift), lazy-loaded: the section is
-// below the fold, and only the front page's image is fetched.
+// ── MOVING BETWEEN PAGES MUST NEVER BLINK ──
+// The first version rebuilt the card on every step (a `key` on the figure) and
+// faded the new one in from opacity 0, around a screenshot that had not been
+// fetched yet. Visitors saw the card vanish, come back empty, then the picture
+// pop in. So, three rules:
+//   1. The card frame stays mounted. Only its text changes, in place.
+//   2. Every screenshot stays mounted, stacked in one box. All six are fetched
+//      (lazily, as the section nears the viewport) and stay decoded, so changing
+//      page or category never creates an image.
+//   3. The incoming screenshot fades in OVER the outgoing one, which stays fully
+//      opaque underneath until the fade is over, and the swap waits until the
+//      incoming one has decoded. No frame shows an empty box or the panel behind.
+// Do not bring back a `key` on the figure or an entrance from opacity 0.
 
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
@@ -105,6 +116,12 @@ const HEIGHT = 900;
 const sticker =
   'pointer-events-none absolute z-20 rounded-md bg-surface px-sm py-xxs text-overline text-primary-900 shadow-md';
 
+/** The screenshot dissolve. The outgoing image's hide is delayed by the same
+ *  duration, so it stays opaque under the incoming one for the whole fade. */
+const SHOWN =
+  'z-10 opacity-100 transition-opacity duration-[400ms] ease-[cubic-bezier(0.22,0.8,0.28,1)] motion-reduce:transition-none';
+const HIDDEN = 'z-0 opacity-0 transition-opacity duration-0 delay-[400ms] motion-reduce:transition-none';
+
 export function ProductTourSection() {
   const [filter, setFilter] = useState<Filter>('all');
   const [index, setIndex] = useState(0);
@@ -114,6 +131,21 @@ export function ProductTourSection() {
   const current = pages[Math.min(index, pages.length - 1)];
   const category = categoryOf(current.category);
   const many = pages.length > 1;
+
+  // Screenshots that have loaded and decoded (or failed, so a broken file can
+  // never hold the deck). The text follows `current` at once; the screenshot
+  // keeps the last ready page until the new one is ready, then dissolves to it.
+  const [ready, setReady] = useState<ReadonlySet<string>>(() => new Set());
+  const [shownKey, setShownKey] = useState(PAGES[0].key);
+  const targetKey = ready.has(current.key) || !ready.has(shownKey) ? current.key : shownKey;
+  if (targetKey !== shownKey) setShownKey(targetKey);
+
+  const markReady = (key: string, img: HTMLImageElement) => {
+    const decoded = typeof img.decode === 'function' ? img.decode() : Promise.resolve();
+    void decoded
+      .catch(() => undefined)
+      .then(() => setReady((prev) => (prev.has(key) ? prev : new Set(prev).add(key))));
+  };
 
   const go = (step: number) => setIndex((i) => (i + step + pages.length) % pages.length);
   const choose = (next: Filter) => {
@@ -225,11 +257,10 @@ export function ProductTourSection() {
                   the screenshot needs every pixel. */}
               <div className="relative md:rotate-[-0.8deg]">
                 <figure
-                  key={`${filter}-${current.key}`}
                   role="group"
                   aria-roledescription="slide"
                   aria-label={`${pages.indexOf(current) + 1} of ${pages.length}: ${current.title}`}
-                  className="animate-deck-in rounded-2xl bg-surface p-sm shadow-xl motion-reduce:animate-none sm:p-md"
+                  className="rounded-2xl bg-surface p-sm shadow-xl sm:p-md"
                 >
                   <div className="flex items-center justify-between gap-md px-xxs pb-sm">
                     <div className="flex min-w-0 items-center gap-sm">
@@ -243,18 +274,48 @@ export function ProductTourSection() {
                       {pages.indexOf(current) + 1} / {pages.length}
                     </span>
                   </div>
-                  <img
-                    src={current.src}
-                    alt={current.alt}
-                    width={WIDTH}
-                    height={HEIGHT}
-                    loading="lazy"
-                    decoding="async"
-                    draggable={false}
-                    className="block h-auto w-full select-none rounded-lg border border-border-light"
-                  />
-                  <figcaption aria-live="polite" className="px-xxs pt-sm text-body-sm text-text-secondary">
-                    {current.caption}
+                  {/* Every page's screenshot, stacked. Only the front page's is in
+                      the accessibility tree; the rest are decoration until shown. */}
+                  <div className="relative aspect-[1440/900] overflow-hidden rounded-lg border border-border-light bg-surface-2">
+                    {PAGES.map((p) => {
+                      const shown = p.key === shownKey;
+                      const front = p.key === current.key;
+                      return (
+                        <img
+                          key={p.key}
+                          ref={(el) => {
+                            // Loaded before React attached onLoad (cache, prerendered HTML).
+                            if (el?.complete && el.naturalWidth > 0 && !ready.has(p.key)) markReady(p.key, el);
+                          }}
+                          src={p.src}
+                          alt={front ? p.alt : ''}
+                          aria-hidden={front ? undefined : true}
+                          data-state={shown ? 'shown' : 'hidden'}
+                          width={WIDTH}
+                          height={HEIGHT}
+                          loading="lazy"
+                          decoding="async"
+                          fetchPriority={shown ? 'auto' : 'low'}
+                          draggable={false}
+                          onLoad={(e) => markReady(p.key, e.currentTarget)}
+                          onError={(e) => markReady(p.key, e.currentTarget)}
+                          className={cn('absolute inset-0 size-full select-none', shown ? SHOWN : HIDDEN)}
+                        />
+                      );
+                    })}
+                  </div>
+                  {/* One grid cell: the caption, plus every caption as an invisible
+                      sizer, so the block is always as tall as the longest one and
+                      the controls below never move between pages. */}
+                  <figcaption className="grid px-xxs pt-sm text-body-sm text-text-secondary">
+                    <span aria-live="polite" className="[grid-area:1/1]">
+                      {current.caption}
+                    </span>
+                    {PAGES.map((p) => (
+                      <span key={p.key} aria-hidden="true" className="invisible [grid-area:1/1]">
+                        {p.caption}
+                      </span>
+                    ))}
                   </figcaption>
                 </figure>
               </div>

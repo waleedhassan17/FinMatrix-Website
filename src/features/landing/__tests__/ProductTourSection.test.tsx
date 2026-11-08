@@ -1,11 +1,14 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { ProductTourSection } from '@/features/landing/ProductTourSection';
 
 const frontTitle = () => screen.getByRole('heading', { level: 3 }).textContent;
 const counter = () => screen.getByText(/^\d+ \/ \d+$/).textContent;
+/** Every stacked screenshot, by file name, whether or not it is in front. */
+const shot = (name: string) => document.querySelector<HTMLImageElement>(`img[src="/screenshots/${name}.webp"]`)!;
+const next = () => fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
 
 describe('the product tour deck', () => {
   it('speaks of a product tour and pages, not screens', () => {
@@ -59,5 +62,57 @@ describe('the product tour deck', () => {
       'Show Inventory valuation',
       'Show Analytics',
     ]);
+  });
+
+  describe('moving between pages never blinks', () => {
+    it('keeps the same card and every screenshot mounted from page to page', () => {
+      render(<ProductTourSection />);
+      const card = document.querySelector('figure');
+      expect(document.querySelectorAll('figure img')).toHaveLength(6);
+      next();
+      fireEvent.click(screen.getByRole('button', { name: /^Reports/ }));
+      expect(document.querySelector('figure')).toBe(card);
+      expect(document.querySelectorAll('figure img')).toHaveLength(6);
+    });
+
+    it('only the front page’s screenshot is announced, and it follows the page at once', () => {
+      render(<ProductTourSection />);
+      next();
+      const img = screen.getByRole('img');
+      expect(img.getAttribute('src')).toBe('/screenshots/invoices.webp');
+      expect(img.getAttribute('alt')).toMatch(/invoice list/);
+    });
+
+    it('holds the last screenshot until the next one has loaded, then swaps', async () => {
+      render(<ProductTourSection />);
+      fireEvent.load(shot('dashboard'));
+      await waitFor(() => expect(shot('dashboard').dataset.state).toBe('shown'));
+
+      next();
+      expect(frontTitle()).toBe('Invoices');
+      expect(shot('dashboard').dataset.state).toBe('shown');
+      expect(shot('invoices').dataset.state).toBe('hidden');
+
+      fireEvent.load(shot('invoices'));
+      await waitFor(() => expect(shot('invoices').dataset.state).toBe('shown'));
+      expect(shot('dashboard').dataset.state).toBe('hidden');
+    });
+
+    it('a screenshot that fails to load does not stall the deck', async () => {
+      render(<ProductTourSection />);
+      fireEvent.load(shot('dashboard'));
+      next();
+      fireEvent.error(shot('invoices'));
+      await waitFor(() => expect(shot('invoices').dataset.state).toBe('shown'));
+    });
+
+    it('shows one screenshot at a time', async () => {
+      render(<ProductTourSection />);
+      for (const img of document.querySelectorAll('figure img')) fireEvent.load(img);
+      next();
+      next();
+      await waitFor(() => expect(shot('customers').dataset.state).toBe('shown'));
+      expect(document.querySelectorAll('figure img[data-state="shown"]')).toHaveLength(1);
+    });
   });
 });
