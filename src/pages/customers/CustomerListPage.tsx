@@ -26,7 +26,10 @@ const PAGE_SIZE = 50;
  * worth surfacing in a list you scan rather than read.
  */
 const balanceColor = (balance: number, creditLimit: number): string => {
-  if (balance === 0) return colors.success;
+  // Settled reads quiet, and paid-ahead is the good news. Green on zero made
+  // every settled customer the highlight of the list. Same as the app.
+  if (balance === 0) return colors.textTertiary;
+  if (balance < 0) return colors.success;
   if (creditLimit > 0) {
     if (balance >= creditLimit * 0.8) return colors.danger;
     if (balance >= creditLimit * 0.5) return colors.warning;

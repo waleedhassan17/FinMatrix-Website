@@ -230,9 +230,23 @@ export default function RiderDetailPage() {
       </Card>
 
       <div className="grid gap-md sm:grid-cols-2 xl:grid-cols-4">
-        <StatTile label="Deliveries" value={String(rider.totalDeliveries)} hint="Completed, all time" />
-        <StatTile label="On time" value={`${rider.onTimeRate}%`} />
-        <StatTile label="Rating" value={`${rider.rating} / 5`} />
+        {/* Counted from the rider's own deliveries. The profile's totalDeliveries
+            is set to 0 when a rider is created and the server never updates it. */}
+        <StatTile
+          label="Deliveries"
+          value={String(
+            Math.max(
+              rider.totalDeliveries,
+              (deliveries.data?.rows ?? []).filter((d) => d.status === 'delivered').length,
+            ),
+          )}
+          hint="Completed, all time"
+        />
+        {/* A rider with no completed deliveries has no on-time rate and no
+            rating: 100% and 5 / 5 are a zero denominator and a default, not
+            measurements. The app's rider screen reads the same. */}
+        <StatTile label="On time" value={rider.totalDeliveries > 0 ? `${rider.onTimeRate}%` : '—'} />
+        <StatTile label="Rating" value={rider.totalDeliveries > 0 ? `${rider.rating} / 5` : '—'} />
         <StatTile
           label="Current load"
           value={`${rider.currentLoad}${rider.maxLoad ? ` / ${rider.maxLoad}` : ''}`}

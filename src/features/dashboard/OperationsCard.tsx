@@ -26,7 +26,14 @@ function DeliverySummary({ d }: { d: DeliveryCounts }) {
     { key: 'failed', label: 'Failed', value: d.failed, color: colors.danger },
   ];
   const shown = segments.filter((s) => s.key !== 'failed' || s.value > 0);
-  const barTotal = segments.reduce((t, s) => t + s.value, 0);
+  // Measured against the server's total, which also counts cancelled, returned
+  // and unassigned orders. That share stays as bare track, so the green part
+  // is as long as the percentage above it says. Summing the segments alone drew
+  // 24 of 38 delivered as 24 of 29.
+  const barTotal = Math.max(
+    d.total,
+    segments.reduce((t, s) => t + s.value, 0),
+  );
 
   return (
     <div className="px-lg py-md">
