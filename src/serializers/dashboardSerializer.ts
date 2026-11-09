@@ -77,9 +77,10 @@ const transactionSerializer = (
   };
 };
 
-// The server names severities by colour (red / amber / blue), the same words
-// the app's AlertBanner keys on. Reading only the semantic names turned every
-// alert into `info`, so an overdue invoice rendered like a delivery notice.
+// The server names severities by colour (red / amber / blue), the same words the
+// app's needs-attention rows (screens/Notifications/attentionItems) key on.
+// Reading only the semantic names turned every alert into `info`, so an overdue
+// invoice rendered like a delivery notice.
 const SEVERITY: Record<string, DashboardAlert['severity']> = {
   red: 'danger',
   amber: 'warning',

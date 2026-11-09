@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 
 import { Card } from '@/components/ui/Card';
-import { cn } from '@/lib/cn';
+import { fitFigureFontSize } from '@/features/reports/fitFigure';
 import { compactMoney, formatMoney, type MoneyInput } from '@/utils/money';
 
 export interface KpiTileProps {
@@ -28,10 +28,11 @@ export function KpiTile({
   loading = false,
 }: KpiTileProps) {
   const full = formatMoney(value);
+  const shown = compact ? compactMoney(value) : full;
 
   return (
-    <Card className="p-lg">
-
+    // @container: the figure below sizes itself to this tile's width.
+    <Card className="@container p-lg">
       <div className="flex items-start justify-between gap-sm">
         <p className="text-caption text-text-secondary">{label}</p>
         {icon && <span className="shrink-0 text-text-tertiary">{icon}</span>}
@@ -41,12 +42,15 @@ export function KpiTile({
         <div className="mt-xs h-7 w-24 animate-pulse rounded-sm bg-neutral-100" />
       ) : (
         <p
-          className={cn('mt-xxs text-h3 tabular text-text-primary')}
+          className="mt-xxs whitespace-nowrap text-h3 tabular text-text-primary"
+          // Shown whole on one line: a figure too wide for the tile shrinks
+          // just enough to fit instead of being clipped (see fitFigureFontSize).
+          style={{ fontSize: fitFigureFontSize(shown) }}
           // The compact form rounds; the exact figure stays available on hover
           // rather than being lost to the abbreviation.
           title={compact ? full : undefined}
         >
-          {compact ? compactMoney(value) : full}
+          {shown}
         </p>
       )}
 
