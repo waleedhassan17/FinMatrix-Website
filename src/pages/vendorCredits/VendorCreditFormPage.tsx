@@ -240,7 +240,7 @@ export default function VendorCreditFormPage() {
           title="Credit lines"
           right={
             <Button
-              variant="text"
+              variant="secondary"
               size="sm"
               onClick={() =>
                 patch({ lines: [...form.lines, freshVendorCreditLine()] })

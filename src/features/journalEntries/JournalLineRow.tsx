@@ -79,6 +79,7 @@ export function JournalLineRow({
         placeholder="Choose an account…"
         searchPlaceholder="Search by number or name…"
         emptyText="No active accounts found."
+        compact
         containerClassName="mb-sm"
       />
 

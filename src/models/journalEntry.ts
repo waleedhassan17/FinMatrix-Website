@@ -76,6 +76,20 @@ export const freshJournalLine = (): JournalFormLine => {
   return { id: `jl_${lineSeq}`, accountId: '', description: '', debit: '', credit: '' };
 };
 
+/**
+ * The next line for an entry: carrying the amount that would balance it, on the
+ * side that balances it — the usual next step, and one less sum to work out.
+ * An amount with no account is still refused by validateJournalDraft, so this
+ * cannot slip a line past the check.
+ */
+export const balancingJournalLine = (lines: JournalFormLine[]): JournalFormLine => {
+  const line = freshJournalLine();
+  const { difference } = journalTotals(lines);
+  if (difference.greaterThan(0)) line.credit = difference.toFixed(2);
+  else if (difference.lessThan(0)) line.debit = difference.abs().toFixed(2);
+  return line;
+};
+
 /** A new entry opens with two empty lines, the minimum an entry can have. */
 export const emptyJournalForm = (date: string): JournalFormData => ({
   date,

@@ -261,7 +261,9 @@ export default function InvoiceDetailPage() {
               )}
               {owing && (connect.enabled || !!whatsappNumber) && (
                 <SendOnWhatsAppButton
-                  label={connect.enabled ? 'Send reminder' : 'Remind'}
+                  label="Remind"
+                  size="sm"
+                  inlineReason={false}
                   docType="invoice"
                   docId={invoice.id}
                   event="reminder"

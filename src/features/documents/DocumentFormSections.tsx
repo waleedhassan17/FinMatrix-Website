@@ -140,7 +140,7 @@ export function DocumentFormSections({
               <div className="flex flex-wrap gap-xs">
                 <Button
                   size="sm"
-                  className="rounded-full"
+                  variant="secondary"
                   onClick={() => onLinesChange([...lines, { ...freshLine(), lineKind: 'item' }])}
                 >
                   <Plus className="size-4" />
@@ -149,7 +149,6 @@ export function DocumentFormSections({
                 <Button
                   size="sm"
                   variant="secondary"
-                  className="rounded-full"
                   onClick={() => onLinesChange([...lines, { ...freshLine(), lineKind: 'service' }])}
                 >
                   <Plus className="size-4" />
@@ -159,7 +158,7 @@ export function DocumentFormSections({
             ) : (
               <Button
                 size="sm"
-                className="rounded-full"
+                variant="secondary"
                 onClick={() => onLinesChange([...lines, freshLine()])}
               >
                 <Plus className="size-4" />

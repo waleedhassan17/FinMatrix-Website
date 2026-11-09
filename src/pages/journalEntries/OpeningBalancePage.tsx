@@ -347,12 +347,7 @@ export default function OpeningBalancePage() {
 
             return (
               <Card key={side} className="flex flex-col p-lg">
-                <div
-                  className={cn(
-                    'mb-md border-l-[3px] pl-md',
-                    side === 'own' ? 'border-success' : 'border-info',
-                  )}
-                >
+                <div className="mb-md">
                   <h2 className="text-h4 text-text-primary">{copy.title}</h2>
                   <p className="mt-xxs text-body-sm text-text-secondary">
                     {copy.blurb}

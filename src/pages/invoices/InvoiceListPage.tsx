@@ -211,7 +211,12 @@ export default function InvoiceListPage() {
           <p className="text-caption text-text-secondary">
             {serverSummary ? 'Overdue' : 'Overdue (loaded)'}
           </p>
-          <p className="mt-xxs text-h3 text-danger tabular">
+          <p
+            className={cn(
+              'mt-xxs text-h3 tabular',
+              Number(summary.overdue) > 0 ? 'text-danger' : 'text-text-primary',
+            )}
+          >
             {formatMoney(summary.overdue)}
           </p>
         </Card>

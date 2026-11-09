@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  balancingJournalLine,
   canPost,
   canVoid,
   emptyJournalForm,
@@ -246,5 +247,37 @@ describe('isReversal and isOpeningBalanceEntry', () => {
   it('spots an opening-balance entry by its source type', () => {
     expect(isOpeningBalanceEntry({ sourceType: 'opening_balance' })).toBe(true);
     expect(isOpeningBalanceEntry({ sourceType: 'journal_entry' })).toBe(false);
+  });
+});
+
+describe('balancingJournalLine', () => {
+  const line = (debit: string, credit: string): JournalFormLine => ({
+    ...freshJournalLine(),
+    accountId: 'a',
+    debit,
+    credit,
+  });
+
+  it('debits ahead: the new line is a credit for the difference', () => {
+    const next = balancingJournalLine([line('500', ''), line('', '200')]);
+    expect(next.credit).toBe('300.00');
+    expect(next.debit).toBe('');
+  });
+
+  it('credits ahead: the new line is a debit for the difference', () => {
+    const next = balancingJournalLine([line('100', ''), line('', '350.50')]);
+    expect(next.debit).toBe('250.50');
+    expect(next.credit).toBe('');
+  });
+
+  it('balanced or empty: the new line starts blank', () => {
+    expect(balancingJournalLine([line('5', ''), line('', '5')])).toMatchObject({ debit: '', credit: '' });
+    expect(balancingJournalLine([])).toMatchObject({ debit: '', credit: '' });
+  });
+
+  it('starts with no account, which saving then refuses rather than dropping', () => {
+    const next = balancingJournalLine([line('500', '')]);
+    expect(next.accountId).toBe('');
+    expect(validateJournalDraft([line('500', ''), line('', '100'), next])).not.toBeNull();
   });
 });

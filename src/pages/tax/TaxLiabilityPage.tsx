@@ -16,7 +16,6 @@ import { csvAmount, csvFilename, downloadCsv, toCsv, type CsvRow } from '@/model
 import { defaultReportRange, rangeLabel } from '@/models/reportPeriod';
 import { liabilityStatus } from '@/models/tax';
 import { getTaxLiability } from '@/networks/tax/taxNetwork';
-import { colors } from '@/theme/tokens';
 import { formatAmount, formatMoney, parenNegative } from '@/utils/money';
 
 /**
@@ -145,17 +144,15 @@ export default function TaxLiabilityPage() {
             </div>
 
             <div className="grid gap-md sm:grid-cols-2 lg:grid-cols-4 print:hidden">
-              <KpiTile label="Output tax charged" value={report.outputTax} accent={colors.primary} />
+              <KpiTile label="Output tax charged" value={report.outputTax} />
               <KpiTile
                 label="Input tax recoverable"
                 value={report.inputTaxRecoverable}
-                accent={colors.info}
               />
-              <KpiTile label="Paid to the authority" value={report.taxRemitted} accent={colors.success} />
+              <KpiTile label="Paid to the authority" value={report.taxRemitted} />
               <KpiTile
                 label={status === 'credit' ? 'Credit due' : 'Net owed'}
                 value={Math.abs(report.totalNet)}
-                accent={status === 'owed' ? colors.warning : colors.success}
               />
             </div>
 

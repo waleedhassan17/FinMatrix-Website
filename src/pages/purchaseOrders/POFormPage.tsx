@@ -365,7 +365,7 @@ export default function POFormPage() {
               {inventoryEnabled && (
                 <Button
                   size="sm"
-                  className="rounded-full"
+                  variant="secondary"
                   onClick={() => patch({ lines: [...form.lines, newLine('item')] })}
                 >
                   <Plus className="size-4" />
@@ -374,8 +374,7 @@ export default function POFormPage() {
               )}
               <Button
                 size="sm"
-                variant={inventoryEnabled ? 'secondary' : 'primary'}
-                className="rounded-full"
+                variant="secondary"
                 onClick={() => patch({ lines: [...form.lines, newLine('expense')] })}
               >
                 <Plus className="size-4" />

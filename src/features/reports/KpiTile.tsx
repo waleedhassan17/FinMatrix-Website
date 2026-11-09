@@ -7,8 +7,6 @@ import { compactMoney, formatMoney, type MoneyInput } from '@/utils/money';
 export interface KpiTileProps {
   label: string;
   value: MoneyInput;
-  /** A token colour for the 4px rail, e.g. `colors.success`. */
-  accent?: string;
   icon?: ReactNode;
   hint?: string;
   /**
@@ -20,17 +18,10 @@ export interface KpiTileProps {
   loading?: boolean;
 }
 
-/**
- * A headline figure.
- *
- * The accent rail is an inline style because the colour is a runtime token value,
- * not a class Tailwind can generate at build time — the same reason `StatusBadge`
- * and the dashboard tiles do it.
- */
+/** A headline figure. No coloured rail down its edge: that read as decoration. */
 export function KpiTile({
   label,
   value,
-  accent,
   icon,
   hint,
   compact = false,
@@ -39,14 +30,7 @@ export function KpiTile({
   const full = formatMoney(value);
 
   return (
-    <Card className="relative overflow-hidden p-lg">
-      {accent && (
-        <span
-          aria-hidden
-          className="absolute top-0 bottom-0 left-0 w-[4px]"
-          style={{ backgroundColor: accent }}
-        />
-      )}
+    <Card className="p-lg">
 
       <div className="flex items-start justify-between gap-sm">
         <p className="text-caption text-text-secondary">{label}</p>

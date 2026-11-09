@@ -54,7 +54,7 @@ function RoleCard({
       onClick={onSelect}
       onKeyDown={onKeyDown}
       className={cn(
-        'group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-xl border border-border-light bg-surface p-xl pl-xxl text-left shadow-card',
+        'group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-xl border border-border-light bg-surface p-xl text-left shadow-card',
         'transition-[box-shadow,transform,border-color] duration-300 hover:-translate-y-1 hover:shadow-lg',
         'motion-reduce:transition-none motion-reduce:hover:translate-y-0',
         teal
@@ -63,16 +63,8 @@ function RoleCard({
         className,
       )}
     >
-      {/* The accent bar is the wayfinding: the staff door is teal everywhere it
-          appears, including the sign-in screen it leads to. */}
-      <span
-        aria-hidden="true"
-        className={cn(
-          'absolute inset-y-0 left-0 w-[6px]',
-          teal ? 'bg-accent-teal' : 'bg-primary',
-        )}
-      />
-
+      {/* The icon's tint is the wayfinding: the staff door is teal everywhere
+          it appears, including the sign-in screen it leads to. */}
       <span
         className={cn(
           'flex size-12 items-center justify-center rounded-xl ring-1 ring-inset',

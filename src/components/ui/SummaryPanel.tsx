@@ -75,7 +75,7 @@ export interface SummaryPanelProps {
   icon?: ReactNode;
   children: ReactNode;
   /** The grand total, set apart below a divider. */
-  total?: { label: string; value: MoneyInput; currency?: string };
+  total?: { label: string; value: MoneyInput; currency?: string; tone?: SummaryTone };
   className?: string;
 }
 
@@ -108,7 +108,10 @@ export function SummaryPanel({
             <span className="text-h4" style={{ color: PANEL.accent }}>
               {total.label}
             </span>
-            <span className="text-h2 tabular" style={{ color: colors.neutral0 }}>
+            <span
+              className="text-h2 tabular"
+              style={{ color: total.tone && total.tone !== 'default' ? TONE_COLOR[total.tone] : colors.neutral0 }}
+            >
               {formatMoney(total.value, total.currency)}
             </span>
           </div>

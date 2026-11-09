@@ -15,7 +15,7 @@ import { useCapability } from '@/hooks/useCapability';
 import { isoToday } from '@/models/document';
 import {
   emptyJournalForm,
-  freshJournalLine,
+  balancingJournalLine,
   journalTotals,
   validateJournalDraft,
   validateJournalPost,
@@ -182,9 +182,9 @@ export default function JournalEntryFormPage() {
           title="Lines"
           right={
             <Button
-              variant="text"
+              variant="secondary"
               size="sm"
-              onClick={() => patch({ lines: [...form.lines, freshJournalLine()] })}
+              onClick={() => patch({ lines: [...form.lines, balancingJournalLine(form.lines)] })}
             >
               <Plus className="size-4" />
               Add line
@@ -231,7 +231,14 @@ export default function JournalEntryFormPage() {
       <SummaryPanel
         title="Balance"
         icon={<Scale className="size-4" />}
-        total={{ label: 'Difference', value: difference.abs() }}
+        // Neutral until something is typed: an empty entry is not out of balance.
+        total={
+          balanced
+            ? { label: 'Balanced', value: difference.abs(), tone: 'positive' }
+            : totals.debits.isZero() && totals.credits.isZero()
+              ? { label: 'Difference', value: difference.abs() }
+              : { label: 'Out by', value: difference.abs(), tone: 'negative' }
+        }
       >
         <SummaryRow label="Total debits" value={totals.debits} />
         <SummaryRow label="Total credits" value={totals.credits} />

@@ -89,7 +89,6 @@ export function SectionHeader({
 }) {
   return (
     <div className={cn('flex items-center gap-xs', className)}>
-      <span className="size-2 rounded-full bg-primary" />
       <span className="text-overline text-neutral-500">{title}</span>
       {right && <div className="ml-auto">{right}</div>}
     </div>

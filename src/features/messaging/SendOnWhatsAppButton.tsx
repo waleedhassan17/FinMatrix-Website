@@ -13,7 +13,9 @@ import { messagingKeys, useConnect } from './useConnect';
  * - Connect on: the SERVER sends (with the PDF); the toast says "Queued".
  * - Connect off: the wa.me chat opens with `text`, as before, and the share is
  *   recorded on the document's timeline when the plan has Connect.
- * - No usable number or opted out: disabled, and says why.
+ * - No usable number or opted out: disabled, and says why — under the button by
+ *   default; `inlineReason={false}` keeps it to the tooltip and the accessible
+ *   description, for a button in a row a caption would push out of line.
  */
 export function SendOnWhatsAppButton({
   label,
@@ -24,6 +26,8 @@ export function SendOnWhatsAppButton({
   optedOut,
   text,
   variant = 'secondary',
+  size,
+  inlineReason = true,
 }: {
   label: string;
   docType: SendableDocType;
@@ -34,6 +38,8 @@ export function SendOnWhatsAppButton({
   /** The message for the wa.me hand-off (Connect off). */
   text: string;
   variant?: 'primary' | 'secondary' | 'text';
+  size?: 'sm' | 'md';
+  inlineReason?: boolean;
 }) {
   const { enabled, featureOn } = useConnect();
   const queryClient = useQueryClient();
@@ -71,15 +77,17 @@ export function SendOnWhatsAppButton({
     <span className="inline-flex flex-col items-start">
       <Button
         variant={variant}
+        size={size}
         onClick={onClick}
         disabled={!!reason || send.isPending}
         title={reason ?? undefined}
-        aria-describedby={reason ? `wa-reason-${docId}` : undefined}
+        aria-describedby={reason && inlineReason ? `wa-reason-${docId}` : undefined}
+        aria-label={reason && !inlineReason ? `${label}. ${reason}` : undefined}
       >
         <MessageCircle className="size-4" aria-hidden="true" />
         {send.isPending ? 'Sending…' : label}
       </Button>
-      {reason ? (
+      {reason && inlineReason ? (
         <span id={`wa-reason-${docId}`} className="mt-xxs text-caption text-text-tertiary">
           {reason}
         </span>
