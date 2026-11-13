@@ -46,11 +46,11 @@ export const resolveIssue = (id: string, issueId: string, body: { action: 'edit'
   call<MigrationBatch>(() => api.patch(`/migrations/${id}/issues/${issueId}`, body));
 
 /**
- * Validate, dry-run, commit and undo run the whole practice import (or the
+ * Validate, dry-run, commit and undo (and the certificate preview) run the whole practice import (or the
  * real one) on the server; the default 30 s would report a failure while the
  * server was still finishing, and invite a retry.
  */
-export const LONG_RUNNING = { timeout: 180_000 } as const;
+export const LONG_RUNNING = { timeout: 300_000 } as const;
 
 export const validateMigration = (id: string) => call<MigrationBatch>(() => api.post(`/migrations/${id}/validate`, undefined, LONG_RUNNING));
 export const dryRunMigration = (id: string) => call<{ batch: MigrationBatch; certificate: CertificatePreview }>(() => api.post(`/migrations/${id}/dry-run`, undefined, LONG_RUNNING));
@@ -61,7 +61,7 @@ export const closeMigration = (id: string) => call<MigrationBatch>(() => api.pos
 
 /** Long timeouts: the certificate preview runs the whole dry run on the server. */
 export async function downloadCertificate(id: string): Promise<void> {
-  const blob = await authedBlob(`/migrations/${id}/certificate`, { timeout: 180_000 });
+  const blob = await authedBlob(`/migrations/${id}/certificate`, LONG_RUNNING);
   downloadBlob(blob, `migration-certificate-${id.slice(0, 8)}.pdf`);
 }
 
