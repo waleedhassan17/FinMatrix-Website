@@ -63,6 +63,9 @@ import {
   MyAccountPage,
   TeamPage,
   WhatsAppConnectPage,
+  BackupExportPage,
+  MigrationListPage,
+  MigrationWizardPage,
   FixContactsPage,
   CollectionsReportPage,
   EmployeeFormPage,
@@ -493,6 +496,10 @@ export const router = createBrowserRouter([
           { path: 'settings/users', element: <TeamPage /> },
           // FinMatrix Connect — owner only (absent from STAFF_NAV, like all of /settings).
           { path: 'settings/whatsapp', element: <WhatsAppConnectPage /> },
+          // Backup & export and the Migration Center — owner only (absent from STAFF_NAV).
+          { path: 'settings/backup', element: <BackupExportPage /> },
+          { path: 'settings/migration', element: <MigrationListPage /> },
+          { path: 'settings/migration/:id', element: <MigrationWizardPage /> },
           { path: 'contacts/health', element: <FixContactsPage /> },
           { path: 'account', element: <MyAccountPage /> },
 
