@@ -45,8 +45,10 @@ export default function MigrationWizardPage() {
     );
   }
   const b = batch.data;
-  const current = Math.min(step ?? b.step, Math.max(reachable, 1));
-  const go = (s: number) => setStep(Math.min(s, Math.max(reachable, s === current + 1 ? current + 1 : reachable)));
+  const current = Math.max(1, Math.min(step ?? b.step, reachable));
+  // Clamped when shown, not when chosen: an action's own answer can open the
+  // next step (sign-off opens Import) in the same click.
+  const go = (s: number) => setStep(s);
 
   return (
     <div className="flex flex-col gap-lg">

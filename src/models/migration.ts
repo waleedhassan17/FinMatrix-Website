@@ -162,9 +162,28 @@ export function stepFromStatus(status: MigrationStatus, blockingIssues: number):
   }
 }
 
-/** The furthest step the owner may open: later steps wait for their turn. */
-export function maxReachableStep(batch: Pick<MigrationBatch, 'status' | 'issues'>): number {
-  return stepFromStatus(batch.status, batch.issues.blocking);
+/**
+ * The furthest step the owner may open. It runs one step past where the batch
+ * resumes, because each step's server action lives on the step that needs it:
+ * a draft batch is uploaded to on Upload, a matched one is checked on Check,
+ * a ready one is imported on Import. Steps whose prerequisites are missing
+ * stay shut: no checks while a blocking issue is open, no Import before sign-off.
+ */
+export function maxReachableStep(batch: Pick<MigrationBatch, 'status' | 'issues'> & { signedOffAt?: string | null }): number {
+  switch (batch.status) {
+    case 'draft':
+      return 2;
+    case 'uploaded':
+      return 3;
+    case 'mapped':
+      return batch.issues.blocking > 0 ? 4 : 5;
+    case 'validated':
+      return 5;
+    case 'ready':
+      return batch.signedOffAt ? 7 : 6;
+    default:
+      return 7;
+  }
 }
 
 export const MIGRATION_STATUS_LABEL: Record<MigrationStatus, string> = {

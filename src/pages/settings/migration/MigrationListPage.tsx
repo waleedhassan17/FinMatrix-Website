@@ -46,7 +46,7 @@ export default function MigrationListPage() {
         <SectionHeader title="Start a migration" />
         <div className="grid gap-md md:grid-cols-2">
           <Select label="Where are your books now?" value={source} options={MIGRATION_SOURCES.map((s) => ({ value: s.id, label: s.label }))} onChange={(v) => setSource(v as MigrationSourceSystem)} />
-          <DateField label="Cutover date" value={cutover} onChange={setCutover} hint="Your balances as at the close of business on this day." />
+          <DateField label="Cutover date" value={cutover} onChange={setCutover} hint="Your balances as they stood at the start of this day. FinMatrix closes the books before it." />
         </div>
         <p className="text-caption text-text-secondary">{sourceById(source)?.description}</p>
         <div className="flex justify-end">

@@ -15,8 +15,8 @@ export function StartStep({ batch, onNext }: { batch: MigrationBatch; onNext: ()
       <Card className="flex flex-col gap-md p-lg">
         <SectionHeader title={`Moving from ${source?.label ?? batch.sourceSystem}`} />
         <p className="text-body-sm text-text-secondary">
-          Your opening balances, open invoices and bills, and stock will be brought in as at the close of business on{' '}
-          <span className="text-label-md text-text-primary">{batch.cutoverDate}</span>. Everything is checked to the rupee before anything is posted.
+          Your opening balances, open invoices and bills, and stock will be brought in as they stood at the start of{' '}
+          <span className="text-label-md text-text-primary">{batch.cutoverDate}</span> (the close of business the day before). Anything dated on or after that day is entered in FinMatrix. Everything is checked to the rupee before anything is posted.
         </p>
         <div>
           <p className="text-label-md text-text-primary">Files to prepare</p>
