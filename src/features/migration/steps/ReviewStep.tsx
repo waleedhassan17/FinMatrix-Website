@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { migrationErrorMessage } from '@/config/migrationErrors';
-import { canSignOff, ENTITY_LABEL, type CertificatePreview, type MigrationBatch } from '@/models/migration';
+import { canSignOff, ENTITY_LABEL, type AsTypedFigures, type CertificatePreview, type MigrationBatch } from '@/models/migration';
 import type { ApiError } from '@/networks/network/apiHelpers';
 import { downloadCertificate, dryRunMigration, signOffMigration } from '@/networks/settings/migrationNetwork';
 
@@ -90,7 +90,7 @@ export function ReviewView(props: {
           }
         />
         <p className="text-body-sm text-text-secondary">
-          {preview.allPassed ? 'All nine checks pass at zero difference.' : 'Some checks fail — go back to Check.'} {preview.rejectedTotal} row{preview.rejectedTotal === 1 ? '' : 's'} set aside, each with its reason.
+          {preview.allPassed ? 'All ten checks pass at zero difference, every figure read the same two ways.' : 'Some checks fail — go back to Check.'} {preview.rejectedTotal} row{preview.rejectedTotal === 1 ? '' : 's'} set aside, each with its reason.
         </p>
         <ul className="grid gap-xs sm:grid-cols-2">
           {preview.rowCounts.map((r) => (
@@ -100,6 +100,7 @@ export function ReviewView(props: {
           ))}
         </ul>
       </Card>
+      {preview.asTyped && <AsTypedTables figures={preview.asTyped} />}
       <Card className="flex flex-col gap-md p-lg">
         <SectionHeader title="Spot checks" />
         <p className="text-body-sm text-text-secondary">Look each one up in your old system. Tick it when the balance agrees.</p>
@@ -110,6 +111,9 @@ export function ReviewView(props: {
                 <input type="checkbox" checked={ticked.has(i)} onChange={() => toggle(i)} aria-label={`Spot check ${s.name}`} />
                 <span className="truncate text-label-md text-text-primary">{s.name}</span>
                 <span className="text-caption text-text-secondary">{s.kind} · {s.documents} open</span>
+                {s.asTyped && s.asTyped.length > 0 && (
+                  <span className="truncate text-caption text-text-secondary">As typed: {s.asTyped.join(' · ')}</span>
+                )}
               </label>
               <span className="text-caption tabular text-text-secondary">
                 Source {s.sourceBalance} · FinMatrix <span className={s.matches ? 'text-success' : 'text-danger'}>{s.finmatrixBalance}</span>
@@ -129,5 +133,84 @@ export function ReviewView(props: {
         </Button>
       </div>
     </div>
+  );
+}
+
+/**
+ * Before and after, figure by figure: the text exactly as it stood in the
+ * file, what FinMatrix read it as, and what the books now hold. The owner
+ * reads the first column against their old system.
+ */
+export function AsTypedTables({ figures }: { figures: AsTypedFigures }) {
+  const dash = (v: string | null) => (v === null || v === '' ? '—' : v);
+  const more = (n: number, what: string) =>
+    n > 0 ? <p className="text-caption text-text-secondary">{n} more {what} not shown; every one is checked.</p> : null;
+  const head = 'px-sm py-xs text-left text-overline text-text-secondary';
+  const cell = 'px-sm py-xs text-caption text-text-primary';
+  const num = `${cell} text-right tabular`;
+  return (
+    <Card className="flex flex-col gap-md p-lg">
+      <SectionHeader title="Your figures, as you typed them" />
+      <p className="text-body-sm text-text-secondary">
+        Each figure exactly as it stands in your file, what FinMatrix read it as, and what your books will hold. A second, independent reader read every one again and agreed.
+      </p>
+      {figures.trialBalance.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full" aria-label="Trial balance as typed">
+            <thead><tr><th className={head}>Account</th><th className={head}>Debit as typed</th><th className={head}>Credit as typed</th><th className={head}>Read as</th><th className={head}>In FinMatrix</th></tr></thead>
+            <tbody>
+              {figures.trialBalance.map((r) => (
+                <tr key={r.account} className="border-t border-border-light">
+                  <td className={cell}>{r.account} {r.name}</td>
+                  <td className={num}>{dash(r.debitText)}</td>
+                  <td className={num}>{dash(r.creditText)}</td>
+                  <td className={num}>{dash(r.readAs)}</td>
+                  <td className={num}>{dash(r.posted)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {more(figures.more.trialBalance, 'accounts')}
+        </div>
+      )}
+      {figures.openItems.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full" aria-label="Open invoices and bills as typed">
+            <thead><tr><th className={head}>Party</th><th className={head}>Document</th><th className={head}>Due as typed</th><th className={head}>Read as</th><th className={head}>Party balance</th></tr></thead>
+            <tbody>
+              {figures.openItems.map((r) => (
+                <tr key={`${r.kind}-${r.document}`} className="border-t border-border-light">
+                  <td className={cell}>{r.party}</td>
+                  <td className={cell}>{r.kind === 'invoice' ? 'Invoice' : 'Bill'} {r.document}</td>
+                  <td className={num}>{dash(r.asTyped)}</td>
+                  <td className={num}>{dash(r.readAs)}</td>
+                  <td className={num}>{dash(r.partyBalance)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {more(figures.more.openItems, 'documents')}
+        </div>
+      )}
+      {figures.stock.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full" aria-label="Stock as typed">
+            <thead><tr><th className={head}>SKU</th><th className={head}>Quantity as typed</th><th className={head}>Cost as typed</th><th className={head}>Read as</th><th className={head}>On hand × cost</th></tr></thead>
+            <tbody>
+              {figures.stock.map((r) => (
+                <tr key={r.sku} className="border-t border-border-light">
+                  <td className={cell}>{r.sku}</td>
+                  <td className={num}>{dash(r.quantityText)}</td>
+                  <td className={num}>{dash(r.costText)}</td>
+                  <td className={num}>{dash(r.readAs)}</td>
+                  <td className={num}>{dash(r.onHand)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {more(figures.more.stock, 'items')}
+        </div>
+      )}
+    </Card>
   );
 }

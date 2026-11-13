@@ -60,6 +60,8 @@ describe('migrationNetwork', () => {
     await commitMigration('b1');
     await rollbackMigration('b1');
     expect(vi.mocked(api.post).mock.calls.map((c) => c[0])).toEqual(['/migrations/b1/validate', '/migrations/b1/commit', '/migrations/b1/rollback']);
+    // Each runs the whole import on the server: never the 30 s default.
+    for (const call of vi.mocked(api.post).mock.calls) expect(call[2]).toEqual({ timeout: 180_000 });
   });
 
   it('downloads the certificate with the session and a long timeout', async () => {

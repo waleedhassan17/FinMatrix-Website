@@ -112,9 +112,18 @@ export interface SpotCheck {
   kind: 'customer' | 'vendor';
   name: string;
   documents: number;
+  /** Each open document's amount due exactly as typed in the file. */
+  asTyped?: string[];
   sourceBalance: string;
   finmatrixBalance: string;
   matches: boolean;
+}
+
+export interface AsTypedFigures {
+  trialBalance: Array<{ account: string; name: string; debitText: string; creditText: string; readAs: string; posted: string | null }>;
+  openItems: Array<{ kind: 'invoice' | 'bill'; party: string; document: string; asTyped: string; readAs: string; partyBalance: string | null }>;
+  stock: Array<{ sku: string; quantityText: string; costText: string; readAs: string; onHand: string | null }>;
+  more: { trialBalance: number; openItems: number; stock: number };
 }
 
 export interface CertificatePreview {
@@ -126,6 +135,8 @@ export interface CertificatePreview {
   rejectedRows: Array<{ sheet: string; rowNumber: number; reason: string }>;
   rejectedTotal: number;
   spotChecks: SpotCheck[];
+  /** Every figure as typed, as read, and as the books hold it. */
+  asTyped?: AsTypedFigures;
   postings: Array<{ reference: string; memo: string; lines: number; total: string }>;
   created: Record<string, number>;
 }

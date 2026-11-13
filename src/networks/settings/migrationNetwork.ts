@@ -45,11 +45,18 @@ export const listIssues = (id: string, params: { code?: string; page?: number; l
 export const resolveIssue = (id: string, issueId: string, body: { action: 'edit' | 'map' | 'skip'; value?: string; reason?: string; applyToAll?: boolean }) =>
   call<MigrationBatch>(() => api.patch(`/migrations/${id}/issues/${issueId}`, body));
 
-export const validateMigration = (id: string) => call<MigrationBatch>(() => api.post(`/migrations/${id}/validate`));
-export const dryRunMigration = (id: string) => call<{ batch: MigrationBatch; certificate: CertificatePreview }>(() => api.post(`/migrations/${id}/dry-run`));
+/**
+ * Validate, dry-run, commit and undo run the whole practice import (or the
+ * real one) on the server; the default 30 s would report a failure while the
+ * server was still finishing, and invite a retry.
+ */
+export const LONG_RUNNING = { timeout: 180_000 } as const;
+
+export const validateMigration = (id: string) => call<MigrationBatch>(() => api.post(`/migrations/${id}/validate`, undefined, LONG_RUNNING));
+export const dryRunMigration = (id: string) => call<{ batch: MigrationBatch; certificate: CertificatePreview }>(() => api.post(`/migrations/${id}/dry-run`, undefined, LONG_RUNNING));
 export const signOffMigration = (id: string) => call<MigrationBatch>(() => api.post(`/migrations/${id}/sign-off`, { confirmed: true, spotCheckDone: true }));
-export const commitMigration = (id: string) => call<{ batch: MigrationBatch; certificate: CertificatePreview }>(() => api.post(`/migrations/${id}/commit`));
-export const rollbackMigration = (id: string) => call<{ batch: MigrationBatch; result: { reversed: number; removed: Record<string, number> } }>(() => api.post(`/migrations/${id}/rollback`));
+export const commitMigration = (id: string) => call<{ batch: MigrationBatch; certificate: CertificatePreview }>(() => api.post(`/migrations/${id}/commit`, undefined, LONG_RUNNING));
+export const rollbackMigration = (id: string) => call<{ batch: MigrationBatch; result: { reversed: number; removed: Record<string, number> } }>(() => api.post(`/migrations/${id}/rollback`, undefined, LONG_RUNNING));
 export const closeMigration = (id: string) => call<MigrationBatch>(() => api.post(`/migrations/${id}/close`));
 
 /** Long timeouts: the certificate preview runs the whole dry run on the server. */

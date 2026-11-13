@@ -101,3 +101,21 @@ describe('navigation: owner only', () => {
     expect(isPathAllowedForRole('/settings/backup', 'admin')).toBe(true);
   });
 });
+
+describe('Review: figures as typed', () => {
+  const asTyped = {
+    trialBalance: [{ account: '1000', name: 'Cash', debitText: '۱۵۰۰۰۰', creditText: '', readAs: 'Dr 150000', posted: 'Dr 150000.0000' }],
+    openItems: [{ kind: 'invoice' as const, party: 'Al-Noor Traders', document: 'INV-1002', asTyped: '45,000', readAs: '45000', partyBalance: '165000.0000' }],
+    stock: [{ sku: 'CHR-001', quantityText: '12', costText: 'Rs 8,500', readAs: '12 × 8500', onHand: '12.0000 × 8500.0000' }],
+    more: { trialBalance: 0, openItems: 0, stock: 0 },
+  };
+  it('shows each figure exactly as typed, as read and as the books hold it', () => {
+    const p = { ...preview, asTyped, spotChecks: preview.spotChecks.map((s) => ({ ...s, asTyped: ['1,20,000', '45,000'] })) };
+    render(<ReviewView batch={batch()} preview={p} loading={false} ticked={new Set()} setTicked={() => undefined} confirmed={false} setConfirmed={() => undefined} signing={false} onSignOff={vi.fn()} onNext={vi.fn()} />);
+    expect(screen.getByRole('table', { name: 'Trial balance as typed' }).textContent).toContain('۱۵۰۰۰۰');
+    expect(screen.getByRole('table', { name: 'Open invoices and bills as typed' }).textContent).toContain('45,000');
+    expect(screen.getByRole('table', { name: 'Stock as typed' }).textContent).toContain('Rs 8,500');
+    expect(screen.getAllByText('As typed: 1,20,000 · 45,000')).toHaveLength(2);
+    expect(screen.getByText(/All ten checks pass/)).toBeTruthy();
+  });
+});

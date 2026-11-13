@@ -9,7 +9,7 @@ import { validateMigration } from '@/networks/settings/migrationNetwork';
 import { useMigrationAction } from '../useMigration';
 
 /**
- * Step 5: the nine checks, each with expected / actual / difference. A failing
+ * Step 5: the ten checks, each with expected / actual / difference. A failing
  * check opens to its details. Review (and so Import) waits until every check
  * passes and readiness is 100%.
  */
