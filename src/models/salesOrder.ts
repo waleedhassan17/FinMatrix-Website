@@ -8,20 +8,92 @@ import type { DiscountType, FormLineItem } from '@/models/document';
 import type { DocumentLine } from '@/serializers/documentLines';
 import { toDecimal } from '@/utils/money';
 
+/**
+ * open       nothing shipped or invoiced yet
+ * partial    some shipped or invoiced, more to come
+ * fulfilled  everything shipped, not all of it invoiced yet
+ * invoiced   everything invoiced (an order invoiced in full before partial
+ *            invoicing existed may still have goods to deliver)
+ * closed     short-closed: the rest will not ship (can be reopened)
+ * cancelled  withdrawn before anything shipped or was invoiced
+ */
 export type SalesOrderStatus =
   | 'open'
   | 'partial'
   | 'fulfilled'
   | 'invoiced'
+  | 'closed'
   | 'cancelled';
 
-/** A sales-order line carries how much of it has shipped. */
+/** A sales-order line carries how much of it has shipped and been invoiced. */
 export interface SalesOrderLine extends DocumentLine {
   /** Cumulative quantity shipped so far. The wire field of the same name. */
   quantityFulfilled: number;
+  /** Billed on the order's live invoices. */
+  quantityInvoiced: number;
+  /** Shipped but not invoiced yet — what the next invoice bills. */
+  toInvoice: number;
+  /** Not delivered yet (0 once the order is closed or cancelled). */
+  toShip: number;
   /** Stock lines: on hand now, and the part of this line stock cannot cover. */
   onHand: number | null;
   backorderQty: number;
+}
+
+/** One invoice raised from the order (an order can have several). */
+export interface SalesOrderInvoiceRef {
+  id: string;
+  invoiceNumber: string;
+  invoiceDate: string;
+  dueDate: string;
+  total: number;
+  balance: number;
+  status: string;
+}
+
+/** What the next invoice raised from the order would bill. */
+export interface SalesOrderNextInvoice {
+  /**
+   * `ship_and_invoice`: nothing has shipped yet, so invoicing ships and bills
+   * the whole order in one step. `shipped`: it bills what has shipped and is
+   * not invoiced yet.
+   */
+  mode: 'ship_and_invoice' | 'shipped';
+  /** After it, every line is billed in full. */
+  isFinal: boolean;
+  lines: Array<{
+    salesOrderLineId: string;
+    description: string;
+    quantity: number;
+    unitPrice: number;
+    taxRate: number;
+  }>;
+  subtotal: number;
+  discountAmount: number;
+  taxAmount: number;
+  total: number;
+}
+
+export interface SalesOrderTotals {
+  ordered: number;
+  shipped: number;
+  invoiced: number;
+  toInvoice: number;
+  toShip: number;
+  /** Billed ahead of delivery (orders invoiced in full before partial invoicing). */
+  billedNotShipped: number;
+}
+
+/** What may be done with the order now — decided by the server. */
+export interface SalesOrderActions {
+  ship: boolean;
+  invoice: boolean;
+  close: boolean;
+  reopen: boolean;
+  cancel: boolean;
+  delete: boolean;
+  edit: boolean;
+  editLines: boolean;
 }
 
 /** A line short of stock, as the server reports it when a backorder needs confirming. */
@@ -53,8 +125,19 @@ export interface SalesOrder {
   notes: string;
   /** Set when this order came from an estimate. */
   sourceEstimateId: string | null;
-  /** Set once invoiced — use it to deep-link. */
+  /** The latest live invoice raised from it. `invoices` lists them all. */
   invoiceId: string | null;
+  /** Every invoice raised from this order, oldest first (detail only). */
+  invoices: SalesOrderInvoiceRef[];
+  /** What invoicing now would bill; null when there is nothing to bill (detail only). */
+  nextInvoice: SalesOrderNextInvoice | null;
+  /** Unit totals across the lines (detail only). */
+  totals: SalesOrderTotals | null;
+  /** What may be done now (detail only; list rows fall back to the status). */
+  actions: SalesOrderActions | null;
+  /** Set when a delivery created this order: it ships and invoices it itself. */
+  deliveryId: string | null;
+  deliveryReference: string | null;
   createdAt: string;
   updatedAt: string;
   /** Some stock line is short: the order holds goods on backorder. */
@@ -77,12 +160,16 @@ export const SALES_ORDER_STATUS_LABELS: Record<SalesOrderStatus, string> = {
   partial: 'Partial',
   fulfilled: 'Fulfilled',
   invoiced: 'Invoiced',
+  closed: 'Closed',
   cancelled: 'Cancelled',
 };
 
-/** Server refuses PATCH on `invoiced` and `cancelled` (400 CANNOT_EDIT). */
+const isWorking = (status: SalesOrderStatus): boolean =>
+  status === 'open' || status === 'partial' || status === 'fulfilled';
+
+/** Server refuses PATCH on `invoiced`, `closed` and `cancelled` (400 CANNOT_EDIT). */
 export const isSalesOrderEditable = (status: SalesOrderStatus): boolean =>
-  status !== 'invoiced' && status !== 'cancelled';
+  isWorking(status);
 
 /**
  * May the LINES be edited?
@@ -97,11 +184,45 @@ export const areLinesEditable = (status: SalesOrderStatus): boolean =>
   status === 'open';
 
 export const isFulfillable = (status: SalesOrderStatus): boolean =>
-  status !== 'invoiced' && status !== 'cancelled';
+  isWorking(status);
 
-/** `convert-to-invoice` is refused only on `invoiced` and `cancelled`. */
+/** `convert-to-invoice` is refused on `invoiced`, `closed` and `cancelled`. */
 export const isInvoiceable = (status: SalesOrderStatus): boolean =>
-  status !== 'invoiced' && status !== 'cancelled';
+  isWorking(status);
+
+/**
+ * What may be done with the order now. The detail response carries the
+ * server's own answer — use it; a list row (or an older server) falls back to
+ * the status alone.
+ */
+export const salesOrderActions = (order: SalesOrder): SalesOrderActions => {
+  if (order.actions) return order.actions;
+  const s = order.status;
+  const working = isWorking(s);
+  return {
+    ship: working && !isFullyFulfilled(order),
+    invoice: working,
+    close: s === 'partial',
+    reopen: s === 'closed',
+    cancel: s === 'open',
+    delete: s === 'open',
+    edit: working,
+    editLines: s === 'open',
+  };
+};
+
+/** Units billed but not delivered yet — orders invoiced in full the old way. */
+export const billedNotShipped = (order: SalesOrder): number =>
+  order.totals?.billedNotShipped ??
+  order.lines.reduce(
+    (sum, l) => sum + Math.max(l.quantityInvoiced - l.quantityFulfilled, 0),
+    0,
+  );
+
+/** Units still to deliver on the order. */
+export const unitsToShip = (order: SalesOrder): number =>
+  order.totals?.toShip ??
+  order.lines.reduce((sum, l) => sum + remainingOf(l), 0);
 
 // ─── Fulfilment ─────────────────────────────────────────────────────────
 
@@ -110,6 +231,8 @@ export interface FulfilDraft {
   description: string;
   ordered: number;
   alreadyFulfilled: number;
+  /** Already billed — shown so the user sees which goods are paid for. */
+  invoiced: number;
   /** What the user is shipping now. Defaults to the remainder. */
   shipping: string;
 }
@@ -126,6 +249,7 @@ export const buildFulfilDrafts = (lines: SalesOrderLine[]): FulfilDraft[] =>
     description: l.description || l.itemName,
     ordered: l.quantity,
     alreadyFulfilled: l.quantityFulfilled,
+    invoiced: l.quantityInvoiced ?? 0,
     shipping: String(remainingOf(l)),
   }));
 

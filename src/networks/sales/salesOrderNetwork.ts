@@ -152,9 +152,15 @@ export const updateSalesOrder = async (
  * server assigns rather than adds. Build the payload with
  * `fulfilDraftsToPayload`, which does that sum.
  *
- * Fulfilment moves **no stock**: this module never touches inventory, and
- * `quantityCommitted` is not written anywhere in the codebase. It is a
- * bookkeeping counter. Stock moves once, at convert-to-invoice.
+ * Fulfilment moves **no stock** on the books: stock moves when the invoice
+ * for those goods posts. It is still refused (422 INSUFFICIENT_STOCK) when the
+ * goods are not physically on the shelf — goods shipped on other orders but
+ * not invoiced yet count as gone. The running total cannot go below what has
+ * been invoiced (400 SHIPPED_BELOW_INVOICED).
+ *
+ * An order invoiced in full before partial invoicing existed can still record
+ * the rest of its delivery here; those units are already billed, so they skip
+ * the stock and credit checks.
  *
  * The whole call runs in a transaction, so one OVER_FULFILLED line rolls back
  * every other line in the same request.
@@ -176,20 +182,28 @@ export const fulfillSalesOrder = async (
 };
 
 /**
- * Convert to an invoice. **This posts**, exactly as the estimate route does —
- * and with no maker-checker branch, so it is admin-only in our UI.
+ * Invoice the order. **This posts**: the sale is recognised and the billed
+ * stock leaves the books.
  *
- * It bills the **full ordered quantity** regardless of how much has actually
- * been fulfilled. There is no partial invoicing.
+ * It bills what has **shipped and is not invoiced yet** — `order.nextInvoice`
+ * previews exactly that. An order with nothing shipped yet is shipped and
+ * invoiced in full in one step. The order stays open for whatever has not
+ * shipped; `closeRemaining` closes it instead (the rest will not ship).
+ *
+ * The owner posts directly; a staff member's call files an approval request
+ * (`pending: true`) that bills exactly what was previewed, or is refused if
+ * the order changed before the owner approved it.
  */
 export const convertSalesOrderToInvoice = async (
   id: string,
   dueDate?: string,
   creditOverrideReason?: string,
+  closeRemaining = false,
 ): Promise<{ salesOrder: SalesOrder | null; invoiceId: string | null; pending: boolean }> => {
   try {
     const response = await api.post(`/sales-orders/${id}/convert-to-invoice`, {
       ...(dueDate ? { dueDate } : {}),
+      ...(closeRemaining ? { closeRemaining: true } : {}),
       ...(creditOverrideReason ? { creditOverride: { reason: creditOverrideReason } } : {}),
     });
     const payload = unwrapEnvelope(response.data);
@@ -202,9 +216,35 @@ export const convertSalesOrderToInvoice = async (
 };
 
 /**
+ * Close the order short: what has not shipped will not ship. Posts nothing, so
+ * staff may do it too. Refused while goods shipped on it are not invoiced
+ * (SO_HAS_UNINVOICED_SHIPMENTS), and on an order with nothing shipped
+ * (SO_NOTHING_TO_CLOSE — cancel it instead). Reversible with `reopenSalesOrder`.
+ */
+export const closeSalesOrder = async (id: string, reason?: string): Promise<SalesOrder> => {
+  try {
+    const response = await api.post(`/sales-orders/${id}/close`, reason?.trim() ? { reason: reason.trim() } : {});
+    return mapSalesOrder(unwrapEnvelope(response.data));
+  } catch (e) {
+    throw toApiError(e);
+  }
+};
+
+/** Reopen a closed order: it goes back to where its shipments and invoices put it. */
+export const reopenSalesOrder = async (id: string): Promise<SalesOrder> => {
+  try {
+    const response = await api.post(`/sales-orders/${id}/reopen`, {});
+    return mapSalesOrder(unwrapEnvelope(response.data));
+  } catch (e) {
+    throw toApiError(e);
+  }
+};
+
+/**
  * Cancel the order. No body, no reason captured, and **irreversible** — there
- * is no un-cancel route and `update` refuses cancelled orders. It releases
- * nothing, because nothing was ever reserved.
+ * is no un-cancel route and `update` refuses cancelled orders. Only an order
+ * with nothing shipped or invoiced can be cancelled; one that has started is
+ * closed instead.
  */
 export const cancelSalesOrder = async (id: string): Promise<SalesOrder> => {
   try {
@@ -215,7 +255,7 @@ export const cancelSalesOrder = async (id: string): Promise<SalesOrder> => {
   }
 };
 
-/** Admin only. Refused once invoiced (CANNOT_DELETE). */
+/** Admin only. Refused once anything has shipped or been invoiced (CANNOT_DELETE). */
 export const deleteSalesOrder = async (id: string): Promise<void> => {
   try {
     await api.delete(`/sales-orders/${id}`);

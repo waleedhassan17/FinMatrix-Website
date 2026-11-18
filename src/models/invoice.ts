@@ -64,6 +64,9 @@ export interface Invoice {
   amountPaid: number;
   balance: number;
   notes: string;
+  /** The sales order it bills shipments of, when raised from one (detail only). */
+  salesOrderId: string | null;
+  salesOrderNumber: string | null;
   createdAt: string;
   updatedAt: string;
   /** FinMatrix Connect: the newest WhatsApp message about it (lists and detail). */

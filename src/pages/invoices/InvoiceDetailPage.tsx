@@ -407,6 +407,15 @@ export default function InvoiceDetailPage() {
             <KeyValueList
               items={[
                 { label: 'Invoice #', value: invoice.invoiceNumber || '—' },
+                {
+                  label: 'Sales order',
+                  value: (
+                    <Link to={`/sales-orders/${invoice.salesOrderId}`} className="text-primary hover:underline">
+                      {invoice.salesOrderNumber || 'View sales order'}
+                    </Link>
+                  ),
+                  hidden: !invoice.salesOrderId,
+                },
                 { label: 'Created', value: docDate(invoice.createdAt), hidden: !invoice.createdAt },
                 { label: 'Last updated', value: docDate(invoice.updatedAt), hidden: !invoice.updatedAt },
                 { label: 'Lines', value: String(invoice.lines.length) },

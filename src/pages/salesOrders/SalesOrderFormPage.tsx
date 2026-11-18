@@ -230,7 +230,7 @@ export default function SalesOrderFormPage() {
         readOnlyNote={
           linesEditable
             ? undefined
-            : 'Lines are locked because this order has started shipping. Changing them would reset the fulfilment record on every line. Dates and notes can still be edited.'
+            : 'Lines and discount are locked because this order has started shipping or invoicing. Changing them would reset the shipment record and no longer match the invoices raised. Dates and notes can still be edited.'
         }
       />
 

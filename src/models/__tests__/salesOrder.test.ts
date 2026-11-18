@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   areLinesEditable,
+  billedNotShipped,
   buildFulfilDrafts,
   fulfilDraftsToPayload,
   fulfilledLineCount,
@@ -9,6 +10,8 @@ import {
   isFullyFulfilled,
   overFulfilledDrafts,
   remainingOf,
+  salesOrderActions,
+  unitsToShip,
   type FulfilDraft,
   type SalesOrder,
   type SalesOrderLine,
@@ -18,6 +21,7 @@ const line = (
   id: string,
   quantity: number,
   quantityFulfilled: number,
+  quantityInvoiced = 0,
 ): SalesOrderLine => ({
   id,
   itemId: '',
@@ -28,6 +32,9 @@ const line = (
   taxRate: 0,
   amount: quantity * 100,
   quantityFulfilled,
+  quantityInvoiced,
+  toInvoice: Math.max(quantityFulfilled - quantityInvoiced, 0),
+  toShip: Math.max(quantity - quantityFulfilled, 0),
   onHand: null,
   backorderQty: 0,
 });
@@ -79,6 +86,7 @@ describe('fulfilDraftsToPayload — cumulative, not incremental', () => {
     description: lineId,
     ordered,
     alreadyFulfilled,
+    invoiced: 0,
     shipping,
   });
 
@@ -132,7 +140,7 @@ describe('overFulfilledDrafts', () => {
     ordered: number,
     alreadyFulfilled: number,
     shipping: string,
-  ): FulfilDraft => ({ lineId, description: lineId, ordered, alreadyFulfilled, shipping });
+  ): FulfilDraft => ({ lineId, description: lineId, ordered, alreadyFulfilled, invoiced: 0, shipping });
 
   it('flags a line whose CUMULATIVE total exceeds the order', () => {
     // 8 already shipped + 5 more = 13 against 10 ordered. The shipment alone
@@ -196,6 +204,83 @@ describe('areLinesEditable', () => {
     expect(areLinesEditable('partial')).toBe(false);
     expect(areLinesEditable('fulfilled')).toBe(false);
     expect(areLinesEditable('invoiced')).toBe(false);
+    expect(areLinesEditable('closed')).toBe(false);
     expect(areLinesEditable('cancelled')).toBe(false);
+  });
+});
+
+/**
+ * Partial invoicing. An order half shipped and invoiced used to be frozen as
+ * 'invoiced' with no way to ship the rest; the detail page now follows the
+ * server's `actions`, and only a list row falls back to the status.
+ */
+describe('salesOrderActions', () => {
+  const order = (
+    status: SalesOrder['status'],
+    lines: SalesOrderLine[],
+    actions: SalesOrder['actions'] = null,
+  ) => ({ status, lines, actions, totals: null }) as unknown as SalesOrder;
+
+  it("uses the server's answer when the detail carries one", () => {
+    const fromServer = {
+      ship: true,
+      invoice: false,
+      close: false,
+      reopen: false,
+      cancel: false,
+      delete: false,
+      edit: false,
+      editLines: false,
+    };
+    // An order invoiced in full the old way with goods still to deliver.
+    expect(salesOrderActions(order('invoiced', [line('a', 10, 4, 10)], fromServer))).toBe(fromServer);
+  });
+
+  it('falls back to the status: a partial order ships, invoices and closes', () => {
+    const a = salesOrderActions(order('partial', [line('a', 10, 5, 5)]));
+    expect(a).toMatchObject({ ship: true, invoice: true, close: true, cancel: false, editLines: false });
+  });
+
+  it('a closed order only reopens', () => {
+    const a = salesOrderActions(order('closed', [line('a', 10, 5, 5)]));
+    expect(a).toMatchObject({ ship: false, invoice: false, close: false, reopen: true, edit: false });
+  });
+
+  it('only an untouched order cancels or deletes', () => {
+    expect(salesOrderActions(order('open', [line('a', 10, 0)]))).toMatchObject({ cancel: true, delete: true });
+    expect(salesOrderActions(order('fulfilled', [line('a', 10, 10)]))).toMatchObject({
+      cancel: false,
+      delete: false,
+      ship: false,
+      invoice: true,
+    });
+  });
+});
+
+describe('what is left on the order', () => {
+  const order = (lines: SalesOrderLine[]) => ({ lines, totals: null }) as unknown as SalesOrder;
+
+  it('counts units billed ahead of delivery', () => {
+    expect(billedNotShipped(order([line('a', 10, 4, 10), line('b', 2, 2, 2)]))).toBe(6);
+  });
+
+  it('counts units still to ship', () => {
+    expect(unitsToShip(order([line('a', 10, 5, 5), line('b', 3, 0)]))).toBe(8);
+  });
+
+  it("prefers the server's totals", () => {
+    const withTotals = {
+      lines: [line('a', 10, 5, 5)],
+      totals: { ordered: 10, shipped: 5, invoiced: 5, toInvoice: 0, toShip: 0, billedNotShipped: 0 },
+    } as unknown as SalesOrder;
+    // A closed order: nothing more will ship even though 5 never did.
+    expect(unitsToShip(withTotals)).toBe(0);
+  });
+});
+
+describe('buildFulfilDrafts on a partly invoiced order', () => {
+  it('shows what is already invoiced and defaults to the remainder', () => {
+    const [d] = buildFulfilDrafts([line('a', 10, 5, 5)]);
+    expect(d).toMatchObject({ alreadyFulfilled: 5, invoiced: 5, shipping: '5' });
   });
 });
