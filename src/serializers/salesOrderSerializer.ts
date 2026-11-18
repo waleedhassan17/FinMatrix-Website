@@ -5,9 +5,13 @@
 import type { DiscountType } from '@/models/document';
 import type {
   SalesOrder,
+  SalesOrderActions,
   SalesOrderFormData,
+  SalesOrderInvoiceRef,
   SalesOrderLine,
+  SalesOrderNextInvoice,
   SalesOrderStatus,
+  SalesOrderTotals,
 } from '@/models/salesOrder';
 import {
   asRaw,
@@ -25,8 +29,76 @@ const mapSalesOrderLine = (raw: unknown): SalesOrderLine => {
   return {
     ...mapDocumentLine(raw),
     quantityFulfilled: toNumber(r.quantityFulfilled as never),
+    quantityInvoiced: toNumber((r.quantityInvoiced ?? 0) as never),
+    toInvoice: toNumber((r.toInvoice ?? 0) as never),
+    toShip: toNumber((r.toShip ?? 0) as never),
     onHand: stock ? toNumber(stock.onHand as never) : null,
     backorderQty: toNumber((r.backorderQty ?? 0) as never),
+  };
+};
+
+const mapInvoiceRef = (raw: unknown): SalesOrderInvoiceRef => {
+  const r = asRaw(raw);
+  return {
+    id: str(r.id),
+    invoiceNumber: str(r.invoiceNumber),
+    invoiceDate: str(r.invoiceDate),
+    dueDate: str(r.dueDate),
+    total: toNumber(r.total as never),
+    balance: toNumber(r.balance as never),
+    status: str(r.status),
+  };
+};
+
+const mapNextInvoice = (raw: unknown): SalesOrderNextInvoice | null => {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = asRaw(raw);
+  const lines = Array.isArray(r.lines) ? r.lines : [];
+  return {
+    mode: str(r.mode) === 'ship_and_invoice' ? 'ship_and_invoice' : 'shipped',
+    isFinal: r.isFinal === true,
+    lines: lines.map((l) => {
+      const x = asRaw(l);
+      return {
+        salesOrderLineId: str(x.salesOrderLineId),
+        description: str(x.description),
+        quantity: toNumber(x.quantity as never),
+        unitPrice: toNumber(x.unitPrice as never),
+        taxRate: toNumber(x.taxRate as never),
+      };
+    }),
+    subtotal: toNumber(r.subtotal as never),
+    discountAmount: toNumber(r.discountAmount as never),
+    taxAmount: toNumber(r.taxAmount as never),
+    total: toNumber(r.total as never),
+  };
+};
+
+const mapTotals = (raw: unknown): SalesOrderTotals | null => {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = asRaw(raw);
+  return {
+    ordered: toNumber(r.ordered as never),
+    shipped: toNumber(r.shipped as never),
+    invoiced: toNumber(r.invoiced as never),
+    toInvoice: toNumber(r.toInvoice as never),
+    toShip: toNumber(r.toShip as never),
+    billedNotShipped: toNumber((r.billedNotShipped ?? 0) as never),
+  };
+};
+
+const mapActions = (raw: unknown): SalesOrderActions | null => {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = asRaw(raw);
+  return {
+    ship: r.ship === true,
+    invoice: r.invoice === true,
+    close: r.close === true,
+    reopen: r.reopen === true,
+    cancel: r.cancel === true,
+    delete: r.delete === true,
+    edit: r.edit === true,
+    editLines: r.editLines === true,
   };
 };
 
@@ -54,6 +126,12 @@ export const mapSalesOrder = (raw: unknown): SalesOrder => {
     notes: str(r.notes),
     sourceEstimateId: r.sourceEstimateId ? str(r.sourceEstimateId) : null,
     invoiceId: r.invoiceId ? str(r.invoiceId) : null,
+    invoices: Array.isArray(r.invoices) ? r.invoices.map(mapInvoiceRef) : [],
+    nextInvoice: mapNextInvoice(r.nextInvoice),
+    totals: mapTotals(r.totals),
+    actions: mapActions(r.actions),
+    deliveryId: r.deliveryId ? str(r.deliveryId) : null,
+    deliveryReference: r.deliveryReference ? str(r.deliveryReference) : null,
     hasBackorder: r.hasBackorder === true,
     createdAt: str(r.createdAt),
     updatedAt: str(r.updatedAt),

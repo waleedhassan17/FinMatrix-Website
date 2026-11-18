@@ -12,6 +12,7 @@ import {
   salesOrderFormToPayload,
   salesOrderFormToUpdatePayload,
   salesOrderListSerializer,
+  salesOrderSingleSerializer,
 } from '@/serializers/salesOrderSerializer';
 
 const lines = [
@@ -170,6 +171,56 @@ describe('list serializers', () => {
     ]);
     expect(rows[0].lines[0].quantity).toBe(10);
     expect(rows[0].lines[0].quantityFulfilled).toBe(4);
+  });
+
+  it('map what a partly invoiced sales order has billed, has left, and may do next', () => {
+    const order = salesOrderSingleSerializer({
+      id: 's1',
+      status: 'partial',
+      invoiceId: 'i1',
+      lines: [
+        {
+          id: 'l1',
+          quantity: '10.0000',
+          quantityFulfilled: '8.0000',
+          quantityInvoiced: '5.0000',
+          toInvoice: '3.0000',
+          toShip: '2.0000',
+        },
+      ],
+      invoices: [
+        { id: 'i1', invoiceNumber: 'INV-2026-0001', total: '500.0000', balance: '500.0000', status: 'sent' },
+      ],
+      nextInvoice: {
+        mode: 'shipped',
+        isFinal: false,
+        lines: [{ salesOrderLineId: 'l1', description: 'Paint', quantity: '3.0000', unitPrice: '100.0000', taxRate: '0' }],
+        subtotal: '300.0000',
+        discountAmount: '0',
+        taxAmount: '0',
+        total: '300.0000',
+      },
+      totals: { ordered: '10', shipped: '8', invoiced: '5', toInvoice: '3', toShip: '2', billedNotShipped: '0' },
+      actions: { ship: true, invoice: true, close: false, reopen: false, cancel: false, delete: false, edit: true, editLines: false },
+      deliveryId: null,
+    })!;
+    expect(order.lines[0]).toMatchObject({ quantityInvoiced: 5, toInvoice: 3, toShip: 2 });
+    expect(order.invoices).toEqual([
+      expect.objectContaining({ id: 'i1', invoiceNumber: 'INV-2026-0001', total: 500 }),
+    ]);
+    expect(order.nextInvoice).toMatchObject({ mode: 'shipped', isFinal: false, total: 300 });
+    expect(order.nextInvoice!.lines[0].quantity).toBe(3);
+    expect(order.totals).toMatchObject({ toInvoice: 3, toShip: 2 });
+    expect(order.actions).toMatchObject({ ship: true, close: false, editLines: false });
+    expect(order.deliveryId).toBeNull();
+  });
+
+  it('leave the detail-only fields empty on a list row', () => {
+    const [row] = salesOrderListSerializer([{ id: 's1', status: 'closed', lines: [] }]);
+    expect(row.status).toBe('closed');
+    expect(row.invoices).toEqual([]);
+    expect(row.nextInvoice).toBeNull();
+    expect(row.actions).toBeNull();
   });
 });
 

@@ -144,10 +144,10 @@ This is the module's reason for existing.
 - [ ] Convert an estimate whose line is short on stock. You should get
       **`INSUFFICIENT_STOCK`** naming the item and the shortfall — not a generic error.
 
-### 3. Sales orders and fulfilment — admin ⭐
+### 3. Sales orders: shipping, partial invoicing, closing — admin ⭐
 
-The fulfil dialog is net-new UI the mobile app does not have, so it has no counterpart to
-check against. These four steps are the ones that matter.
+An order is invoiced as its goods ship, in as many invoices as it takes, and stays open
+for whatever has not shipped. These are the steps that matter.
 
 - [ ] Create a sales order with three lines.
 - [ ] **Record shipment**: ship part of line 1 and part of line 2, leave line 3 alone.
@@ -157,19 +157,34 @@ check against. These four steps are the ones that matter.
       total, not a delta; this is the single most likely thing to be silently wrong.)*
 - [ ] Try to ship more than was ordered. The dialog should refuse before sending, and
       explain that the server rejects the whole shipment if any one line is over.
-- [ ] Open the partially-shipped order for edit. **Lines are locked**, with the reason
-      shown; dates and notes still editable. *(Sending lines would reset every line's
-      fulfilment to zero — the server does this silently.)*
-- [ ] Convert the partially-shipped order to an invoice. The dialog must warn that it
-      bills and decrements the **full ordered quantity** — there is no partial invoicing.
-- [ ] Cancel a different order. It confirms destructively and says it cannot be undone.
+- [ ] Open the partially-shipped order for edit. **Lines and discount are locked**, with
+      the reason shown; dates and notes still editable.
+- [ ] **Invoice shipped goods** on the partially-shipped order. The dialog lists only the
+      shipped, not-yet-invoiced quantities and their total. Confirm the invoice bills
+      exactly those, stock falls by exactly those, and the order **stays `partial`** with
+      **Record shipment** still offered for the rest. The Invoices panel lists the invoice.
+- [ ] Ship the rest and **invoice again**. The second invoice bills only the new goods;
+      the order becomes `invoiced`, with two invoices listed.
+- [ ] On another order: ship part, then invoice with **"Close the rest of this order"**
+      ticked. The order becomes `closed`; **Reopen order** is in the More menu.
+- [ ] **Close order** on a partial order with shipped goods not yet invoiced: the dialog
+      says to invoice them first and will not close.
+- [ ] Void one of the order's invoices. The order reopens for billing (its goods show as
+      shipped, to invoice again). Voiding the same invoice twice is refused.
+- [ ] An untouched (`open`) order: **Convert to invoice** ships and invoices everything in
+      one step, as before.
+- [ ] Cancel a different, untouched order. It confirms destructively and says it cannot be
+      undone. An order with shipments or invoices offers **Close** instead of Cancel.
+- [ ] The invoice page shows **Sales order SO-…** and links back.
 
 ### 4. The approval gate — staff ⭐
 
 - [ ] As **staff**, open an estimate. **Convert to invoice is absent**; Convert to sales
       order is present. A note explains that invoicing is the owner's action.
-- [ ] As **staff**, open a sales order. **Convert to invoice is absent**; Record shipment
-      is present.
+- [ ] As **staff**, open a sales order. The invoice button reads **Request invoice** and
+      files an approval; Record shipment and Close order are present (they post nothing).
+      If the order changes before the owner approves, the approval is refused and the
+      request stays pending.
 - [ ] As **staff**, create an estimate and a sales order. Both save **directly**, with no
       approval wording anywhere — `estimate.create` and `salesOrder.create` are `direct`.
 

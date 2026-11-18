@@ -17,7 +17,7 @@ import { fulfilledLineCount, type SalesOrder } from '@/models/salesOrder';
 import { getSalesOrderPage } from '@/networks/sales/salesOrderNetwork';
 import { formatMoney } from '@/utils/money';
 
-type Tab = 'all' | 'open' | 'partial' | 'fulfilled' | 'invoiced' | 'cancelled';
+type Tab = 'all' | 'open' | 'partial' | 'fulfilled' | 'invoiced' | 'closed' | 'cancelled';
 
 const TABS: [Tab, string][] = [
   ['all', 'All'],
@@ -25,6 +25,7 @@ const TABS: [Tab, string][] = [
   ['partial', 'Partial'],
   ['fulfilled', 'Fulfilled'],
   ['invoiced', 'Invoiced'],
+  ['closed', 'Closed'],
   ['cancelled', 'Cancelled'],
 ];
 
