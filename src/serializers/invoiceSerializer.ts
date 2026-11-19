@@ -75,6 +75,8 @@ export const mapInvoice = (raw: unknown): Invoice => {
     // payload still renders a correct figure.
     balance: r.balance != null ? toNumber(r.balance as never) : total - amountPaid,
     notes: str(r.notes),
+    salesOrderId: r.salesOrderId ? str(r.salesOrderId) : null,
+    salesOrderNumber: r.salesOrderNumber ? str(r.salesOrderNumber) : null,
     createdAt: str(r.createdAt),
     updatedAt: str(r.updatedAt),
     lastMessageStatus: lastMessageStatusSerializer(r.lastMessageStatus),

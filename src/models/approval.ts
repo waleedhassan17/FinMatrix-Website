@@ -389,14 +389,15 @@ const BASE_KEYS: string[][] = [
 ];
 
 const TYPE_KEYS: Record<ApprovalType, string[][]> = {
-  invoice: [['invoices'], ['customers']],
+  // A sales order's invoice also moves the order (and the stock it bills).
+  invoice: [['invoices'], ['customers'], ['sales-orders'], ['inventory']],
   invoice_payment: [['payments'], ['invoices'], ['customers']],
   bill_payment: [['bills'], ['vendors']],
   po: [['purchase-orders']],
   credit_memo: [['credit-memos'], ['invoices'], ['customers'], ['payments']],
   vendor_credit: [['vendor-credits'], ['bills'], ['vendors']],
   journal: [],
-  void: [['invoices'], ['credit-memos'], ['vendor-credits'], ['inventory'], ['customers'], ['vendors']],
+  void: [['invoices'], ['credit-memos'], ['vendor-credits'], ['inventory'], ['customers'], ['vendors'], ['sales-orders']],
   adjustment: [['inventory']],
   delivery_undo: [['inventory'], ['invoices']],
   delivery_advance: [['deliveries'], ['delivery-personnel'], ['inventory'], ['sales-orders'], ['payments'], ['customers']],

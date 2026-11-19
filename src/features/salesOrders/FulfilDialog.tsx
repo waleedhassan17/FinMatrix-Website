@@ -16,11 +16,10 @@ import {
 /**
  * Record a shipment, line by line.
  *
- * The mobile app has no equivalent — it offers only "Mark Fully Fulfilled",
- * which sends every line at its full ordered quantity, so a partial shipment
- * cannot be recorded there at all even though the API and the data model both
- * support one. A warehouse ships partially all the time, and a desktop has room
- * for the table, so this exists.
+ * A warehouse ships partially all the time: each shipment can be invoiced on
+ * its own, and the order stays open for the rest. On an order invoiced in full
+ * before partial invoicing existed, this records the delivery of goods that
+ * are already billed (the Invoiced column shows which).
  *
  * The subtlety worth knowing: the API's `quantityFulfilled` is the **cumulative
  * total** for the line, not the amount being shipped now. The user types what
@@ -91,6 +90,9 @@ export function FulfilDialog({
                     Shipped
                   </th>
                   <th className="py-sm text-right text-overline text-text-secondary">
+                    Invoiced
+                  </th>
+                  <th className="py-sm text-right text-overline text-text-secondary">
                     Remaining
                   </th>
                   <th className="py-sm text-right text-overline text-text-secondary">
@@ -112,6 +114,9 @@ export function FulfilDialog({
                       </td>
                       <td className="py-sm text-right text-body-sm text-text-secondary tabular">
                         {d.alreadyFulfilled}
+                      </td>
+                      <td className="py-sm text-right text-body-sm text-text-secondary tabular">
+                        {d.invoiced}
                       </td>
                       <td className="py-sm text-right text-body-sm text-text-secondary tabular">
                         {remaining}
