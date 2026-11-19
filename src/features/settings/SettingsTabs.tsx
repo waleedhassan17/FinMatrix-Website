@@ -17,6 +17,8 @@ export function SettingsTabs() {
     ['/settings/company', 'Company'],
     ...(multiUser ? ([['/settings/users', 'Team']] as Array<[string, string]>) : []),
     ...(whatsapp ? ([['/settings/whatsapp', 'WhatsApp']] as Array<[string, string]>) : []),
+    ['/settings/backup', 'Backup & export'],
+    ['/settings/migration', 'Move to FinMatrix'],
   ];
 
   return (

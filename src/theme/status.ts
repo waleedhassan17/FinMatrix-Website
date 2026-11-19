@@ -57,6 +57,15 @@ const STATUS_TIER_OF: Record<string, StatusTier> = {
   busy: 'warning',
   // ── info ──
   open: 'info',
+  // Backup jobs and migrations in progress.
+  queued: 'info',
+  running: 'info',
+  uploaded: 'info',
+  mapped: 'info',
+  ready: 'success',
+  validated: 'warning',
+  committed: 'success',
+  rolled_back: 'neutral',
   sent: 'info',
   submitted: 'info',
   new: 'info',

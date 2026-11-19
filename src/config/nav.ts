@@ -268,6 +268,17 @@ export const ADMIN_NAV: NavGroup[] = [
         capability: 'settings.manage',
         feature: 'whatsappConnect',
       },
+      // Owner only on every plan: absent from STAFF_NAV, @Roles('admin') on the server.
+      {
+        title: 'Backup & export',
+        path: '/settings/backup',
+        capability: 'settings.manage',
+      },
+      {
+        title: 'Move to FinMatrix',
+        path: '/settings/migration',
+        capability: 'settings.manage',
+      },
     ],
   },
 ];
