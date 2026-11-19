@@ -90,6 +90,7 @@ import {
   ModulePlaceholder,
   MyRequestsPage,
   OpeningBalancePage,
+  DaySummaryPage,
   ProfitLossPage,
   TrialBalancePage,
   PODetailPage,
@@ -537,6 +538,8 @@ export const router = createBrowserRouter([
           // still resolves — for bookmarks and typed URLs — to the first report.
           // Staff reach it through STAFF_EXTRA_PREFIXES in routeAccess.
           { path: 'reports', element: <Navigate to="/reports/profit-loss" replace /> },
+          // The day at a glance; staff get their own entries ("My day").
+          { path: 'reports/day-summary', element: <DaySummaryPage /> },
           { path: 'reports/profit-loss', element: <ProfitLossPage /> },
           { path: 'reports/balance-sheet', element: <BalanceSheetPage /> },
           { path: 'reports/trial-balance', element: <TrialBalancePage /> },

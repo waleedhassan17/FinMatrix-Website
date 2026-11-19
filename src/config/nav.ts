@@ -188,6 +188,8 @@ const DELIVERY_ITEMS: NavItem<StaffNavPath>[] = [
 ];
 
 const REPORT_ITEMS: NavItem<StaffNavPath>[] = [
+  // First: the report owners open every evening. Staff see their own entries.
+  { title: 'Day Summary', path: '/reports/day-summary' },
   { title: 'Profit & Loss', path: '/reports/profit-loss' },
   { title: 'Balance Sheet', path: '/reports/balance-sheet' },
   { title: 'Trial Balance', path: '/reports/trial-balance' },
