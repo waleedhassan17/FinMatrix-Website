@@ -96,6 +96,10 @@ export default function AccountFormPage() {
    */
   const structureEditable = isEditing && (existing?.structure.editable ?? false);
   const structureLocked = isEditing && !structureEditable;
+  // A system account's number may change while nothing refers to it (posting
+  // finds it by what it is for); its type and kind never.
+  const numberLocked = isEditing && !(existing?.structure.numberEditable ?? false);
+  const typeLocked = isEditing && !(existing?.structure.typeEditable ?? false);
   const isSystem = isEditing && (existing?.account?.isSystemAccount ?? false);
 
   const number = useAccountNumber(
@@ -110,9 +114,9 @@ export default function AccountFormPage() {
   // user has not taken it over. Auto-assigning into a LOCKED field is what the
   // app does, and it is the reason a user cannot put 6150 beside their 6100.
   useEffect(() => {
-    if (structureLocked || numberTouched || !number.suggested) return;
+    if (numberLocked || numberTouched || !number.suggested) return;
     setForm((f) => ({ ...f, accountNumber: number.suggested }));
-  }, [structureLocked, numberTouched, number.suggested]);
+  }, [numberLocked, numberTouched, number.suggested]);
 
   const parentOptions = useMemo(
     () => [
@@ -190,7 +194,7 @@ export default function AccountFormPage() {
     const errs = validateAccountForm(form, accounts, {
       isEditing,
       editingId: accountId,
-      structureEditable,
+      structureEditable: !numberLocked,
     });
     setErrors(errs);
     if (Object.keys(errs).length === 0) save.mutate();
@@ -215,9 +219,13 @@ export default function AccountFormPage() {
         <p className="text-body-sm text-text-secondary">
           {!isEditing
             ? 'Accounts are grouped by what they represent, and numbered by convention within each group.'
-            : structureEditable
-              ? 'Nothing refers to this account yet, so its type and number can still change.'
-              : 'Its type and number are fixed — something already refers to this account.'}
+            : isSystem || existing?.account?.systemRole
+              ? numberLocked
+                ? 'A system account in use: its type, kind and number are fixed. Its name can change.'
+                : 'A system account: automatic posting relies on its type and kind, so those are fixed. Its number and name can change while nothing refers to it.'
+              : structureEditable
+                ? 'Nothing refers to this account yet, so its type and number can still change.'
+                : 'Its type and number are fixed — something already refers to this account.'}
         </p>
       </div>
 
@@ -259,9 +267,9 @@ export default function AccountFormPage() {
             value={form.type}
             onChange={(v) => changeType(v as AccountType)}
             options={TYPE_OPTIONS}
-            disabled={structureLocked}
+            disabled={typeLocked}
             hint={
-              structureLocked
+              typeLocked
                 ? (existing?.structure.reason ?? 'Fixed — postings already reference it.')
                 : ACCOUNT_TYPE_HINTS[form.type]
             }
@@ -302,11 +310,11 @@ export default function AccountFormPage() {
               setErrors((er) => ({ ...er, accountNumber: '' }));
             }}
             inputMode="numeric"
-            disabled={structureLocked}
+            disabled={numberLocked}
             className="tabular"
             error={errors.accountNumber}
             hint={
-              structureLocked ? (
+              numberLocked ? (
                 <span className="flex items-center gap-xxs">
                   <Lock className="size-3" />
                   Fixed — in use

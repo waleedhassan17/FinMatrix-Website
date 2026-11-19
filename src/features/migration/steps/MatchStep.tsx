@@ -9,6 +9,7 @@ import { ENTITY_LABEL, isEditable, ORIGIN_LABEL, type MappingRow, type Migration
 import { getMappings, patchMappings } from '@/networks/settings/migrationNetwork';
 
 import { AccountMatches } from '../AccountMatches';
+import { YourChart } from '../YourChart';
 import { DocumentsStillNeeded } from '../DocumentsStillNeeded';
 import { useDocumentGate, type DocumentGateState } from '../useDocumentGate';
 import { useMigrationAction } from '../useMigration';
@@ -95,7 +96,10 @@ export function MatchStep({ batch, gate: given, onNext }: { batch: MigrationBatc
       ))}
 
       {m.mappings.account.length > 0 && (
-        <AccountMatches view={m} editable={editable} saving={save.isPending} onChange={(source, target) => save.mutate([{ kind: 'account', source, target }])} />
+        <>
+          <YourChart view={m} editable={editable} saving={save.isPending} onChoose={(role, target) => save.mutate([{ kind: 'value', source: `chart::${role}`, target }])} />
+          <AccountMatches view={m} editable={editable} saving={save.isPending} onChange={(source, target) => save.mutate([{ kind: 'account', source, target }])} />
+        </>
       )}
       <DocumentsStillNeeded gate={gate} source={batch.sourceSystem} where="match" />
       <div className="flex justify-end">

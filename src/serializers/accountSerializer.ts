@@ -30,6 +30,7 @@ export const mapAccount = (raw: unknown): Account => {
     balance: toNumber(r.balance as never),
     isActive: r.isActive === undefined ? true : Boolean(r.isActive),
     isSystemAccount: Boolean(r.isSystemAccount),
+    systemRole: r.systemRole ? str(r.systemRole) : null,
     createdAt: str(r.createdAt),
     updatedAt: str(r.updatedAt),
   };
@@ -150,6 +151,16 @@ export const accountDetailSerializer = (
       typeof structure.editable === 'boolean'
         ? {
             editable: structure.editable,
+            // A server from before system accounts could be renumbered sends
+            // only `editable`: it covered both.
+            numberEditable:
+              typeof structure.numberEditable === 'boolean'
+                ? structure.numberEditable
+                : structure.editable,
+            typeEditable:
+              typeof structure.typeEditable === 'boolean'
+                ? structure.typeEditable
+                : structure.editable,
             reason: typeof structure.reason === 'string' ? structure.reason : null,
           }
         : LOCKED_STRUCTURE,

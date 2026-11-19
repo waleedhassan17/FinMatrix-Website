@@ -131,9 +131,27 @@ export interface MappingsView {
   sheets: Array<DetectedSheet & { file: string; fileId: string }>;
   mappings: { sheet: MappingRow[]; column: MappingRow[]; value: MappingRow[]; account: MappingRow[] };
   targets: Array<{ key: string; name: string; fields: Array<{ key: string; header: string; required: boolean; kind: string }> }>;
-  chartOfAccounts: Array<{ number: string; name: string; type: string }>;
+  chartOfAccounts: Array<{ id?: string; number: string; name: string; type: string; systemRole?: string | null }>;
   /** Each source account as the owner knows it; `createAs` is its new number when FinMatrix uses its own. */
   sourceAccounts?: SourceAccountInfo[];
+  /** FinMatrix's own accounts that change to fit the owner's chart. */
+  chartChanges?: ChartChange[];
+}
+
+/**
+ * A FinMatrix account the migration renumbers or renames: it takes the
+ * owner's number and name (`adopt`), or moves off a number the owner uses
+ * (`step_aside`). Its role — what automatic posting uses it for — stays.
+ */
+export interface ChartChange {
+  accountId: string;
+  role: string | null;
+  fromNumber: string;
+  fromName: string;
+  toNumber: string;
+  toName: string;
+  change: 'adopt' | 'step_aside';
+  source: string | null;
 }
 
 export interface SourceAccountInfo {

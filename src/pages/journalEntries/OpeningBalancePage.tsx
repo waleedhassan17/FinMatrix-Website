@@ -54,34 +54,52 @@ const blankRow = (accountId = ''): Row => {
 };
 
 /**
- * One-click shortcuts into the seeded chart. Each names candidate account
- * numbers in preference order, so a company whose chart has been edited gets a
- * working chip rather than a dead end.
+ * One-click shortcuts into the chart. Each names the system accounts it means
+ * by role, in preference order — their numbers may have changed (a company
+ * that moved from another system keeps that system's numbers) — with the
+ * default numbers as a fallback for a server that sends no roles.
  */
-const QUICK_ADD: Record<
-  Side,
-  { codes: string[]; label: string; icon: ReactNode }[]
-> = {
+interface QuickPick {
+  roles: string[];
+  codes: string[];
+  label: string;
+  icon: ReactNode;
+}
+const QUICK_ADD: Record<Side, QuickPick[]> = {
   own: [
-    { codes: ['1000'], label: 'Cash', icon: <Banknote className="size-4" /> },
-    { codes: ['1010'], label: 'Bank', icon: <CreditCard className="size-4" /> },
-    { codes: ['1200'], label: 'Stock', icon: <Package className="size-4" /> },
+    { roles: ['cash'], codes: ['1000'], label: 'Cash', icon: <Banknote className="size-4" /> },
+    { roles: ['bank'], codes: ['1010'], label: 'Bank', icon: <CreditCard className="size-4" /> },
+    { roles: ['inventory'], codes: ['1200'], label: 'Stock', icon: <Package className="size-4" /> },
   ],
   owe: [
-    // 3900 first: Opening Balance Equity is where an opening entry's capital
+    // Opening Balance Equity first: it is where an opening entry's capital
     // belongs, and it is what the auto-plug uses — keep the two consistent.
     {
+      roles: ['opening_balance_equity', 'owner_equity'],
       codes: [ACCT_OPENING_BALANCE_EQUITY, '3000'],
       label: 'My own money',
       icon: <User className="size-4" />,
     },
     {
+      roles: ['accounts_payable'],
       codes: ['2000'],
       label: 'Money I owe',
       icon: <FileText className="size-4" />,
     },
   ],
 };
+
+/** The account a shortcut means: by role, then by its default number. */
+export const pickAccount = (
+  accounts: Account[],
+  pick: Pick<QuickPick, 'roles' | 'codes'>,
+): Account | undefined =>
+  pick.roles
+    .map((role) => accounts.find((a) => a.systemRole === role))
+    .find((a): a is Account => a !== undefined) ??
+  pick.codes
+    .map((code) => accounts.find((a) => a.accountNumber === code))
+    .find((a): a is Account => a !== undefined);
 
 const SIDE_COPY: Record<Side, { title: string; blurb: string; amountLabel: string }> = {
   own: {
@@ -149,8 +167,10 @@ export default function OpeningBalancePage() {
    */
   const plugAccount: Account | undefined = useMemo(
     () =>
-      accounts.find((a) => a.accountNumber === ACCT_OPENING_BALANCE_EQUITY) ??
-      accounts.find((a) => a.type === 'equity'),
+      pickAccount(accounts, {
+        roles: ['opening_balance_equity'],
+        codes: [ACCT_OPENING_BALANCE_EQUITY],
+      }) ?? accounts.find((a) => a.type === 'equity'),
     [accounts],
   );
 
@@ -172,12 +192,10 @@ export default function OpeningBalancePage() {
 
   /**
    * Put a quick-add account into the first empty row, or add a row for it.
-   * Walks the candidate numbers in order so an edited chart still works.
+   * Finds it by role, then by its default number, so an edited chart still works.
    */
-  const quickAdd = (side: Side, codes: string[]) => {
-    const account = codes
-      .map((code) => accounts.find((a) => a.accountNumber === code))
-      .find((a): a is Account => a !== undefined);
+  const quickAdd = (side: Side, pick: QuickPick) => {
+    const account = pickAccount(accounts, pick);
     if (!account) {
       toast.error('That account is not in your chart', {
         description: 'Pick one from the list instead.',
@@ -359,7 +377,7 @@ export default function OpeningBalancePage() {
                     <button
                       key={chip.label}
                       type="button"
-                      onClick={() => quickAdd(side, chip.codes)}
+                      onClick={() => quickAdd(side, chip)}
                       className="flex items-center gap-xs rounded-full border border-border px-sm py-xxs text-label-md text-text-secondary transition-colors hover:border-primary hover:text-primary"
                     >
                       {chip.icon}
