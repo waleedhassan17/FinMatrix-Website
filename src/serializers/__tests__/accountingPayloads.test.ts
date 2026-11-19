@@ -500,13 +500,28 @@ describe('accountDetailSerializer', () => {
     expect(
       accountDetailSerializer({ account: { id: 'a-1' }, structure: { editable: true, reason: null } })
         .structure,
-    ).toEqual({ editable: true, reason: null });
+    ).toEqual({ editable: true, numberEditable: true, typeEditable: true, reason: null });
     expect(
       accountDetailSerializer({
         account: { id: 'a-1' },
         structure: { editable: false, reason: 'Already in use (3 postings), so its type and number are fixed.' },
       }).structure,
-    ).toEqual({ editable: false, reason: 'Already in use (3 postings), so its type and number are fixed.' });
+    ).toEqual({
+      editable: false,
+      numberEditable: false,
+      typeEditable: false,
+      reason: 'Already in use (3 postings), so its type and number are fixed.',
+    });
+    // A system account nothing refers to yet: its number may change, its type never.
+    expect(
+      accountDetailSerializer({
+        account: { id: 'a-1', systemRole: 'accounts_receivable' },
+        structure: { editable: false, numberEditable: true, typeEditable: false, reason: 'A system account.' },
+      }),
+    ).toMatchObject({
+      account: { systemRole: 'accounts_receivable' },
+      structure: { numberEditable: true, typeEditable: false },
+    });
     // An older server sends no structure: treat the account as locked.
     expect(accountDetailSerializer({ account: { id: 'a-1' } }).structure.editable).toBe(false);
   });
