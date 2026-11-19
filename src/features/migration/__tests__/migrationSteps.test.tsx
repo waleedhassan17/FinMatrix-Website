@@ -116,6 +116,6 @@ describe('Review: figures as typed', () => {
     expect(screen.getByRole('table', { name: 'Open invoices and bills as typed' }).textContent).toContain('45,000');
     expect(screen.getByRole('table', { name: 'Stock as typed' }).textContent).toContain('Rs 8,500');
     expect(screen.getAllByText('As typed: 1,20,000 · 45,000')).toHaveLength(2);
-    expect(screen.getByText(/All ten checks pass/)).toBeTruthy();
+    expect(screen.getByText(/All eleven checks pass/)).toBeTruthy();
   });
 });

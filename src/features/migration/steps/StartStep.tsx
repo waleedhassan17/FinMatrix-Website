@@ -1,8 +1,10 @@
 import { BookOpen, Download, FlaskConical } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
+import { guideFor } from '@/config/migrationGuides';
 import { sourceById } from '@/config/migrationSources';
 import type { MigrationBatch } from '@/models/migration';
 import { downloadStarterWorkbook } from '@/networks/settings/migrationNetwork';
@@ -10,6 +12,8 @@ import { downloadStarterWorkbook } from '@/networks/settings/migrationNetwork';
 /** Step 1: what this migration is, what to export, and the starter workbook. */
 export function StartStep({ batch, onNext }: { batch: MigrationBatch; onNext: () => void }) {
   const source = sourceById(batch.sourceSystem);
+  const guide = guideFor(batch.sourceSystem);
+  const files = guide ? guide.files.filter((f) => f.required !== 'optional' && (!f.routes || f.routes.includes(guide.routes?.[0]?.id ?? ''))).map((f) => f.title) : (source?.files ?? []);
   return (
     <div className="flex flex-col gap-md">
       <Card className="flex flex-col gap-md p-lg">
@@ -21,7 +25,7 @@ export function StartStep({ batch, onNext }: { batch: MigrationBatch; onNext: ()
         <div>
           <p className="text-label-md text-text-primary">Files to prepare</p>
           <ul className="mt-xs list-disc pl-lg text-body-sm text-text-secondary">
-            {(source?.files ?? []).map((f) => (
+            {files.map((f) => (
               <li key={f}>{f}</li>
             ))}
           </ul>
@@ -34,12 +38,12 @@ export function StartStep({ batch, onNext }: { batch: MigrationBatch; onNext: ()
             <Download className="h-4 w-4" aria-hidden />
             Download starter workbook
           </Button>
-          {source && (
+          {guide && (
             <Button variant="text" asChild>
-              <a href={source.guideUrl} target="_blank" rel="noopener noreferrer">
+              <Link to={`/settings/migration/guide/${guide.source}`}>
                 <BookOpen className="h-4 w-4" aria-hidden />
-                Export guide for {source.label}
-              </a>
+                Step-by-step guide: {guide.title}
+              </Link>
             </Button>
           )}
         </div>

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { MIGRATION_ERROR_CODES, MIGRATION_ERRORS_EN, migrationErrorMessage } from '@/config/migrationErrors';
 import { anyInFlight, formatBytes } from '@/models/dataPortability';
-import { canImport, canSignOff, maxReachableStep, stepFromStatus, type SpotCheck } from '@/models/migration';
+import { canImport, canSignOff, maxReachableStep, openingDateOf, stepFromStatus, type SpotCheck } from '@/models/migration';
 
 describe('stepFromStatus', () => {
   it('opens each status on its wizard step, so the owner resumes where they were', () => {
@@ -64,5 +64,16 @@ describe('backup helpers', () => {
     expect(anyInFlight([{ status: 'ready' }, { status: 'running' }])).toBe(true);
     expect(anyInFlight([{ status: 'ready' }, { status: 'expired' }])).toBe(false);
     expect(anyInFlight(undefined)).toBe(false);
+  });
+});
+
+describe('openingDateOf', () => {
+  it('uses the date the server sends', () => {
+    expect(openingDateOf({ cutoverDate: '2026-07-01', openingDate: '2026-06-30' })).toBe('2026-06-30');
+  });
+  it('derives the day before the cutover when an older server sends none — across months, years and leap days', () => {
+    expect(openingDateOf({ cutoverDate: '2026-07-01' })).toBe('2026-06-30');
+    expect(openingDateOf({ cutoverDate: '2026-01-01' })).toBe('2025-12-31');
+    expect(openingDateOf({ cutoverDate: '2028-03-01' })).toBe('2028-02-29');
   });
 });

@@ -10,6 +10,7 @@ import { DateField } from '@/components/ui/Field';
 import { Select } from '@/components/ui/Select';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { migrationErrorMessage } from '@/config/migrationErrors';
+import { guideFor } from '@/config/migrationGuides';
 import { MIGRATION_SOURCES, sourceById, type MigrationSourceSystem } from '@/config/migrationSources';
 import { SettingsTabs } from '@/features/settings/SettingsTabs';
 import { MIGRATION_STATUS_LABEL } from '@/models/migration';
@@ -48,7 +49,14 @@ export default function MigrationListPage() {
           <Select label="Where are your books now?" value={source} options={MIGRATION_SOURCES.map((s) => ({ value: s.id, label: s.label }))} onChange={(v) => setSource(v as MigrationSourceSystem)} />
           <DateField label="Cutover date" value={cutover} onChange={setCutover} hint="Your balances as they stood at the start of this day. FinMatrix closes the books before it." />
         </div>
-        <p className="text-caption text-text-secondary">{sourceById(source)?.description}</p>
+        <p className="text-caption text-text-secondary">
+          {sourceById(source)?.description}{' '}
+          {guideFor(source) && (
+            <Link to={`/settings/migration/guide/${source}`} className="text-primary hover:underline">
+              How to export from {guideFor(source)!.title} →
+            </Link>
+          )}
+        </p>
         <div className="flex justify-end">
           <Button onClick={() => start.mutate()} disabled={!cutover || start.isPending}>
             <Plus className="h-4 w-4" aria-hidden /> Start migration

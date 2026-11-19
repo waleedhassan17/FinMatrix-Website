@@ -66,6 +66,7 @@ import {
   BackupExportPage,
   MigrationListPage,
   MigrationWizardPage,
+  MigrationGuidePage,
   FixContactsPage,
   CollectionsReportPage,
   EmployeeFormPage,
@@ -499,6 +500,8 @@ export const router = createBrowserRouter([
           // Backup & export and the Migration Center — owner only (absent from STAFF_NAV).
           { path: 'settings/backup', element: <BackupExportPage /> },
           { path: 'settings/migration', element: <MigrationListPage /> },
+          { path: 'settings/migration/guide', element: <MigrationGuidePage /> },
+          { path: 'settings/migration/guide/:source', element: <MigrationGuidePage /> },
           { path: 'settings/migration/:id', element: <MigrationWizardPage /> },
           { path: 'contacts/health', element: <FixContactsPage /> },
           { path: 'account', element: <MyAccountPage /> },

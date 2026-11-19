@@ -90,7 +90,7 @@ export function ReviewView(props: {
           }
         />
         <p className="text-body-sm text-text-secondary">
-          {preview.allPassed ? 'All ten checks pass at zero difference, every figure read the same two ways.' : 'Some checks fail — go back to Check.'} {preview.rejectedTotal} row{preview.rejectedTotal === 1 ? '' : 's'} set aside, each with its reason.
+          {preview.allPassed ? 'All eleven checks pass at zero difference, every figure read the same two ways.' : 'Some checks fail — go back to Check.'} {preview.rejectedTotal} row{preview.rejectedTotal === 1 ? '' : 's'} set aside, each with its reason.
         </p>
         <ul className="grid gap-xs sm:grid-cols-2">
           {preview.rowCounts.map((r) => (

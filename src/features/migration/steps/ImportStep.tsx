@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { canImport, ENTITY_LABEL, type MigrationBatch } from '@/models/migration';
+import { canImport, ENTITY_LABEL, openingDateOf, type MigrationBatch } from '@/models/migration';
 import { closeMigration, commitMigration, downloadCertificate, rollbackMigration } from '@/networks/settings/migrationNetwork';
 
 import { useMigrationAction } from '../useMigration';
@@ -24,7 +24,7 @@ export function ImportStep({ batch }: { batch: MigrationBatch }) {
         <Card className="flex flex-col gap-md p-lg">
           <SectionHeader title="Import" />
           <p className="text-body-sm text-text-secondary">
-            Posts everything dated {batch.cutoverDate}, then closes your books up to the day before so nothing can be back-dated into the old period.
+            Posts your opening balances dated {openingDateOf(batch)}, the close of business before your cutover day, then closes your books through that day so nothing can be back-dated into the old period.
           </p>
           <div className="flex justify-end">
             <Button onClick={() => setConfirm('import')} disabled={!canImport(batch) || commit.isPending} aria-label="Import">
@@ -77,7 +77,7 @@ export function ImportStep({ batch }: { batch: MigrationBatch }) {
         open={confirm === 'import'}
         onOpenChange={(o) => !o && setConfirm(null)}
         title="Import your books?"
-        description={`Everything is posted dated ${batch.cutoverDate}. You can undo it until you close the migration, as long as nothing new depends on it.`}
+        description={`Everything is posted dated ${openingDateOf(batch)}, the day before your cutover. You can undo it until you close the migration, as long as nothing new depends on it.`}
         confirmLabel="Import"
         busy={commit.isPending}
         onConfirm={() => commit.mutate(undefined)}

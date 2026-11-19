@@ -1,40 +1,35 @@
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 
 import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
-import { SearchInput } from '@/components/ui/SearchInput';
 import { Select, type SelectOption } from '@/components/ui/Select';
 import { cn } from '@/lib/cn';
 import { ENTITY_LABEL, isEditable, ORIGIN_LABEL, type MappingRow, type MigrationBatch } from '@/models/migration';
 import { getMappings, patchMappings } from '@/networks/settings/migrationNetwork';
 
+import { AccountMatches } from '../AccountMatches';
+import { DocumentsStillNeeded } from '../DocumentsStillNeeded';
+import { useDocumentGate, type DocumentGateState } from '../useDocumentGate';
 import { useMigrationAction } from '../useMigration';
 
 const SKIP = '__skip__';
 const NONE = '__none__';
-const NEW_TYPES = ['asset', 'liability', 'equity', 'revenue', 'expense'];
 
 /**
  * Step 3: how each sheet, column and account was understood. Uncertain matches
  * (below 0.9, not yet confirmed) are amber with the reason and where the match
  * came from; choosing a value saves it as the owner's decision.
  */
-export function MatchStep({ batch, onNext }: { batch: MigrationBatch; onNext: () => void }) {
+export function MatchStep({ batch, gate: given, onNext }: { batch: MigrationBatch; gate?: DocumentGateState; onNext: () => void }) {
+  const own = useDocumentGate(batch);
+  const gate = given ?? own;
   const mappings = useQuery({ queryKey: ['migrations', batch.id, 'mappings', batch.updatedAt], queryFn: () => getMappings(batch.id) });
   const save = useMigrationAction(batch.id, (rows: Array<{ kind: string; sheet?: string; source: string; target: string | null }>) => patchMappings(batch.id, rows), { success: 'Saved' });
-  const [search, setSearch] = useState('');
   const editable = isEditable(batch.status);
   const m = mappings.data;
 
   const targetOptions: SelectOption[] = useMemo(() => [...(m?.targets ?? []).map((t) => ({ value: t.key, label: t.name })), { value: SKIP, label: 'Do not import this sheet' }], [m]);
-  const accountOptions: SelectOption[] = useMemo(
-    () => [
-      ...NEW_TYPES.map((t) => ({ value: `NEW:${t}`, label: `Create as a new ${t} account` })),
-      ...(m?.chartOfAccounts ?? []).map((a) => ({ value: a.number, label: `${a.number} ${a.name}` })),
-    ],
-    [m],
-  );
 
   if (mappings.isLoading || !m) return <Card className="p-lg"><div className="h-40 animate-pulse rounded-md bg-neutral-100" /></Card>;
 
@@ -44,7 +39,6 @@ export function MatchStep({ batch, onNext }: { batch: MigrationBatch; onNext: ()
     ...((m.targets.find((t) => t.key === target)?.fields ?? []).map((f) => ({ value: f.key, label: `${f.header}${f.required ? ' *' : ''}` }))),
     { value: NONE, label: 'Do not import this column' },
   ];
-  const accounts = m.mappings.account.filter((a) => !search || `${a.source} ${a.target ?? ''} ${a.reason ?? ''}`.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div className="flex flex-col gap-md">
@@ -101,33 +95,13 @@ export function MatchStep({ batch, onNext }: { batch: MigrationBatch; onNext: ()
       ))}
 
       {m.mappings.account.length > 0 && (
-        <Card className="flex flex-col gap-md p-lg">
-          <SectionHeader title="Accounts" right={<div className="w-[14rem]"><SearchInput size="sm" value={search} onValueChange={setSearch} placeholder="Search accounts" /></div>} />
-          <ul className="flex flex-col divide-y divide-border-light">
-            {accounts.map((a) => (
-              <li key={a.id} className={cn('flex flex-col gap-sm py-sm sm:flex-row sm:items-center sm:justify-between', review(a) && 'rounded-md bg-warning-lighter px-sm')}>
-                <div className="min-w-0">
-                  <p className="text-label-md text-text-primary">Source account {a.source}</p>
-                  <p className="text-caption text-text-secondary">{ORIGIN_LABEL[a.origin]} ({Math.round(a.confidence * 100)}%){a.reason ? ` — ${a.reason}` : ''}</p>
-                </div>
-                <div className="w-full sm:w-[18rem]">
-                  <Select
-                    compact
-                    aria-label={`FinMatrix account for ${a.source}`}
-                    value={a.target && a.target !== 'NEW' ? a.target : ''}
-                    placeholder={a.target === 'NEW' ? 'New account (from your Accounts sheet)' : 'Choose an account'}
-                    options={accountOptions}
-                    disabled={!editable || save.isPending}
-                    onChange={(v) => save.mutate([{ kind: 'account', source: a.source, target: v }])}
-                  />
-                </div>
-              </li>
-            ))}
-          </ul>
-        </Card>
+        <AccountMatches view={m} editable={editable} saving={save.isPending} onChange={(source, target) => save.mutate([{ kind: 'account', source, target }])} />
       )}
+      <DocumentsStillNeeded gate={gate} source={batch.sourceSystem} where="match" />
       <div className="flex justify-end">
-        <Button onClick={onNext}>{batch.issues.blocking > 0 ? 'Continue to fixes' : 'Continue to checks'}</Button>
+        <Button onClick={onNext} disabled={!gate.complete}>
+          {!gate.complete ? 'Upload the missing documents first' : batch.issues.blocking > 0 ? 'Continue to fixes' : 'Continue to checks'}
+        </Button>
       </div>
     </div>
   );

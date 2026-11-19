@@ -162,6 +162,7 @@ export const FixContactsPage = lazyWithReload(() => import('@/pages/messaging/Fi
 export const BackupExportPage = lazyWithReload(() => import('@/pages/settings/BackupExportPage'));
 export const MigrationListPage = lazyWithReload(() => import('@/pages/settings/migration/MigrationListPage'));
 export const MigrationWizardPage = lazyWithReload(() => import('@/pages/settings/migration/MigrationWizardPage'));
+export const MigrationGuidePage = lazyWithReload(() => import('@/pages/settings/migration/MigrationGuidePage'));
 export const CollectionsReportPage = lazyWithReload(() => import('@/pages/reports/CollectionsReportPage'));
 export const MyAccountPage = lazyWithReload(() => import('@/pages/account/MyAccountPage'));
 

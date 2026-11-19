@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Card, SectionHeader } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
-import { migrationErrorMessage } from '@/config/migrationErrors';
+import { migrationErrorMessage, migrationIssueTitle, REPORT_LEVEL_CODES } from '@/config/migrationErrors';
 import { cn } from '@/lib/cn';
 import { isEditable, type MigrationBatch, type MigrationIssue } from '@/models/migration';
 import { listIssues, resolveIssue } from '@/networks/settings/migrationNetwork';
@@ -36,10 +36,13 @@ export function FixStep({ batch, onNext }: { batch: MigrationBatch; onNext: () =
       ) : (
         groups.map((g) => (
           <Card key={`${g.code}-${g.severity}`} className="flex flex-col gap-md p-lg">
-            <SectionHeader
-              title={`${migrationErrorMessage(g.code)} (${g.count})`}
-              right={<span className={cn('text-caption', g.severity === 'blocking' ? 'text-danger' : 'text-warning')}>{g.severity === 'blocking' ? 'Must fix' : 'Please confirm'}</span>}
-            />
+            <div className="flex flex-col gap-xs">
+              <SectionHeader
+                title={`${migrationIssueTitle(g.code)} (${g.count})`}
+                right={<span className={cn('text-caption', g.severity === 'blocking' ? 'text-danger' : 'text-warning')}>{g.severity === 'blocking' ? 'Must fix' : 'Please confirm'}</span>}
+              />
+              <p className="text-body-sm text-text-secondary">{migrationErrorMessage(g.code)}</p>
+            </div>
             <ul className="flex flex-col divide-y divide-border-light">
               {items
                 .filter((i) => i.code === g.code && i.severity === g.severity)
@@ -68,6 +71,7 @@ function IssueRow({ batch, issue }: { batch: MigrationBatch; issue: MigrationIss
   const editable = isEditable(batch.status) && !act.isPending;
   const where = [issue.sheet, issue.rowNumber ? `row ${issue.rowNumber}` : null].filter(Boolean).join(' · ');
   const options = (issue.options ?? []).filter((o) => o.value !== 'skip');
+  const canSkip = !REPORT_LEVEL_CODES.has(issue.code);
 
   return (
     <li className="flex flex-col gap-sm py-md">
@@ -76,7 +80,12 @@ function IssueRow({ batch, issue }: { batch: MigrationBatch; issue: MigrationIss
         <p className="text-body-sm text-text-primary">{issue.message}</p>
       </div>
       <div className="flex flex-col gap-sm md:flex-row md:items-end">
-        {options.length > 0 && (
+        {options.length === 1 && (
+          <Button size="sm" className="self-start" disabled={!editable} onClick={() => act.mutate({ action: 'map', value: options[0].value, applyToAll: all })}>
+            {options[0].label}
+          </Button>
+        )}
+        {options.length > 1 && (
           <div className="flex flex-1 gap-sm">
             <div className="flex-1">
               <Select compact aria-label="Choose an answer" value={choice} placeholder="Choose…" options={options} onChange={setChoice} disabled={!editable} />
@@ -90,10 +99,15 @@ function IssueRow({ batch, issue }: { batch: MigrationBatch; issue: MigrationIss
             <Button size="sm" variant="secondary" disabled={!editable || !value.trim()} onClick={() => act.mutate({ action: 'edit', value: value.trim() })}>Save</Button>
           </div>
         )}
-        <div className="flex flex-1 gap-sm">
-          <Input aria-label="Reason to skip" placeholder="Reason to skip" value={reason} onChange={(e) => setReason(e.target.value)} disabled={!editable} containerClassName="flex-1" />
-          <Button size="sm" variant="text" disabled={!editable || !reason.trim()} onClick={() => act.mutate({ action: 'skip', reason: reason.trim(), applyToAll: all })}>Skip</Button>
-        </div>
+        {canSkip && (
+          <div className="flex flex-1 gap-sm">
+            <Input aria-label="Reason to skip" placeholder="Reason to skip" value={reason} onChange={(e) => setReason(e.target.value)} disabled={!editable} containerClassName="flex-1" />
+            <Button size="sm" variant="text" disabled={!editable || !reason.trim()} onClick={() => act.mutate({ action: 'skip', reason: reason.trim(), applyToAll: all })}>Skip</Button>
+          </div>
+        )}
+        {!canSkip && options.length === 0 && (
+          <p className="text-caption text-text-secondary">Put it right in your old system, then upload the corrected file on the Upload step: FinMatrix checks again by itself.</p>
+        )}
       </div>
       {BULK_CODES.has(issue.code) && (
         <label className="flex items-center gap-xs text-caption text-text-secondary">

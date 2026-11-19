@@ -2,14 +2,24 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { migrationErrorMessage } from '@/config/migrationErrors';
-import type { MigrationBatch } from '@/models/migration';
+import { isUploadActive, type MigrationBatch } from '@/models/migration';
 import type { ApiError } from '@/networks/network/apiHelpers';
 import { getMigration } from '@/networks/settings/migrationNetwork';
 
 export const migrationKey = (id: string) => ['migrations', id] as const;
 
+/** While the server reads a Peachtree backup in the background. */
+const READING_POLL_MS = 3000;
+
 export function useMigrationBatch(id: string) {
-  return useQuery({ queryKey: migrationKey(id), queryFn: () => getMigration(id), enabled: !!id });
+  return useQuery({
+    queryKey: migrationKey(id),
+    queryFn: () => getMigration(id),
+    enabled: !!id,
+    // A backup being read changes the batch without any action of the
+    // owner's: keep asking until it is read (or has failed).
+    refetchInterval: (q) => ((q.state.data?.uploads ?? []).some(isUploadActive) ? READING_POLL_MS : false),
+  });
 }
 
 /** The batch inside an action's answer: the batch itself, or `{ batch }`. */

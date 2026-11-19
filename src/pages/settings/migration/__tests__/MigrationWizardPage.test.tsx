@@ -5,6 +5,9 @@
 // step the status resumes on, so a draft could never reach Upload, a matched
 // batch never reached Check, and a signed-off one never reached Import.
 
+import { configureStore } from '@reduxjs/toolkit';
+import { Provider } from 'react-redux';
+import authReducer from '@/store/authSlice';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -34,9 +37,15 @@ import MigrationWizardPage from '@/pages/settings/migration/MigrationWizardPage'
 import { maxReachableStep, type CertificatePreview, type MigrationBatch } from '@/models/migration';
 import * as net from '@/networks/settings/migrationNetwork';
 
+/** A file whose sheets FinMatrix recognised as these targets. */
+const fileOf = (...targets: string[]) => ({
+  id: `f-${targets.join('-')}`, originalName: 'export.xlsx', kind: 'xlsx', sizeBytes: 1000, sha256: '', uploadedAt: '',
+  detected: targets.map((t) => ({ sheet: t, target: t, confidence: 1, rows: 10, headers: [] })),
+}) as unknown as NonNullable<MigrationBatch['files']>[number];
 const batch = (over: Partial<MigrationBatch> = {}): MigrationBatch => ({
   id: 'b1', sourceSystem: 'finmatrix_template', cutoverDate: '2026-06-30', status: 'draft', step: 1, readiness: 0, counts: null, checks: [], issues: { blocking: 0, warning: 0 }, lastError: null,
-  signedOffAt: null, signedOffBy: null, committedAt: null, closedAt: null, rolledBackAt: null, certificateAvailable: false, createdAt: '', updatedAt: '', files: [], ...over,
+  signedOffAt: null, signedOffBy: null, committedAt: null, closedAt: null, rolledBackAt: null, certificateAvailable: false, createdAt: '', updatedAt: '',
+  files: [fileOf('accounts', 'trial_balance', 'stock')], ...over,
 });
 const preview: CertificatePreview = {
   batchId: 'b1', cutoverDate: '2026-06-30', checks: [], allPassed: true, rowCounts: [], rejectedRows: [], rejectedTotal: 0, postings: [], created: {},
@@ -47,13 +56,15 @@ async function open(b: MigrationBatch) {
   vi.mocked(net.getMigration).mockResolvedValue(b);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
-    <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={['/settings/migration/b1']}>
-        <Routes>
-          <Route path="/settings/migration/:id" element={<MigrationWizardPage />} />
-        </Routes>
-      </MemoryRouter>
-    </QueryClientProvider>,
+    <Provider store={configureStore({ reducer: { auth: authReducer } })}>
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/settings/migration/b1']}>
+          <Routes>
+            <Route path="/settings/migration/:id" element={<MigrationWizardPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    </Provider>,
   );
   await screen.findByRole('heading', { name: 'Move to FinMatrix' });
 }
@@ -83,6 +94,25 @@ describe('MigrationWizardPage', () => {
 
   it('goes from Match to Check once everything is matched', async () => {
     await open(batch({ status: 'mapped', step: 3, readiness: 80 }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue to checks' }));
+    expect(await screen.findByRole('button', { name: 'Run the checks' })).toBeTruthy();
+  });
+
+  it('stays on Upload while a required document is missing, though the server has read the first one', async () => {
+    // Only Xero's trial balance so far: the server has matched it, but the
+    // chart of accounts and the aged reports are still to come.
+    await open(batch({ sourceSystem: 'xero', status: 'mapped', step: 3, readiness: 60, files: [fileOf('xero:trial_balance')] }));
+    const panel = (await screen.findByText(/more documents are needed before you continue/)).closest('[role=status]') as HTMLElement;
+    for (const doc of ['Chart of accounts (CSV)', 'Aged Receivables Detail', 'Aged Payables Detail']) expect(panel.textContent).toContain(doc);
+    const next = screen.getByRole('button', { name: 'Continue to matching' }) as HTMLButtonElement;
+    expect(next.disabled).toBe(true);
+    expect((screen.getByRole('button', { name: /Match/ }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('moves on once every required document has arrived (and the owner has no stock)', async () => {
+    await open(batch({ sourceSystem: 'xero', status: 'mapped', step: 3, readiness: 60, files: [fileOf('xero:trial_balance', 'xero:chart_of_accounts', 'xero:aged_receivables', 'xero:aged_payables')] }));
+    // Stock is the one thing left; the owner says there is none.
+    fireEvent.click(await screen.findByRole('checkbox', { name: /We have no stock to bring in/ }));
     fireEvent.click(await screen.findByRole('button', { name: 'Continue to checks' }));
     expect(await screen.findByRole('button', { name: 'Run the checks' })).toBeTruthy();
   });

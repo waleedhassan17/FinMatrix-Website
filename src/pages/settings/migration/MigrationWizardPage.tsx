@@ -15,9 +15,10 @@ import { MatchStep } from '@/features/migration/steps/MatchStep';
 import { ReviewStep } from '@/features/migration/steps/ReviewStep';
 import { StartStep } from '@/features/migration/steps/StartStep';
 import { UploadStep } from '@/features/migration/steps/UploadStep';
+import { useDocumentGate } from '@/features/migration/useDocumentGate';
 import { useMigrationBatch } from '@/features/migration/useMigration';
 import { WizardStepper } from '@/features/migration/WizardStepper';
-import { maxReachableStep, MIGRATION_STATUS_LABEL } from '@/models/migration';
+import { isEditable, maxReachableStep, MIGRATION_STATUS_LABEL } from '@/models/migration';
 import type { ApiError } from '@/networks/network/apiHelpers';
 
 /**
@@ -31,7 +32,15 @@ export default function MigrationWizardPage() {
   // The owner's chosen step holds only while the batch stays where it was:
   // when the server moves it on (or back after a fix) the wizard follows.
   const [chosen, setChosen] = useState<{ key: string; step: number } | null>(null);
-  const reachable = batch.data ? maxReachableStep(batch.data) : 1;
+  const gate = useDocumentGate(batch.data);
+  // Until every required document has arrived the wizard stays on Upload (or
+  // Match, where an unidentified sheet can be named): it never runs ahead
+  // because the first file was read.
+  const serverReachable = batch.data ? maxReachableStep(batch.data) : 1;
+  const reachable =
+    batch.data && isEditable(batch.data.status) && !gate.complete
+      ? Math.min(serverReachable, gate.unplaced.length ? 3 : 2)
+      : serverReachable;
   const stateKey = batch.data ? `${batch.data.status}:${batch.data.issues.blocking}` : '';
   const step = chosen && chosen.key === stateKey ? chosen.step : null;
   const setStep = (s: number) => setChosen({ key: stateKey, step: s });
@@ -71,8 +80,8 @@ export default function MigrationWizardPage() {
       <WizardStepper current={current} reachable={reachable} onSelect={setStep} />
       {b.lastError && <Card className="p-md"><p className="text-body-sm text-danger">{b.lastError}</p></Card>}
       {current === 1 && <StartStep batch={b} onNext={() => go(2)} />}
-      {current === 2 && <UploadStep batch={b} onNext={() => go(3)} />}
-      {current === 3 && <MatchStep batch={b} onNext={() => go(b.issues.blocking > 0 ? 4 : 5)} />}
+      {current === 2 && <UploadStep batch={b} gate={gate} onNext={() => go(3)} />}
+      {current === 3 && <MatchStep batch={b} gate={gate} onNext={() => go(b.issues.blocking > 0 ? 4 : 5)} />}
       {current === 4 && <FixStep batch={b} onNext={() => go(5)} />}
       {current === 5 && <CheckStep batch={b} onNext={() => go(6)} />}
       {current === 6 && <ReviewStep batch={b} onNext={() => go(7)} />}
