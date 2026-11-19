@@ -14,7 +14,7 @@ type Group = 'review' | 'new' | 'matched';
 const GROUPS: Array<{ key: Group; title: string; hint: string }> = [
   { key: 'review', title: 'Needs your decision', hint: 'FinMatrix is not sure about these. Choose where each one goes.' },
   { key: 'new', title: 'New accounts to create', hint: 'Not in your FinMatrix chart yet: each is created with its number, name and type.' },
-  { key: 'matched', title: 'Matched to your FinMatrix accounts', hint: 'Their balances go into these existing accounts.' },
+  { key: 'matched', title: 'Matched to FinMatrix accounts', hint: 'FinMatrix accounts that are these: they take your number and name, and the balance.' },
 ];
 
 const isNew = (target: string | null) => !!target && (target === 'NEW' || target.startsWith('NEW:'));
@@ -49,7 +49,17 @@ export function AccountMatches({
   const [open, setOpen] = useState<Record<Group, boolean>>({ review: true, new: true, matched: false });
   const info = useMemo(() => new Map((view.sourceAccounts ?? []).map((a) => [a.number.trim().toLowerCase(), a])), [view.sourceAccounts]);
   const chart = useMemo(() => new Map(view.chartOfAccounts.map((a) => [a.number, a])), [view.chartOfAccounts]);
-  const existingOptions: SelectOption[] = useMemo(() => view.chartOfAccounts.map((a) => ({ value: a.number, label: `${a.number} ${a.name}` })), [view.chartOfAccounts]);
+  // A FinMatrix account the plan changes says what it becomes.
+  const existingOptions: SelectOption[] = useMemo(() => {
+    const changeOf = new Map((view.chartChanges ?? []).map((c) => [c.accountId, c]));
+    return view.chartOfAccounts.map((a) => {
+      const c = a.id ? changeOf.get(a.id) : undefined;
+      return {
+        value: a.number,
+        label: c && c.change === 'adopt' ? `FinMatrix's ${a.name} → becomes ${c.toNumber} ${c.toName}` : `${a.number} ${a.name}`,
+      };
+    });
+  }, [view.chartOfAccounts, view.chartChanges]);
 
   const rows = view.mappings.account.map((m) => ({ m, a: info.get(m.source.trim().toLowerCase()) }));
   const q = search.trim().toLowerCase();

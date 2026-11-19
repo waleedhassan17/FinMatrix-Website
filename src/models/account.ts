@@ -53,6 +53,13 @@ export interface Account {
    * auto-posting depends on. Read-only — never sent.
    */
   isSystemAccount: boolean;
+  /**
+   * What automatic posting uses this account for (`accounts_receivable`,
+   * `cash`, …), or null. Fixed for the account's life — its number and name
+   * may change, so the app finds Cash, Bank, Stock and the rest by this, not
+   * by number.
+   */
+  systemRole?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -516,13 +523,20 @@ export interface AccountUsage {
  * account saved as the wrong type be put right instead of abandoned.
  */
 export interface AccountStructure {
+  /** Type and number may both change. */
   editable: boolean;
+  /** The number may change (a system account's too, while nothing refers to it). */
+  numberEditable: boolean;
+  /** The type and kind may change (never a system account's). */
+  typeEditable: boolean;
   reason: string | null;
 }
 
 /** Locked: what an older server, which sends no `structure`, means. */
 export const LOCKED_STRUCTURE: AccountStructure = {
   editable: false,
+  numberEditable: false,
+  typeEditable: false,
   reason: 'Fixed once an account exists — postings already reference it.',
 };
 
