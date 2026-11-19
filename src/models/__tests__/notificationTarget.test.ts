@@ -39,6 +39,14 @@ describe('notificationTarget', () => {
     }
   });
 
+  it('opens the day an end-of-day summary covers', () => {
+    expect(notificationTarget({ type: 'day_summary', data: { date: '2026-11-19' } })).toBe(
+      '/reports/day-summary?date=2026-11-19',
+    );
+    expect(notificationTarget({ type: 'day_summary', data: { date: 'nope' } })).toBe('/reports/day-summary');
+    expect(notificationTarget({ type: 'day_summary', data: null })).toBe('/reports/day-summary');
+  });
+
   it('encodes ids into the URL', () => {
     expect(notificationTarget({ type: 'delivery_assigned', data: { deliveryId: 'a/b' } })).toBe('/deliveries/a%2Fb');
   });

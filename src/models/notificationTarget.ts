@@ -36,6 +36,13 @@ export function notificationTarget(n: NotificationLike): string | null {
     }
     case 'personnel_plan_locked':
       return '/delivery-personnel';
+    // The owner's end-of-day digest: the day it covers.
+    case 'day_summary': {
+      const date = idOf(n.data, 'date');
+      return date && /^\d{4}-\d{2}-\d{2}$/.test(date)
+        ? `/reports/day-summary?date=${date}`
+        : '/reports/day-summary';
+    }
     // Billing screens are off in this build; My Account shows the plan.
     case 'subscription_activated':
     case 'subscription_rejected':

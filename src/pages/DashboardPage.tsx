@@ -20,6 +20,8 @@ import { periodLabel } from '@/models/dashboard';
 import { fetchPendingApprovalCount } from '@/networks/approvals/approvalsNetwork';
 import { getDashboardSummary } from '@/networks/dashboards/dashboardNetwork';
 import { getAnalytics } from '@/networks/reports/analyticsNetwork';
+import { getDaySummary } from '@/networks/reports/daySummaryNetwork';
+import { count, dayShortLabel } from '@/models/daySummary';
 
 /**
  * The owner's and staff's landing page: the month's figures, what needs doing,
@@ -54,17 +56,26 @@ export default function DashboardPage() {
     queryFn: fetchPendingApprovalCount,
   });
 
+  // Today at a glance, opening the Day Summary. Under the dashboard prefix so
+  // the same invalidations refresh it. Staff get their own entries.
+  const today = useQuery({
+    queryKey: ['dashboard', 'day-summary'],
+    queryFn: () => getDaySummary({}),
+  });
+
   const data = summary.data;
   // Failed with nothing to show. A failed REFETCH keeps the last good figures,
   // which are still true as of the time in the header.
   const summaryFailed = summary.isError && !data;
   const period = periodLabel(data?.period);
-  const refreshing = summary.isFetching || analytics.isFetching || approvals.isFetching;
+  const refreshing =
+    summary.isFetching || analytics.isFetching || approvals.isFetching || today.isFetching;
 
   const refresh = () => {
     void summary.refetch();
     void analytics.refetch();
     void approvals.refetch();
+    void today.refetch();
   };
 
   const net = data?.netIncome ?? 0;
@@ -114,6 +125,49 @@ export default function DashboardPage() {
           </Button>
         </Card>
       )}
+
+      {(() => {
+        const t = today.data;
+        const third = t?.headline.orders
+          ? {
+              key: 'orders',
+              label: 'Orders booked',
+              value: t.headline.orders.total,
+              caption: count(t.headline.orders.count, 'sales_order'),
+              to: '/reports/day-summary?type=sales_order',
+            }
+          : {
+              key: 'purchases',
+              label: 'Purchases',
+              value: t?.headline.purchases.total ?? 0,
+              caption: count(t?.headline.purchases.count ?? 0, 'bill'),
+              to: '/reports/day-summary?type=bill',
+            };
+        return (
+          <KpiGroup
+            title={`${t?.scope.ownOnly ? 'My day' : 'Today'}${t ? ` · ${dayShortLabel(t.date)}` : ''}`}
+            loading={today.isLoading}
+            unavailable={today.isError && !t}
+            cells={[
+              {
+                key: 'sales',
+                label: 'Sales',
+                value: t?.headline.sales.total ?? 0,
+                caption: count(t?.headline.sales.count ?? 0, 'invoice'),
+                to: '/reports/day-summary?type=invoice',
+              },
+              {
+                key: 'received',
+                label: 'Money received',
+                value: t?.headline.received.total ?? 0,
+                caption: count(t?.headline.received.count ?? 0, 'receipt'),
+                to: '/reports/day-summary?type=receipt',
+              },
+              third,
+            ]}
+          />
+        );
+      })()}
 
       <div className="grid gap-lg xl:grid-cols-5">
         <KpiGroup
