@@ -1,6 +1,6 @@
-import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { FilePlus2, Users } from 'lucide-react';
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -31,24 +31,29 @@ import { useIsOwner } from '@/hooks/useCapability';
 import { cn } from '@/lib/cn';
 import {
   COMPARE_KEYS,
+  DAY_BOOK_PAGE_SIZES,
   dayCsvRows,
   dayLongLabel,
   dayPdfSections,
   dayShareText,
+  filterLabel,
+  sortLabel,
   type CompareKey,
 } from '@/models/daySummary';
 import { addDays, isoToday } from '@/models/document';
 import { csvHeaderBlock, downloadCsv, toCsv } from '@/models/reportCsv';
-import { getDayEntries, getDaySummary } from '@/networks/reports/daySummaryNetwork';
+import { getAllDayEntries, getDayEntries, getDaySummary } from '@/networks/reports/daySummaryNetwork';
 import {
   DAY_DOC_KINDS,
   DAY_ENTRY_FILTERS,
+  DAY_ENTRY_SORTS,
   type DayEntryFilter,
+  type DayEntrySort,
 } from '@/serializers/daySummarySerializer';
 
 const FILTERS: readonly DayEntryFilter[] = [...DAY_ENTRY_FILTERS, ...DAY_DOC_KINDS];
-// A normal day fits one page; a busy one loads more on request.
-const PAGE = 200;
+/** A PDF lists at most this many Day Book rows; the CSV carries them all. */
+const PDF_ROW_CAP = 500;
 
 /** The shape of the page while the first figures load, so nothing jumps. */
 function DaySkeleton() {
@@ -100,6 +105,12 @@ export default function DaySummaryPage() {
   const createdBy = isOwner ? params.get('by') : null;
   const filter = readEnum<DayEntryFilter>(params.get('type'), FILTERS, 'all');
   const compare = readEnum<CompareKey>(params.get('compare'), COMPARE_KEYS, 'yesterday');
+  // The Day Book's view: search, order, page size and page, all in the URL.
+  const q = (params.get('q') ?? '').trim().slice(0, 100);
+  const sort = readEnum<DayEntrySort>(params.get('sort'), DAY_ENTRY_SORTS, 'newest');
+  const sizeParam = Number(params.get('size'));
+  const pageSize = (DAY_BOOK_PAGE_SIZES as readonly number[]).includes(sizeParam) ? sizeParam : DAY_BOOK_PAGE_SIZES[0];
+  const pageNo = Math.max(1, Math.floor(Number(params.get('page')) || 1));
 
   const summary = useQuery({
     queryKey: ['reports', 'day-summary', date, createdBy],
@@ -111,29 +122,43 @@ export default function DaySummaryPage() {
   const today = s?.today || isoToday();
   const day = date ?? s?.date ?? today;
 
-  const entries = useInfiniteQuery({
-    queryKey: ['reports', 'day-summary', 'entries', day, createdBy, filter],
-    queryFn: ({ pageParam }) => getDayEntries({ date: day, type: filter, createdBy, page: pageParam, limit: PAGE }),
-    initialPageParam: 1,
-    getNextPageParam: (last) => (last.page * last.limit < last.total ? last.page + 1 : undefined),
+  // One page of the Day Book. The previous page stays on screen, dimmed,
+  // while the next one loads, so paging never flashes an empty table.
+  const entries = useQuery({
+    queryKey: ['reports', 'day-summary', 'entries', day, createdBy, filter, q, sort, pageNo, pageSize],
+    queryFn: () => getDayEntries({ date: day, type: filter, createdBy, q, sort, page: pageNo, limit: pageSize }),
     enabled: Boolean(s),
+    placeholderData: keepPreviousData,
   });
-  const rows = useMemo(() => entries.data?.pages.flatMap((p) => p.items) ?? [], [entries.data]);
-  const total = entries.data?.pages[0]?.total ?? 0;
+  const bookPages = entries.data?.pages ?? 0;
+
+  // A page past the end (rows were voided, a link from yesterday): the last.
+  useEffect(() => {
+    if (!entries.isPlaceholderData && bookPages > 0 && pageNo > bookPages) {
+      update({ page: bookPages > 1 ? String(bookPages) : null });
+    }
+  }, [bookPages, pageNo, entries.isPlaceholderData, update]);
 
   const setDate = useCallback(
-    (next: string) => update({ date: next === today ? null : next, type: null }, { push: true }),
+    (next: string) => update({ date: next === today ? null : next, type: null, page: null, q: null }, { push: true }),
     [today, update],
   );
+  const toDayBook = () =>
+    // Bring the Day Book's top into view (not every environment can scroll).
+    requestAnimationFrame(() => {
+      const el = document.getElementById('day-book');
+      if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  const setPage = (next: number) => {
+    update({ page: next > 1 ? String(next) : null });
+    toDayBook();
+  };
+  const setPageSize = (next: number) => update({ size: next === DAY_BOOK_PAGE_SIZES[0] ? null : String(next), page: null });
+  const setSearch = useCallback((next: string) => update({ q: next || null, page: null }), [update]);
+  const setSort = (next: DayEntrySort) => update({ sort: next === 'newest' ? null : next, page: null });
   const setFilter = (next: DayEntryFilter) => {
-    update({ type: next === 'all' ? null : next });
-    if (next !== 'all') {
-      // Bring the narrowed Day Book into view (not every environment can scroll).
-      requestAnimationFrame(() => {
-        const el = document.getElementById('day-book');
-        if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      });
-    }
+    update({ type: next === 'all' ? null : next, page: null });
+    if (next !== 'all') toDayBook();
   };
 
   // ← / → step a day, outside form fields, menus and the calendar.
@@ -166,23 +191,44 @@ export default function DaySummaryPage() {
       : 'What the business did on the day, at a glance.';
   const scopeLabel = who && !ownOnly ? `Entered by ${who.name}` : ownOnly ? 'My entries' : undefined;
 
-  const exportCsv = () => {
+  // What the Day Book view is, in words, for an export's header.
+  const viewLabel = [
+    filterLabel(filter),
+    q ? `matching “${q}”` : null,
+    sortLabel(sort),
+  ]
+    .filter(Boolean)
+    .join(', ');
+  const bookView = { date: day, type: filter, createdBy, q, sort };
+
+  const exportCsv = async () => {
     if (!s) return undefined;
-    // The Day Book rows on screen, under the filter on screen; when more are
-    // still to load, the file says so rather than passing as complete.
+    // Every row of the view on screen — all its pages, not just this one.
+    const all = await getAllDayEntries(bookView);
     const out = [
       ...csvHeaderBlock({
         company: company.name,
         report: who ? `Day Summary — ${who.name}` : title,
         period: dayLongLabel(day),
-        basis: filter === 'all' ? undefined : `Day Book: ${filter}`,
+        basis: `Day Book: ${viewLabel}`,
       }),
-      ...dayCsvRows(s, rows),
-      ...(entries.hasNextPage
-        ? [[], [`Day Book: first ${rows.length} of ${total} entries — load the rest on screen to export them all.`]]
-        : []),
+      ...dayCsvRows(s, all.items),
+      ...(all.truncated ? [[], [`Day Book: first ${all.items.length} of ${all.total} entries.`]] : []),
     ];
     return downloadCsv(`day-summary-${day}`, toCsv(out));
+  };
+
+  const pdfSections = async () => {
+    if (!s) return [];
+    const all = await getAllDayEntries(bookView, PDF_ROW_CAP);
+    const sections = dayPdfSections(s, all.items);
+    if (all.truncated) {
+      sections.push({
+        columns: [{ header: '' }],
+        rows: [{ cells: [`The Day Book above lists the first ${PDF_ROW_CAP} of ${all.total} entries; the CSV has them all.`] }],
+      });
+    }
+    return sections;
   };
 
   const shareOnWhatsApp = () => {
@@ -211,7 +257,7 @@ export default function DaySummaryPage() {
               company={company}
               disabled={!s || refetching}
               onCsv={exportCsv}
-              sections={() => (s ? dayPdfSections(s, rows) : [])}
+              sections={pdfSections}
               filename={`day-summary-${day}`}
               onWhatsApp={shareOnWhatsApp}
             />
@@ -321,14 +367,19 @@ export default function DaySummaryPage() {
                 summary={s}
                 filter={filter}
                 onFilter={setFilter}
-                rows={rows}
-                total={total}
+                data={entries.data}
                 loading={entries.isLoading}
-                failed={entries.isError}
+                fetching={entries.isFetching && entries.isPlaceholderData}
+                failed={entries.isError && !entries.data}
                 onRetry={() => void entries.refetch()}
-                hasMore={Boolean(entries.hasNextPage)}
-                loadingMore={entries.isFetchingNextPage}
-                onMore={() => void entries.fetchNextPage()}
+                page={pageNo}
+                pageSize={pageSize}
+                onPage={setPage}
+                onPageSize={setPageSize}
+                q={q}
+                onSearch={setSearch}
+                sort={sort}
+                onSort={setSort}
                 showBy={!ownOnly}
               />
             </div>

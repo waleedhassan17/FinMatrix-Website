@@ -24,6 +24,10 @@ export type DayDocKind = (typeof DAY_DOC_KINDS)[number];
 export const DAY_ENTRY_FILTERS = ['all', 'backdated', 'drafts', 'voided', 'cancelled'] as const;
 export type DayEntryFilter = (typeof DAY_ENTRY_FILTERS)[number] | DayDocKind;
 
+/** How the Day Book is ordered; `newest` (by entry time) is the default. */
+export const DAY_ENTRY_SORTS = ['newest', 'oldest', 'amount_desc', 'amount_asc'] as const;
+export type DayEntrySort = (typeof DAY_ENTRY_SORTS)[number];
+
 export interface DayFigure {
   count: number;
   total: number;
@@ -142,10 +146,19 @@ export interface DayEntry {
 export interface DayEntriesPage {
   date: string;
   filter: DayEntryFilter;
+  q: string | null;
+  sort: DayEntrySort;
+  /** This page's rows. */
   items: DayEntry[];
+  /** Rows matching the filter and search, across every page. */
   total: number;
+  /** Their amounts the day's totals count, across every page. */
+  countedTotal: number;
+  /** Their amounts the totals leave out (drafts, voids, cancelled). */
+  excludedTotal: number;
   page: number;
   limit: number;
+  pages: number;
 }
 
 export interface DaySummarySchedule {
@@ -321,8 +334,13 @@ export const dayEntriesSerializer = (raw: unknown): DayEntriesPage => {
         deleted: e.deleted === true,
       })),
     total: int(r.total),
+    countedTotal: money(r.countedTotal),
+    excludedTotal: money(r.excludedTotal),
+    q: strOrNull(r.q),
+    sort: (DAY_ENTRY_SORTS as readonly string[]).includes(String(r.sort)) ? (r.sort as DayEntrySort) : 'newest',
     page: int(r.page) || 1,
     limit: int(r.limit) || 50,
+    pages: int(r.pages),
   };
 };
 

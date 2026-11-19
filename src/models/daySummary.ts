@@ -13,6 +13,7 @@ import type {
   DayDocKind,
   DayEntry,
   DayEntryFilter,
+  DayEntrySort,
   DayFigure,
   DayHourRow,
   DayKpi,
@@ -202,6 +203,18 @@ export const filterLabel = (f: DayEntryFilter): string => {
       return KIND_META[f].label;
   }
 };
+
+/** "newest first" — the Day Book's order, in words. */
+export const sortLabel = (s: DayEntrySort): string =>
+  ({
+    newest: 'newest first',
+    oldest: 'oldest first',
+    amount_desc: 'largest first',
+    amount_asc: 'smallest first',
+  })[s];
+
+/** The Day Book page sizes on offer; the first is the default. */
+export const DAY_BOOK_PAGE_SIZES = [25, 50, 100] as const;
 
 // ─── Exports ─────────────────────────────────────────────────────────────
 

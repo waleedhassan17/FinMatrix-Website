@@ -121,6 +121,46 @@ export const dayEntriesPage = {
     },
   ],
   total: 2,
+  countedTotal: 1300,
+  excludedTotal: 0,
+  q: null,
+  sort: 'newest',
   page: 1,
-  limit: 200,
+  limit: 25,
+  pages: 1,
+};
+
+/**
+ * A busy day's Day Book as the server pages it: `count` invoices, newest
+ * first, answering `page`, `limit`, `q` and `sort` the way the API does.
+ */
+export const busyDayBook = (count: number) => (url: URL) => {
+  const all = Array.from({ length: count }, (_, i) => ({
+    ...dayEntriesPage.items[0],
+    id: `inv-${i + 1}`,
+    number: `INV-2026-${String(i + 1).padStart(4, '0')}`,
+    amount: (i + 1) * 100,
+    createdAt: new Date(Date.UTC(2026, 10, 19, 4, 0) + i * 60_000).toISOString(),
+  })).reverse();
+  const q = (url.searchParams.get('q') ?? '').toLowerCase();
+  const sort = url.searchParams.get('sort') ?? 'newest';
+  const limit = Number(url.searchParams.get('limit') ?? 25);
+  const page = Number(url.searchParams.get('page') ?? 1);
+  let rows = q ? all.filter((r) => r.number.toLowerCase().includes(q)) : all;
+  if (sort === 'amount_desc') rows = [...rows].sort((a, b) => b.amount - a.amount);
+  if (sort === 'amount_asc') rows = [...rows].sort((a, b) => a.amount - b.amount);
+  if (sort === 'oldest') rows = [...rows].reverse();
+  return {
+    date: '2026-11-19',
+    filter: url.searchParams.get('type') ?? 'all',
+    q: q || null,
+    sort,
+    items: rows.slice((page - 1) * limit, page * limit),
+    total: rows.length,
+    countedTotal: rows.reduce((t, r) => t + r.amount, 0),
+    excludedTotal: 0,
+    page,
+    limit,
+    pages: Math.ceil(rows.length / limit),
+  };
 };
