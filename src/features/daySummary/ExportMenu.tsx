@@ -37,14 +37,16 @@ export function ExportMenu({
   basis?: string;
   company: DocCompany;
   disabled: boolean;
-  onCsv: () => string | undefined;
-  sections: () => ReportSection[];
+  /** Builds and saves the CSV (it may fetch every page first); the file's name. */
+  onCsv: () => Promise<string | undefined>;
+  /** The PDF's tables (they may fetch every page first). */
+  sections: () => Promise<ReportSection[]>;
   filename: string;
   onWhatsApp: () => void;
 }) {
   const [busy, setBusy] = useState(false);
 
-  const pdf = () =>
+  const pdf = async () =>
     reportPdfBlob({
       title,
       periodLabel,
@@ -55,7 +57,7 @@ export function ExportMenu({
         ...(basis ? [{ label: 'Scope', value: basis }] : []),
         { label: 'Generated', value: generatedStamp() },
       ],
-      sections: sections(),
+      sections: await sections(),
     });
 
   const run = async (what: 'pdf' | 'print') => {
@@ -75,12 +77,15 @@ export function ExportMenu({
     }
   };
 
-  const csv = () => {
+  const csv = async () => {
+    setBusy(true);
     try {
-      const name = onCsv();
+      const name = await onCsv();
       if (name) toast.success('CSV downloaded', { description: name });
     } catch (e) {
       toast.error('Could not prepare the CSV', { description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -98,7 +103,7 @@ export function ExportMenu({
         <DropdownMenuItem icon={<FileText />} onSelect={() => void run('pdf')}>
           PDF report
         </DropdownMenuItem>
-        <DropdownMenuItem icon={<Sheet />} onSelect={csv}>
+        <DropdownMenuItem icon={<Sheet />} onSelect={() => void csv()}>
           Spreadsheet (CSV)
         </DropdownMenuItem>
         <DropdownMenuItem icon={<Printer />} onSelect={() => void run('print')}>

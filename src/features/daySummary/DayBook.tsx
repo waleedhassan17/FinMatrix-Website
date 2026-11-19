@@ -1,19 +1,30 @@
+import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { LoadMore } from '@/components/ui/LoadMore';
+import { Pagination } from '@/components/ui/Pagination';
+import { SearchInput } from '@/components/ui/SearchInput';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { cn } from '@/lib/cn';
-import { KIND_META, entryHref, filterLabel } from '@/models/daySummary';
-import type { DaySummary } from '@/serializers/daySummarySerializer';
+import { KIND_META, entryHref, filterLabel, sortLabel } from '@/models/daySummary';
 import { formatShortDate } from '@/models/reportPeriod';
-import type { DayEntry, DayEntryFilter } from '@/serializers/daySummarySerializer';
-import { formatMoney } from '@/utils/money';
+import type {
+  DayEntriesPage,
+  DayEntry,
+  DayEntryFilter,
+  DayEntrySort,
+  DaySummary,
+} from '@/serializers/daySummarySerializer';
+import { compactMoney, formatMoney } from '@/utils/money';
 
 const time = (iso: string) =>
   iso ? new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '—';
+
+/** How long typing pauses before the search runs. */
+const SEARCH_DELAY_MS = 300;
 
 interface Tab {
   filter: DayEntryFilter;
@@ -46,51 +57,156 @@ const tabsFor = (s: DaySummary, active: DayEntryFilter): Tab[] => {
 };
 
 /**
- * Every document of the day, newest first — the Day Book. A tile or a "needs
- * a look" line above narrows it; each row opens its document.
+ * A column heading that sorts: the first click takes the column's natural
+ * order (newest first, largest first), the next reverses it. `aria-sort`
+ * tells a screen reader which way the list now runs.
+ */
+function SortHeader({
+  label,
+  asc,
+  desc,
+  sort,
+  onSort,
+  align = 'left',
+  className,
+}: {
+  label: string;
+  asc: DayEntrySort;
+  desc: DayEntrySort;
+  sort: DayEntrySort;
+  onSort: (s: DayEntrySort) => void;
+  align?: 'left' | 'right';
+  className?: string;
+}) {
+  const active = sort === asc || sort === desc;
+  const Icon = !active ? ArrowUpDown : sort === desc ? ArrowDown : ArrowUp;
+  return (
+    <th
+      aria-sort={!active ? 'none' : sort === desc ? 'descending' : 'ascending'}
+      className={cn('py-xs font-normal', align === 'right' ? 'text-right' : 'text-left', className)}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(sort === desc ? asc : desc)}
+        className={cn(
+          'inline-flex items-center gap-[3px] uppercase transition-colors hover:text-text-primary',
+          active ? 'text-text-primary' : 'text-text-tertiary',
+        )}
+        title={`Sort by ${label.toLowerCase()}`}
+      >
+        {label}
+        <Icon className="size-3" aria-hidden="true" />
+      </button>
+    </th>
+  );
+}
+
+/**
+ * Every document of the day — the Day Book — a page at a time.
  *
- * A row the totals leave out (a draft, a void, a cancelled order) says so in
- * its status instead of quietly disappearing: the reader sees everything that
- * was entered, and which of it counts.
+ * A busy day can bring a hundred invoices, so the list is paged by the
+ * server (25, 50 or 100 a page), searched by number or party, and sorted by
+ * time or amount; the footer says where the reader is ("26–50 of 143") and
+ * what the whole view — not just this page — comes to. A row the totals
+ * leave out (a draft, a void, a cancelled order) is listed with its status
+ * and its amount struck through, rather than quietly missing.
  */
 export function DayBook({
   summary,
   filter,
   onFilter,
-  rows,
-  total,
+  data,
   loading,
+  fetching,
   failed,
   onRetry,
-  hasMore,
-  loadingMore,
-  onMore,
+  page,
+  pageSize,
+  onPage,
+  onPageSize,
+  q,
+  onSearch,
+  sort,
+  onSort,
   showBy,
 }: {
   summary: DaySummary;
   filter: DayEntryFilter;
   onFilter: (f: DayEntryFilter) => void;
-  rows: DayEntry[];
-  total: number;
+  /** The page on screen (the previous one while the next loads). */
+  data: DayEntriesPage | undefined;
+  /** First load, nothing to show yet. */
   loading: boolean;
+  /** A new page, search or sort is on its way. */
+  fetching: boolean;
   failed: boolean;
   onRetry: () => void;
-  hasMore: boolean;
-  loadingMore: boolean;
-  onMore: () => void;
-  /** The "By" column — off for staff, where every row is theirs. */
+  page: number;
+  pageSize: number;
+  onPage: (page: number) => void;
+  onPageSize: (size: number) => void;
+  /** The search in force. */
+  q: string;
+  onSearch: (q: string) => void;
+  sort: DayEntrySort;
+  onSort: (sort: DayEntrySort) => void;
+  /** The "Entered by" column — off for staff, where every row is theirs. */
   showBy: boolean;
 }) {
+  // Typing is local; the search runs once the typing pauses.
+  const [draft, setDraft] = useState(q);
+  // A search changed elsewhere (Back, a new day) replaces what is typed.
+  // Adjusted while rendering rather than in an effect, so the field never
+  // shows a stale search for a frame.
+  const [seenQ, setSeenQ] = useState(q);
+  if (q !== seenQ) {
+    setSeenQ(q);
+    if (q !== draft.trim()) setDraft(q);
+  }
+  useEffect(() => {
+    const next = draft.trim();
+    if (next === q) return undefined;
+    const t = setTimeout(() => onSearch(next), SEARCH_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [draft, q, onSearch]);
+
+  const rows = data?.items ?? [];
+  const total = data?.total ?? 0;
   const voids = filter === 'voided';
+  const summaryLine =
+    data && total > 0 ? (
+      <span className="tabular">
+        {voids ? (
+          <>{formatMoney(data.excludedTotal)} voided or deleted</>
+        ) : (
+          <>
+            <span className="text-text-primary">{formatMoney(data.countedTotal)}</span> counted
+            {data.excludedTotal > 0 && <> · {compactMoney(data.excludedTotal)} not counted</>}
+          </>
+        )}
+      </span>
+    ) : null;
+
   return (
     <Card className="overflow-hidden" id="day-book">
       <div className="border-b border-border-light px-lg pt-sm">
-        <div className="flex flex-wrap items-baseline justify-between gap-sm">
-          <h2 className="text-label-lg text-text-primary">Day Book</h2>
-          <p className="text-caption text-text-tertiary">
-            {filterLabel(filter)} · {loading ? '…' : `${total.toLocaleString('en-US')} ${total === 1 ? 'entry' : 'entries'}`}
-            {' · newest first'}
-          </p>
+        <div className="flex flex-wrap items-center justify-between gap-sm">
+          <div className="min-w-0">
+            <h2 className="text-label-lg text-text-primary">Day Book</h2>
+            <p className="text-caption text-text-tertiary">
+              {filterLabel(filter)}
+              {q ? ` matching “${q}”` : ''} ·{' '}
+              {loading ? '…' : `${total.toLocaleString('en-US')} ${total === 1 ? 'entry' : 'entries'}`} · {sortLabel(sort)}
+            </p>
+          </div>
+          <SearchInput
+            size="sm"
+            value={draft}
+            onValueChange={setDraft}
+            placeholder="Search number or party"
+            aria-label="Search the Day Book by document number or party"
+            containerClassName="w-full sm:w-64"
+          />
         </div>
         <div role="tablist" aria-label="Day Book filter" className="-mx-xxs mt-xs flex gap-xxs overflow-x-auto pb-sm">
           {tabsFor(summary, filter).map((t) => {
@@ -121,7 +237,7 @@ export function DayBook({
                       on ? 'bg-surface/25 text-text-inverse' : 'bg-surface-2 text-text-secondary',
                     )}
                   >
-                    {t.count}
+                    {t.count.toLocaleString('en-US')}
                   </span>
                 )}
               </button>
@@ -132,7 +248,7 @@ export function DayBook({
 
       {loading ? (
         <div className="flex flex-col gap-sm p-lg" role="status" aria-label="Loading the Day Book">
-          {[0, 1, 2, 3].map((i) => (
+          {[0, 1, 2, 3, 4].map((i) => (
             <div key={i} className="flex items-center justify-between gap-lg">
               <Skeleton className="h-4 w-1/3" />
               <Skeleton className="h-4 w-24" />
@@ -147,116 +263,156 @@ export function DayBook({
           </Button>
         </div>
       ) : rows.length === 0 ? (
-        <p className="p-lg text-body-sm text-text-secondary">Nothing here for this day.</p>
+        <div className="flex flex-col items-center gap-sm px-lg py-xl text-center">
+          <p className="text-body-sm text-text-secondary">
+            {q ? `No entries match “${q}” in ${filterLabel(filter).toLowerCase()}.` : 'Nothing here for this day.'}
+          </p>
+          {q && (
+            <Button variant="secondary" size="sm" onClick={() => setDraft('')}>
+              Clear search
+            </Button>
+          )}
+        </div>
       ) : (
-        <>
-        {/* A phone gets one card per document: a seven-column table there
-            scrolls sideways and wraps every number onto three lines. */}
-        <ul className="divide-y divide-border-light sm:hidden" aria-label="Day Book entries">
-          {rows.map((e) => {
-            const href = entryHref(e);
-            const number = e.number ?? KIND_META[e.kind].one;
-            return (
-              <li key={`m-${e.kind}-${e.id}-${e.createdAt}`} className={cn('px-lg py-sm', !e.counted && !voids && 'text-text-secondary')}>
-                <div className="flex items-baseline justify-between gap-sm">
-                  {href ? (
-                    <Link to={href} className="min-w-0 truncate text-label-md text-text-link hover:underline">
-                      {number}
-                    </Link>
-                  ) : (
-                    <span className="min-w-0 truncate text-label-md text-text-primary">{number}</span>
-                  )}
-                  <span className={cn('shrink-0 tabular text-label-md', !e.counted && !voids && 'line-through decoration-text-tertiary')}>
-                    {formatMoney(e.amount)}
-                  </span>
-                </div>
-                <p className="truncate text-caption text-text-secondary">
-                  {KIND_META[e.kind].label} · {e.partyName ?? '—'}
-                </p>
-                <div className="mt-xxs flex flex-wrap items-center gap-x-xs gap-y-xxs text-caption text-text-tertiary">
-                  <span className="tabular">{time(e.createdAt)}</span>
-                  {showBy && e.createdBy && <span>· {e.createdBy.name}</span>}
-                  {e.backdated && <span className="text-warning">· dated {formatShortDate(e.date)}</span>}
-                  {e.status && <StatusBadge status={e.status} className="ml-auto" />}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-        <div className="hidden overflow-x-auto sm:block">
-          <table className="w-full min-w-[36rem] text-body-sm" aria-label="Day Book">
-            <thead className="bg-surface-2">
-              <tr className="text-left text-overline text-text-tertiary">
-                <th className="w-16 py-xs pl-lg pr-sm font-normal">{voids ? 'When' : 'Time'}</th>
-                <th className="px-sm py-xs font-normal">Document</th>
-                <th className="px-sm py-xs text-right font-normal">Amount</th>
-                <th className="px-sm py-xs font-normal">Status</th>
-                {showBy && <th className="py-xs pl-sm pr-lg font-normal">{voids ? 'Done by' : 'Entered by'}</th>}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border-light">
-              {rows.map((e) => {
-                const href = entryHref(e);
-                const number = e.number ?? KIND_META[e.kind].one;
-                return (
-                  <tr
-                    key={`${e.kind}-${e.id}-${e.createdAt}`}
-                    className={cn('transition-colors hover:bg-surface-hover', !e.counted && !voids && 'text-text-secondary')}
-                  >
-                    <td className="whitespace-nowrap py-sm pl-lg pr-sm align-top tabular text-text-tertiary">{time(e.createdAt)}</td>
-                    <td className="px-sm py-sm">
-                      <span className="flex items-baseline gap-xs">
-                        {href ? (
-                          <Link to={href} className="whitespace-nowrap text-label-md text-text-link hover:underline">
-                            {number}
-                          </Link>
-                        ) : (
-                          <span className="whitespace-nowrap text-label-md text-text-primary">{number}</span>
-                        )}
-                        <span className="whitespace-nowrap text-caption text-text-tertiary">{KIND_META[e.kind].one}</span>
-                        {e.backdated && (
-                          <span
-                            className="whitespace-nowrap rounded-full bg-warning-lighter px-[6px] text-caption text-warning"
-                            title="Entered later than it is dated"
-                          >
-                            dated {formatShortDate(e.date)}
-                          </span>
-                        )}
-                      </span>
-                      <span className="block max-w-[24rem] truncate text-caption text-text-secondary" title={e.partyName ?? undefined}>
-                        {e.partyName ?? '—'}
-                      </span>
-                    </td>
-                    <td
-                      className={cn(
-                        'whitespace-nowrap px-sm py-sm text-right align-top text-label-md tabular',
-                        !e.counted && !voids ? 'text-text-tertiary line-through' : 'text-text-primary',
-                      )}
-                    >
-                      {formatMoney(e.amount)}
-                    </td>
-                    <td className="px-sm py-sm align-top">
-                      {e.status ? <StatusBadge status={e.status} /> : <span className="text-text-tertiary">—</span>}
-                    </td>
-                    {showBy && (
-                      <td className="max-w-[9rem] truncate py-sm pl-sm pr-lg align-top text-caption text-text-secondary" title={e.createdBy?.name}>
-                        {e.createdBy?.name ?? '—'}
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div
+          className={cn(
+            'transition-opacity duration-150 motion-reduce:transition-none',
+            fetching ? 'pointer-events-none opacity-60' : 'opacity-100',
+          )}
+          aria-busy={fetching}
+        >
+          {/* A phone gets one card per document: a five-column table there
+              scrolls sideways and wraps every number onto three lines. */}
+          <ul className="divide-y divide-border-light sm:hidden" aria-label="Day Book entries">
+            {rows.map((e) => (
+              <PhoneRow key={`m-${e.kind}-${e.id}-${e.createdAt}`} e={e} voids={voids} showBy={showBy} />
+            ))}
+          </ul>
+
+          <div className="hidden overflow-x-auto sm:block">
+            <table className="w-full min-w-[36rem] text-body-sm" aria-label="Day Book">
+              <thead className="bg-surface-2">
+                <tr className="text-left text-overline text-text-tertiary">
+                  <SortHeader
+                    label={voids ? 'When' : 'Time'}
+                    asc="oldest"
+                    desc="newest"
+                    sort={sort}
+                    onSort={onSort}
+                    className="w-20 pl-lg pr-sm"
+                  />
+                  <th className="px-sm py-xs font-normal">Document</th>
+                  <SortHeader
+                    label="Amount"
+                    asc="amount_asc"
+                    desc="amount_desc"
+                    sort={sort}
+                    onSort={onSort}
+                    align="right"
+                    className="px-sm"
+                  />
+                  <th className="px-sm py-xs font-normal">Status</th>
+                  {showBy && <th className="py-xs pl-sm pr-lg font-normal">{voids ? 'Done by' : 'Entered by'}</th>}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border-light">
+                {rows.map((e) => (
+                  <TableRow key={`${e.kind}-${e.id}-${e.createdAt}`} e={e} voids={voids} showBy={showBy} />
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-        </>
       )}
-      {!loading && !failed && (
-        <div className="px-lg pb-md pt-sm">
-          <LoadMore shown={rows.length} total={total} hasMore={hasMore} loading={loadingMore} onMore={onMore} />
-        </div>
+
+      {!loading && !failed && total > 0 && (
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          onPage={onPage}
+          onPageSize={onPageSize}
+          noun={total === 1 ? 'entry' : 'entries'}
+          summary={summaryLine}
+        />
       )}
     </Card>
+  );
+}
+
+function DocumentLabel({ e }: { e: DayEntry }) {
+  const href = entryHref(e);
+  const number = e.number ?? KIND_META[e.kind].one;
+  return href ? (
+    <Link to={href} className="whitespace-nowrap text-label-md text-text-link hover:underline">
+      {number}
+    </Link>
+  ) : (
+    <span className="whitespace-nowrap text-label-md text-text-primary">{number}</span>
+  );
+}
+
+function TableRow({ e, voids, showBy }: { e: DayEntry; voids: boolean; showBy: boolean }) {
+  return (
+    <tr className={cn('transition-colors hover:bg-surface-hover', !e.counted && !voids && 'text-text-secondary')}>
+      <td className="whitespace-nowrap py-sm pl-lg pr-sm align-top tabular text-text-tertiary">{time(e.createdAt)}</td>
+      <td className="px-sm py-sm">
+        <span className="flex items-baseline gap-xs">
+          <DocumentLabel e={e} />
+          <span className="whitespace-nowrap text-caption text-text-tertiary">{KIND_META[e.kind].one}</span>
+          {e.backdated && (
+            <span
+              className="whitespace-nowrap rounded-full bg-warning-lighter px-[6px] text-caption text-warning"
+              title="Entered later than it is dated"
+            >
+              dated {formatShortDate(e.date)}
+            </span>
+          )}
+        </span>
+        <span className="block max-w-[24rem] truncate text-caption text-text-secondary" title={e.partyName ?? undefined}>
+          {e.partyName ?? '—'}
+        </span>
+      </td>
+      <td
+        className={cn(
+          'whitespace-nowrap px-sm py-sm text-right align-top text-label-md tabular',
+          !e.counted && !voids ? 'text-text-tertiary line-through' : 'text-text-primary',
+        )}
+      >
+        {formatMoney(e.amount)}
+      </td>
+      <td className="px-sm py-sm align-top">
+        {e.status ? <StatusBadge status={e.status} /> : <span className="text-text-tertiary">—</span>}
+      </td>
+      {showBy && (
+        <td className="max-w-[9rem] truncate py-sm pl-sm pr-lg align-top text-caption text-text-secondary" title={e.createdBy?.name}>
+          {e.createdBy?.name ?? '—'}
+        </td>
+      )}
+    </tr>
+  );
+}
+
+function PhoneRow({ e, voids, showBy }: { e: DayEntry; voids: boolean; showBy: boolean }) {
+  const struck = !e.counted && !voids;
+  return (
+    <li className={cn('px-lg py-sm', struck && 'text-text-secondary')}>
+      <div className="flex items-baseline justify-between gap-sm">
+        <span className="min-w-0 truncate">
+          <DocumentLabel e={e} />
+        </span>
+        <span className={cn('shrink-0 tabular text-label-md', struck && 'line-through')}>{formatMoney(e.amount)}</span>
+      </div>
+      <p className="truncate text-caption text-text-secondary">
+        {KIND_META[e.kind].label} · {e.partyName ?? '—'}
+      </p>
+      <div className="mt-xxs flex flex-wrap items-center gap-x-xs gap-y-xxs text-caption text-text-tertiary">
+        <span className="tabular">{time(e.createdAt)}</span>
+        {showBy && e.createdBy && <span>· {e.createdBy.name}</span>}
+        {e.backdated && <span className="text-warning">· dated {formatShortDate(e.date)}</span>}
+        {e.status && <StatusBadge status={e.status} className="ml-auto" />}
+      </div>
+    </li>
   );
 }
 

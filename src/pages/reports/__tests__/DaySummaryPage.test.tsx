@@ -7,16 +7,17 @@ import { describe, expect, it } from 'vitest';
 import DaySummaryPage from '@/pages/reports/DaySummaryPage';
 import { requestLog } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
-import { dayEntriesPage, daySummaryOwner, daySummaryStaff } from '@/test/msw/daySummaryFixtures';
+import { busyDayBook, dayEntriesPage, daySummaryOwner, daySummaryStaff } from '@/test/msw/daySummaryFixtures';
 import { renderReport, startMsw } from '@/test/renderReport';
 
 startMsw();
 
-const serve = (summary: unknown) =>
+const serve = (summary: unknown, entries: (url: URL) => unknown = () => dayEntriesPage) =>
   server.use(
     http.get('*/reports/day-summary/entries', ({ request }) => {
-      requestLog.push(new URL(request.url));
-      return HttpResponse.json({ success: true, data: dayEntriesPage });
+      const url = new URL(request.url);
+      requestLog.push(url);
+      return HttpResponse.json({ success: true, data: entries(url) });
     }),
     http.get('*/reports/day-summary/schedule', () =>
       HttpResponse.json({
@@ -133,5 +134,76 @@ describe('DaySummaryPage', () => {
     await waitFor(() =>
       expect(summaryRequests().some((u) => u.searchParams.get('date') === '2026-11-18')).toBe(true),
     );
+  });
+
+  describe('a busy day', () => {
+    it('pages the Day Book: 25 a page, where the reader is, and the next page on request', async () => {
+      serve(daySummaryOwner, busyDayBook(60));
+      renderReport('/reports/day-summary', '/reports/day-summary', <DaySummaryPage />, { role: 'admin' });
+      const table = await screen.findByRole('table', { name: 'Day Book' }, LOAD);
+      expect(within(table).getAllByRole('row')).toHaveLength(26); // a header and 25 rows
+      expect(screen.getByText('Showing 1–25 of 60 entries')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+      await waitFor(() => expect(entryRequests().some((u) => u.searchParams.get('page') === '2')).toBe(true), LOAD);
+      expect(await screen.findByText('Showing 26–50 of 60 entries', {}, LOAD)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Page 2' })).toHaveAttribute('aria-current', 'page');
+    });
+
+    it('takes 50 or 100 a page, starting again from the first', async () => {
+      serve(daySummaryOwner, busyDayBook(160));
+      renderReport('/reports/day-summary', '/reports/day-summary?page=3', <DaySummaryPage />, { role: 'admin' });
+      await screen.findByRole('table', { name: 'Day Book' }, LOAD);
+      fireEvent.change(screen.getByRole('combobox', { name: 'Rows per page' }), { target: { value: '100' } });
+      await waitFor(() =>
+        expect(
+          entryRequests().some((u) => u.searchParams.get('limit') === '100' && u.searchParams.get('page') === '1'),
+        ).toBe(true),
+        LOAD,
+      );
+      expect(await screen.findByText('Showing 1–100 of 160 entries', {}, LOAD)).toBeInTheDocument();
+    });
+
+    it('searches once typing pauses, and says when nothing matches', async () => {
+      serve(daySummaryOwner, busyDayBook(60));
+      renderReport('/reports/day-summary', '/reports/day-summary', <DaySummaryPage />, { role: 'admin' });
+      await screen.findByRole('table', { name: 'Day Book' }, LOAD);
+      fireEvent.change(screen.getByRole('searchbox', { name: /Search the Day Book/ }), {
+        target: { value: 'INV-2026-0042' },
+      });
+      await waitFor(() =>
+        expect(entryRequests().some((u) => u.searchParams.get('q') === 'INV-2026-0042')).toBe(true),
+        LOAD,
+      );
+      expect(await screen.findByText('Showing 1–1 of 1 entry', {}, LOAD)).toBeInTheDocument();
+      fireEvent.change(screen.getByRole('searchbox', { name: /Search the Day Book/ }), {
+        target: { value: 'nothing-like-this' },
+      });
+      expect(await screen.findByText(/No entries match “nothing-like-this”/, {}, LOAD)).toBeInTheDocument();
+    });
+
+    it('sorts by amount from the column heading, largest first and then smallest', async () => {
+      serve(daySummaryOwner, busyDayBook(60));
+      renderReport('/reports/day-summary', '/reports/day-summary', <DaySummaryPage />, { role: 'admin' });
+      await screen.findByRole('table', { name: 'Day Book' }, LOAD);
+      fireEvent.click(screen.getByRole('button', { name: /Amount/ }));
+      await waitFor(() =>
+        expect(entryRequests().some((u) => u.searchParams.get('sort') === 'amount_desc')).toBe(true),
+        LOAD,
+      );
+      expect(screen.getByRole('columnheader', { name: /Amount/ })).toHaveAttribute('aria-sort', 'descending');
+      fireEvent.click(screen.getByRole('button', { name: /Amount/ }));
+      await waitFor(() =>
+        expect(entryRequests().some((u) => u.searchParams.get('sort') === 'amount_asc')).toBe(true),
+        LOAD,
+      );
+    });
+
+    it('counts the whole view in the footer, not just the page', async () => {
+      serve(daySummaryOwner, busyDayBook(60));
+      renderReport('/reports/day-summary', '/reports/day-summary', <DaySummaryPage />, { role: 'admin' });
+      await screen.findByRole('table', { name: 'Day Book' }, LOAD);
+      // 100 + 200 + … + 6,000 = 183,000 across all three pages.
+      expect(screen.getByText('Rs 183,000.00')).toBeInTheDocument();
+    });
   });
 });
