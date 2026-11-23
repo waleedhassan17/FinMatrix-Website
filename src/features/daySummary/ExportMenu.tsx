@@ -31,6 +31,8 @@ export function ExportMenu({
   sections,
   filename,
   onWhatsApp,
+  periodName = 'Day',
+  label = 'Export',
 }: {
   title: string;
   periodLabel: string;
@@ -42,7 +44,12 @@ export function ExportMenu({
   /** The PDF's tables (they may fetch every page first). */
   sections: () => Promise<ReportSection[]>;
   filename: string;
-  onWhatsApp: () => void;
+  /** Omitted: no WhatsApp entry. */
+  onWhatsApp?: () => void;
+  /** What the period is called in the PDF's details: "Day" or "Period". */
+  periodName?: string;
+  /** The button's text. */
+  label?: string;
 }) {
   const [busy, setBusy] = useState(false);
 
@@ -53,7 +60,7 @@ export function ExportMenu({
       basis,
       company,
       meta: [
-        { label: 'Day', value: periodLabel },
+        { label: periodName, value: periodLabel },
         ...(basis ? [{ label: 'Scope', value: basis }] : []),
         { label: 'Generated', value: generatedStamp() },
       ],
@@ -94,7 +101,7 @@ export function ExportMenu({
       <DropdownMenuTrigger asChild>
         <Button variant="secondary" size="sm" disabled={disabled || busy}>
           <Download className="size-4" />
-          {busy ? 'Preparing…' : 'Export'}
+          {busy ? 'Preparing…' : label}
           <ChevronDown className="size-4 text-text-tertiary" />
         </Button>
       </DropdownMenuTrigger>
@@ -109,11 +116,15 @@ export function ExportMenu({
         <DropdownMenuItem icon={<Printer />} onSelect={() => void run('print')}>
           Print
         </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel>Share</DropdownMenuLabel>
-        <DropdownMenuItem icon={<MessageCircle />} onSelect={onWhatsApp}>
-          Summary on WhatsApp
-        </DropdownMenuItem>
+        {onWhatsApp && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Share</DropdownMenuLabel>
+            <DropdownMenuItem icon={<MessageCircle />} onSelect={onWhatsApp}>
+              Summary on WhatsApp
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

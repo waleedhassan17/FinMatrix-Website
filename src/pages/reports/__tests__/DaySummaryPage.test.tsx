@@ -7,13 +7,29 @@ import { describe, expect, it } from 'vitest';
 import DaySummaryPage from '@/pages/reports/DaySummaryPage';
 import { requestLog } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
-import { busyDayBook, dayEntriesPage, daySummaryOwner, daySummaryStaff } from '@/test/msw/daySummaryFixtures';
+import {
+  busyDayBook,
+  dayEntriesPage,
+  dayItemSheetOwner,
+  dayItemSheetStaff,
+  daySummaryOwner,
+  daySummaryStaff,
+} from '@/test/msw/daySummaryFixtures';
 import { renderReport, startMsw } from '@/test/renderReport';
 
 startMsw();
 
-const serve = (summary: unknown, entries: (url: URL) => unknown = () => dayEntriesPage) =>
+const serve = (
+  summary: unknown,
+  entries: (url: URL) => unknown = () => dayEntriesPage,
+  items: unknown = dayItemSheetOwner,
+) =>
   server.use(
+    http.get('*/reports/day-summary/items', ({ request }) => {
+      const url = new URL(request.url);
+      requestLog.push(url);
+      return HttpResponse.json({ success: true, data: items });
+    }),
     http.get('*/reports/day-summary/entries', ({ request }) => {
       const url = new URL(request.url);
       requestLog.push(url);
@@ -37,6 +53,7 @@ const LOAD = { timeout: 5000 };
 
 const summaryRequests = () => requestLog.filter((u) => u.pathname.endsWith('/reports/day-summary'));
 const entryRequests = () => requestLog.filter((u) => u.pathname.endsWith('/reports/day-summary/entries'));
+const itemRequests = () => requestLog.filter((u) => u.pathname.endsWith('/reports/day-summary/items'));
 
 describe('DaySummaryPage', () => {
   it('asks for the day in the URL, and the Day Book for the same day', async () => {
@@ -60,7 +77,7 @@ describe('DaySummaryPage', () => {
   });
 
   it('gives staff their own day, without the team or the profit', async () => {
-    serve(daySummaryStaff);
+    serve(daySummaryStaff, undefined, dayItemSheetStaff);
     renderReport('/reports/day-summary', '/reports/day-summary', <DaySummaryPage />, { role: 'staff' });
     await screen.findByRole('table', { name: 'Day Book' }, LOAD);
     expect(screen.getByRole('heading', { name: 'My day' })).toBeInTheDocument();
@@ -136,7 +153,9 @@ describe('DaySummaryPage', () => {
     );
   });
 
-  describe('a busy day', () => {
+  // Each test here chains several waits of up to LOAD (5s) each — load, type,
+  // answer — so the test as a whole needs more than one wait's worth of time.
+  describe('a busy day', { timeout: 20_000 }, () => {
     it('pages the Day Book: 25 a page, where the reader is, and the next page on request', async () => {
       serve(daySummaryOwner, busyDayBook(60));
       renderReport('/reports/day-summary', '/reports/day-summary', <DaySummaryPage />, { role: 'admin' });
@@ -205,5 +224,103 @@ describe('DaySummaryPage', () => {
       // 100 + 200 + … + 6,000 = 183,000 across all three pages.
       expect(screen.getByText('Rs 183,000.00')).toBeInTheDocument();
     });
+  });
+});
+
+describe('DaySummaryPage — item-wise sales', () => {
+  it('shows the owner the sheet by category, with free units, profit, change and a grand total', async () => {
+    serve(daySummaryOwner);
+    renderReport('/reports/day-summary', '/reports/day-summary?date=2026-11-19', <DaySummaryPage />, { role: 'admin' });
+    const table = await screen.findByRole('table', { name: /Item-wise sales/ }, LOAD);
+    const t = within(table);
+    expect(t.getAllByRole('columnheader').map((h) => h.textContent)).toEqual([
+      'Item',
+      'Sold',
+      'Free',
+      'Returned',
+      'Net units',
+      'Net sales',
+      'Gross profit',
+    ]);
+    // The code sits under the item's name; the margin under its profit.
+    expect(t.getByText('001-006 · tin')).toBeInTheDocument();
+    expect(t.getByText('19.3%')).toBeInTheDocument();
+    expect(t.getByRole('button', { name: /NESTLE POWDER/ })).toBeInTheDocument();
+    expect(t.getByText('Total NESTLE POWDER')).toBeInTheDocument();
+    expect(t.getByText('Grand total')).toBeInTheDocument();
+    expect(t.getByText('23,110.00')).toBeInTheDocument();
+    // Lactogen 15,000 against 12,000 the day before.
+    expect(t.getByText('+25%')).toBeInTheDocument();
+    expect(screen.getByText(/The sheet adds up to exactly that/)).toBeInTheDocument();
+    // Compared with the day before, as the page's Compare control says.
+    expect(itemRequests()[0]?.searchParams.get('compare')).toBe('previous');
+    expect(itemRequests()[0]?.searchParams.get('date')).toBe('2026-11-19');
+  });
+
+  it('lists what needs reordering, out of stock first', async () => {
+    serve(daySummaryOwner);
+    renderReport('/reports/day-summary', '/reports/day-summary', <DaySummaryPage />, { role: 'admin' });
+    const list = await screen.findByRole('list', { name: 'Items to reorder' }, LOAD);
+    const rows = within(list).getAllByRole('link');
+    expect(rows[0]).toHaveTextContent('Lactogen 1 400G');
+    expect(rows[0]).toHaveTextContent('Out of stock');
+    expect(rows[1]).toHaveTextContent('10 left');
+  });
+
+  it('a group folds away to its total', async () => {
+    serve(daySummaryOwner);
+    renderReport('/reports/day-summary', '/reports/day-summary', <DaySummaryPage />, { role: 'admin' });
+    const table = await screen.findByRole('table', { name: /Item-wise sales/ }, LOAD);
+    fireEvent.click(within(table).getByRole('button', { name: /NESTLE POWDER/ }));
+    expect(within(table).queryByText('Lactogen 1 400G')).not.toBeInTheDocument();
+    expect(within(table).getByRole('button', { name: /NESTLE POWDER/ })).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('gives staff their own lines without cost or profit', async () => {
+    serve(daySummaryStaff, undefined, dayItemSheetStaff);
+    renderReport('/reports/day-summary', '/reports/day-summary', <DaySummaryPage />, { role: 'staff' });
+    const table = await screen.findByRole('table', { name: /Item-wise sales/ }, LOAD);
+    expect(within(table).queryByRole('columnheader', { name: 'Gross profit' })).not.toBeInTheDocument();
+    expect(within(table).queryByRole('columnheader', { name: 'Free' })).not.toBeInTheDocument();
+    expect(within(table).getByText('Milkpak 1000ML')).toBeInTheDocument();
+  });
+
+  it('a date range asks for from and to, and the week-earlier comparison follows the page', async () => {
+    serve(daySummaryOwner);
+    renderReport(
+      '/reports/day-summary',
+      '/reports/day-summary?date=2026-11-19&compare=lastWeek&ip=range&ifrom=2026-10-25&ito=2026-10-26',
+      <DaySummaryPage />,
+      { role: 'admin' },
+    );
+    await screen.findByRole('table', { name: /Item-wise sales/ }, LOAD);
+    await waitFor(() => expect(itemRequests().length).toBeGreaterThan(0));
+    const last = itemRequests().at(-1)!;
+    expect(last.searchParams.get('from')).toBe('2026-10-25');
+    expect(last.searchParams.get('to')).toBe('2026-10-26');
+    expect(last.searchParams.get('compare')).toBe('lastWeek');
+  });
+
+  it('a server from before the item sheet (404) shows the rest of the day, and no error', async () => {
+    serve(daySummaryOwner);
+    server.use(
+      http.get('*/reports/day-summary/items', ({ request }) => {
+        requestLog.push(new URL(request.url));
+        return HttpResponse.json({ success: false, error: { code: 'NOT_FOUND', message: 'Cannot GET' } }, { status: 404 });
+      }),
+    );
+    renderReport('/reports/day-summary', '/reports/day-summary', <DaySummaryPage />, { role: 'admin' });
+    await screen.findByRole('table', { name: 'Day Book' }, LOAD);
+    await waitFor(() => expect(itemRequests().length).toBe(1));
+    expect(screen.queryByRole('heading', { name: 'Item-wise sales' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/could not be loaded/)).not.toBeInTheDocument();
+  });
+
+  it('the money card nets the day’s returns', async () => {
+    serve({ ...daySummaryOwner, sales: { ...daySummaryOwner.sales, returns: 3000, net: 242000 } });
+    renderReport('/reports/day-summary', '/reports/day-summary', <DaySummaryPage />, { role: 'admin' });
+    const nets = await screen.findByLabelText('Sales after returns', {}, LOAD);
+    expect(nets).toHaveTextContent('−Rs 3,000.00');
+    expect(nets).toHaveTextContent('Rs 242,000.00');
   });
 });
