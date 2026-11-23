@@ -1,5 +1,5 @@
 import { CheckCircle2, ChevronDown, ChevronRight, Info, PackageSearch } from 'lucide-react';
-import { Fragment, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
 import { Button } from '@/components/ui/Button';
@@ -31,7 +31,14 @@ import {
 import { csvHeaderBlock, downloadCsv, toCsv } from '@/models/reportCsv';
 import type { PeriodPreset, ReportRange } from '@/models/reportPeriod';
 import type { DayItemSheet, DayItemSheetRow } from '@/serializers/daySummarySerializer';
-import { formatAmount, formatMoney } from '@/utils/money';
+import { dayMoney } from '@/models/daySummary';
+import { formatAmount } from '@/utils/money';
+
+/** A table amount (no currency) with a true minus sign, like the rest of the page. */
+const amountCell = (n: number): string => formatAmount(n).replace(/^-/, '−');
+
+/** How long typing pauses before the search is put in the address. */
+const SEARCH_DELAY_MS = 300;
 
 export type SheetPeriodMode = 'day' | 'range';
 
@@ -82,8 +89,23 @@ export function ItemSales(props: ItemSalesProps) {
   const { sheet, loading, fetching, error, onRetry, groupBy, sort, q } = props;
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [drill, setDrill] = useState<DayItemSheetRow | null>(null);
+  // Typing is local; the search reaches the address (and the exports) once it pauses.
+  const [draft, setDraft] = useState(q);
+  const [seenQ, setSeenQ] = useState(q);
+  if (q !== seenQ) {
+    setSeenQ(q);
+    if (q !== draft.trim()) setDraft(q);
+  }
+  const { onSearch } = props;
+  useEffect(() => {
+    const next = draft.trim();
+    if (next === q) return undefined;
+    const t = setTimeout(() => onSearch(next), SEARCH_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [draft, q, onSearch]);
 
-  const view = sheet ? groupItemSheet(sheet, { groupBy, sort, q }) : null;
+  // The list filters as the reader types; only the address waits.
+  const view = sheet ? groupItemSheet(sheet, { groupBy, sort, q: draft.trim() }) : null;
   const period = sheet ? sheetPeriodLabel(sheet.from, sheet.to) : '';
   const cols = {
     free: sheet?.hasFree ?? false,
@@ -99,7 +121,7 @@ export function ItemSales(props: ItemSalesProps) {
   const allCollapsed = view ? view.groups.every((g) => isFolded(g.key)) : false;
   const toggleAll = () => setCollapsed(view ? Object.fromEntries(view.groups.map((g) => [g.key, !allCollapsed])) : {});
 
-  const exportView = { groupBy, sort, q };
+  const exportView = { groupBy, sort, q: draft.trim() };
   const filename = sheet ? `item-sales-${sheet.from}${sheet.to !== sheet.from ? `-to-${sheet.to}` : ''}` : 'item-sales';
 
   return (
@@ -110,7 +132,7 @@ export function ItemSales(props: ItemSalesProps) {
             Item-wise sales
           </h2>
           <p className="text-caption text-text-tertiary">
-            {period || 'Loading…'}
+            {period || (error ? 'Not loaded' : 'Loading…')}
             {sheet && sheet.rows.length > 0 && ` · ${sheet.rows.length} ${sheet.rows.length === 1 ? 'line' : 'lines'}`}
             {sheet?.compare && ` · ${props.compareLabel}`}
           </p>
@@ -177,8 +199,8 @@ export function ItemSales(props: ItemSalesProps) {
           />
           <SearchInput
             size="sm"
-            value={q}
-            onValueChange={props.onSearch}
+            value={draft}
+            onValueChange={setDraft}
             placeholder="Search items"
             aria-label="Find an item or code"
             containerClassName="min-w-[10rem] flex-1"
@@ -201,7 +223,9 @@ export function ItemSales(props: ItemSalesProps) {
       {!loading && error && (
         <div className="p-lg">
           <p className="text-label-md text-text-primary">Item-wise sales could not be loaded</p>
-          <p className="mt-xxs text-body-sm text-text-secondary">{error.message}</p>
+          <p className="mt-xxs text-body-sm text-text-secondary">
+            Check the connection and try again. The rest of the day is unaffected.
+          </p>
           <Button variant="secondary" size="sm" className="mt-sm" onClick={onRetry}>
             Try again
           </Button>
@@ -329,7 +353,7 @@ export function ItemSales(props: ItemSalesProps) {
                           )}
                           <span className="truncate">{g.label}</span>
                         </span>
-                        <span className="text-label-md tabular text-text-primary">{formatMoney(g.totals.value)}</span>
+                        <span className="text-label-md tabular text-text-primary">{dayMoney(g.totals.value)}</span>
                       </button>
                       {!isCollapsed && (
                         <ul className="divide-y divide-border-light">
@@ -351,7 +375,7 @@ export function ItemSales(props: ItemSalesProps) {
                     {view.filtered ? 'Total (items shown)' : 'Grand total'}
                     <span className="block text-caption text-text-tertiary">{qtyCell(view.totals.net)} net units</span>
                   </span>
-                  <span className="text-h5 tabular text-text-primary">{formatMoney(view.totals.value)}</span>
+                  <span className="text-h5 tabular text-text-primary">{dayMoney(view.totals.value)}</span>
                 </li>
               </ul>
             </>
@@ -419,7 +443,7 @@ function NetSalesCell({
 }) {
   return (
     <>
-      <span className={cn('block', strong, value < 0 && 'text-danger')}>{formatAmount(value)}</span>
+      <span className={cn('block', strong, value < 0 && 'text-danger')}>{amountCell(value)}</span>
       {cols.compare && (
         <span className="block text-caption">
           <Change current={value} previous={previous} />
@@ -444,7 +468,7 @@ function ProfitCell({
   return (
     <>
       <span className={cn('block', (profit ?? 0) < 0 && 'text-danger')}>
-        {profit === null ? '–' : formatAmount(profit)}
+        {profit === null ? '–' : amountCell(profit)}
         {costMissing && (
           <span title="Some of its cost was never recorded, so profit is overstated" className="ml-xxs text-warning">
             *
@@ -580,7 +604,7 @@ function PhoneRow({ row: r, cols, onOpen }: { row: DayItemSheetRow; cols: Cols; 
       </div>
       <div className="shrink-0 text-right">
         <p className={cn('text-label-md tabular', r.value < 0 ? 'text-danger' : 'text-text-primary')}>
-          {formatMoney(r.value)}
+          {dayMoney(r.value)}
         </p>
         <p className="text-caption tabular text-text-secondary">
           {qtyCell(r.net)} net
@@ -593,7 +617,7 @@ function PhoneRow({ row: r, cols, onOpen }: { row: DayItemSheetRow; cols: Cols; 
         </p>
         {showProfit && (
           <p className={cn('text-caption tabular', (r.profit ?? 0) < 0 ? 'text-danger' : 'text-text-tertiary')}>
-            GP {formatAmount(r.profit ?? 0)} · {marginText(r.margin)}
+            GP {amountCell(r.profit ?? 0)} · {marginText(r.margin)}
           </p>
         )}
       </div>
@@ -626,19 +650,19 @@ function SheetFigures({ totals: t, sheet }: { totals: SheetTotals; sheet: DayIte
     },
     {
       label: 'Net sales',
-      value: formatMoney(t.value),
+      value: dayMoney(t.value),
       note: sheet.compare ? <Change current={t.value} previous={t.compareValue} /> : undefined,
     },
     {
       label: 'Returns',
-      value: t.returnsValue > 0 ? `−${formatMoney(t.returnsValue)}` : formatMoney(0),
+      value: dayMoney(-t.returnsValue),
       note: t.returned > 0 ? `${qtyCell(t.returned)} units back` : 'None',
       tone: t.returnsValue > 0 ? 'text-danger' : undefined,
     },
     sheet.showCost && t.profit !== null
       ? {
-          label: 'Gross profit',
-          value: formatMoney(t.profit),
+          label: 'Gross profit on items',
+          value: dayMoney(t.profit),
           note: t.margin === null ? undefined : `${t.margin.toFixed(1)}% margin`,
           tone: t.profit < 0 ? 'text-danger' : undefined,
         }
@@ -671,27 +695,28 @@ function SheetNotes({ sheet, groupBy }: { sheet: DayItemSheet; groupBy: ItemGrou
             <Info className="mt-px size-3.5 shrink-0 text-warning" aria-hidden="true" />
           )}
           <span>
-            Net sales {formatMoney(tie.netSales)} = invoices before tax, after discounts{' '}
-            {formatMoney(tie.salesBeforeTax)}
-            {' − '}returns {formatMoney(tie.returns)}.{' '}
+            Net sales {dayMoney(tie.netSales)} = invoices before tax, after discounts{' '}
+            {dayMoney(tie.salesBeforeTax)}
+            {' − '}returns {dayMoney(tie.returns)}.{' '}
             {tie.matches
               ? 'The sheet adds up to exactly that.'
-              : `The sheet shows ${formatMoney(sheet.totals.value)}; some lines could not be matched to an item.`}
+              : `The sheet shows ${dayMoney(sheet.totals.value)}; some lines could not be matched to an item.`}
           </span>
         </p>
       )}
       <p>
         Net units = sold + free − returned. Free units were given at price 0. Net sales are before tax, after each
         invoice’s discount, less returns. Delivered orders count what the customer received.
-        {sheet.showCost && ' Gross profit and margin are for stock items: net sales less the cost of the goods (services and charges carry none); * marks a line with cost missing.'}
+        {sheet.showCost &&
+          ' Gross profit on items is for stock items: net sales less the cost of the goods (services and charges carry none); * marks a line with cost missing. It can differ from Gross profit (books) under Profit for the day, which is the ledger’s figure for everything posted.'}
       </p>
       {manyUngrouped && (
         <p>
           Most of these items have no category.{' '}
-          <Link to="/inventory" className="text-primary hover:underline">
+          <Link to="/inventory" className="text-text-link hover:underline">
             Give items a category
           </Link>{' '}
-          (for example “NESTLE POWDER” or “MILK PACK”) to group the sheet by product line.
+          (for example “Beverages” or “Dairy”) to group the sheet by product line.
         </p>
       )}
     </div>

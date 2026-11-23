@@ -1,9 +1,9 @@
 import { Clock } from 'lucide-react';
 
 import { Card } from '@/components/ui/Card';
-import { busiestHour, hourTick, hourWindow } from '@/models/daySummary';
+import { busiestHour, dayMoney, hourTick, hourWindow } from '@/models/daySummary';
 import type { DayHourRow } from '@/serializers/daySummarySerializer';
-import { compactMoney, formatMoney } from '@/utils/money';
+import { compactMoney } from '@/utils/money';
 
 /**
  * When the day happened: sales and receipts by the hour they were entered.
@@ -26,7 +26,7 @@ export function HourlyActivity({ hourly }: { hourly: DayHourRow[] }) {
             <p className="text-caption text-text-tertiary">
               {peak
                 ? `Busiest at ${hourTick(peak.hour)} · ${compactMoney(peak.sales)} sales, ${compactMoney(peak.received)} received`
-                : 'When sales and receipts were entered'}
+                : 'Sales and receipts by the hour they were entered'}
             </p>
           </div>
         </div>
@@ -47,7 +47,34 @@ export function HourlyActivity({ hourly }: { hourly: DayHourRow[] }) {
           No sales or receipts were entered on this day.
         </p>
       ) : (
-        <div className="px-lg pb-sm pt-md" role="img" aria-label="Sales and money received by hour">
+        <div className="px-lg pb-sm pt-md">
+          {/* The chart in words, for a screen reader: every hour that had something. */}
+          <table className="sr-only">
+            <caption>Sales and money received by the hour they were entered</caption>
+            <thead>
+              <tr>
+                <th scope="col">Hour</th>
+                <th scope="col">Sales</th>
+                <th scope="col">Received</th>
+              </tr>
+            </thead>
+            <tbody>
+              {hours
+                .filter((h) => h.sales > 0 || h.received > 0)
+                .map((h) => (
+                  <tr key={h.hour}>
+                    <th scope="row">{hourTick(h.hour)}</th>
+                    <td>
+                      {dayMoney(h.sales)} ({h.salesCount})
+                    </td>
+                    <td>
+                      {dayMoney(h.received)} ({h.receivedCount})
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+          <div aria-hidden="true">
           <div className="relative flex h-40 items-end gap-xxs border-b border-border-light">
             {/* Faint guide lines at a half and the top. */}
             <div className="pointer-events-none absolute inset-x-0 top-0 border-t border-dashed border-border-light" />
@@ -56,7 +83,7 @@ export function HourlyActivity({ hourly }: { hourly: DayHourRow[] }) {
               <div
                 key={h.hour}
                 className="group relative flex h-full flex-1 items-end justify-center gap-[2px]"
-                title={`${hourTick(h.hour)}: ${formatMoney(h.sales)} sales (${h.salesCount}), ${formatMoney(h.received)} received (${h.receivedCount})`}
+                title={`${hourTick(h.hour)}: ${dayMoney(h.sales)} sales (${h.salesCount}), ${dayMoney(h.received)} received (${h.receivedCount})`}
               >
                 <div
                   className="w-full max-w-[14px] rounded-t-xs bg-primary transition-opacity group-hover:opacity-80"
@@ -75,6 +102,7 @@ export function HourlyActivity({ hourly }: { hourly: DayHourRow[] }) {
                 {h.hour % 3 === 0 ? hourTick(h.hour) : ''}
               </span>
             ))}
+          </div>
           </div>
         </div>
       )}

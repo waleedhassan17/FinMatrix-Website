@@ -2,9 +2,10 @@ import {
   AlertTriangle,
   ArrowRight,
   Ban,
+  CalendarClock,
   ChevronRight,
   FilePen,
-  CalendarClock,
+  Timer,
   Trash2,
   type LucideIcon,
 } from 'lucide-react';
@@ -14,10 +15,10 @@ import { Link } from 'react-router-dom';
 import { Card } from '@/components/ui/Card';
 import { RankedBars } from '@/features/reports/RankedBars';
 import { cn } from '@/lib/cn';
-import { KIND_META, attentionItems, methodLabel } from '@/models/daySummary';
+import { KIND_META, attentionItems, count, dayMoney, dayShortLabel, methodLabel } from '@/models/daySummary';
 import { formatQty } from '@/models/inventory';
 import type { DayEntryFilter, DayReorderRow, DaySummary, DayUserRow } from '@/serializers/daySummarySerializer';
-import { compactMoney, formatMoney } from '@/utils/money';
+import { compactMoney } from '@/utils/money';
 
 /** One card of the side column: a heading, an optional aside, its body. */
 export function RailCard({
@@ -47,6 +48,7 @@ const ATTENTION_ICON: Record<string, LucideIcon> = {
   drafts: FilePen,
   voided: Trash2,
   cancelled: Ban,
+  'overdue-pos': Timer,
 };
 
 /** What an owner should look at — each line narrows the Day Book to it. */
@@ -72,26 +74,36 @@ export function AttentionCard({
       </div>
       <ul className="divide-y divide-border-light">
         {items.map((item) => {
-          const Icon = ATTENTION_ICON[item.filter] ?? AlertTriangle;
-          const on = active === item.filter;
+          const Icon = ATTENTION_ICON[item.key] ?? AlertTriangle;
+          const filter = item.filter;
+          const on = filter !== undefined && active === filter;
+          const body = (
+            <>
+              <Icon className="mt-[2px] size-4 shrink-0 text-warning" aria-hidden="true" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-label-md text-text-primary">{item.label}</span>
+                <span className="block text-caption text-text-secondary">{item.detail}</span>
+              </span>
+              <ChevronRight className="mt-[2px] size-4 shrink-0 text-text-tertiary" aria-hidden="true" />
+            </>
+          );
+          const rowClass = 'flex w-full items-start gap-sm px-lg py-sm text-left transition-colors hover:bg-surface-hover';
           return (
-            <li key={item.filter}>
-              <button
-                type="button"
-                aria-pressed={on}
-                onClick={() => onSelect(on ? 'all' : item.filter)}
-                className={cn(
-                  'flex w-full items-start gap-sm px-lg py-sm text-left transition-colors hover:bg-surface-hover',
-                  on && 'bg-warning-lighter',
-                )}
-              >
-                <Icon className="mt-[2px] size-4 shrink-0 text-warning" aria-hidden="true" />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-label-md text-text-primary">{item.label}</span>
-                  <span className="block text-caption text-text-secondary">{item.detail}</span>
-                </span>
-                <ChevronRight className="mt-[2px] size-4 shrink-0 text-text-tertiary" aria-hidden="true" />
-              </button>
+            <li key={item.key}>
+              {filter ? (
+                <button
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => onSelect(on ? 'all' : filter)}
+                  className={cn(rowClass, on && 'bg-warning-lighter')}
+                >
+                  {body}
+                </button>
+              ) : (
+                <Link to={item.href ?? '#'} className={rowClass}>
+                  {body}
+                </Link>
+              )}
             </li>
           );
         })}
@@ -104,13 +116,13 @@ export function AttentionCard({
 export function ProfitCard({ summary }: { summary: DaySummary }) {
   const p = summary.profit;
   if (!p) return null;
-  const margin = p.revenue !== 0 ? `${Math.round((p.grossProfit / p.revenue) * 100)}%` : '—';
+  const margin = p.revenue !== 0 ? Math.round((p.grossProfit / p.revenue) * 100) : null;
   const line = (label: string, value: number, strong = false, tone?: string) => (
     <div className={cn('flex items-baseline justify-between gap-md py-[5px]', strong && 'border-t border-border-light pt-xs')}>
-      <span className={cn(strong ? 'text-label-md text-text-primary' : 'text-body-sm text-text-secondary')}>{label}</span>
-      <span className={cn('tabular', strong ? 'text-label-lg' : 'text-body-sm', tone ?? 'text-text-primary')}>
-        {formatMoney(value)}
-      </span>
+      <dt className={cn(strong ? 'text-label-md text-text-primary' : 'text-body-sm text-text-secondary')}>{label}</dt>
+      <dd className={cn('tabular', strong ? 'text-label-lg' : 'text-body-sm', tone ?? 'text-text-primary')}>
+        {dayMoney(value)}
+      </dd>
     </div>
   );
   return (
@@ -125,14 +137,19 @@ export function ProfitCard({ summary }: { summary: DaySummary }) {
         </Link>
       }
     >
-      <div className="px-lg py-sm">
+      <dl className="px-lg py-sm" aria-label="Profit for the day">
         {line('Revenue', p.revenue)}
         {line('Cost of sales', p.cogs)}
-        {line('Gross profit', p.grossProfit, true, p.grossProfit < 0 ? 'text-danger' : undefined)}
-        <p className="-mt-[2px] text-right text-caption text-text-tertiary">{margin} gross margin</p>
+        {line('Gross profit (books)', p.grossProfit, true, p.grossProfit < 0 ? 'text-danger' : undefined)}
+        {margin !== null && (
+          <p className="-mt-[2px] text-right text-caption text-text-tertiary">{margin}% gross margin</p>
+        )}
         {line('Expenses', p.expenses)}
         {line('Net profit', p.netIncome, true, p.netIncome < 0 ? 'text-danger' : 'text-success')}
-      </div>
+      </dl>
+      <p className="border-t border-border-light px-lg py-xs text-caption text-text-tertiary">
+        From the general ledger: everything posted for the day, services and adjustments included.
+      </p>
     </RailCard>
   );
 }
@@ -173,14 +190,14 @@ export function DocumentsCard({
                     {KIND_META[d.kind].label}
                   </span>
                   <span className="w-8 text-right text-label-md tabular text-text-primary">{d.count}</span>
-                  <span className="w-24 text-right text-body-sm tabular text-text-secondary">{compactMoney(d.total)}</span>
+                  <span className="w-28 text-right text-body-sm tabular text-text-secondary">{dayMoney(d.total)}</span>
                 </button>
               </li>
             );
           })}
         </ul>
       )}
-      {quiet.length > 0 && (
+      {busy.length > 0 && quiet.length > 0 && (
         <p className="border-t border-border-light px-lg py-xs text-caption text-text-tertiary">
           None: {quiet.map((d) => KIND_META[d.kind].label.toLowerCase()).join(', ')}.
         </p>
@@ -193,17 +210,24 @@ export function DocumentsCard({
 export function MoneyCard({ summary }: { summary: DaySummary }) {
   const { cash, sales } = summary;
   const flow = cash.received + cash.paid;
+  if (flow === 0 && cash.methods.length === 0 && sales.returns === 0 && sales.unpaid === 0) {
+    return (
+      <RailCard title="Money in and out">
+        <p className="px-lg py-md text-body-sm text-text-secondary">No money was received or paid out on this day.</p>
+      </RailCard>
+    );
+  }
   return (
     <RailCard title="Money in and out">
       <div className="px-lg py-sm">
         <div className="grid grid-cols-2 gap-sm">
           <div>
             <p className="text-caption text-text-tertiary">In</p>
-            <p className="text-label-lg tabular text-success">{formatMoney(cash.received)}</p>
+            <p className="text-label-lg tabular text-success">{dayMoney(cash.received)}</p>
           </div>
           <div className="text-right">
             <p className="text-caption text-text-tertiary">Out</p>
-            <p className="text-label-lg tabular text-text-primary">{formatMoney(cash.paid)}</p>
+            <p className="text-label-lg tabular text-text-primary">{dayMoney(cash.paid)}</p>
           </div>
         </div>
         {/* In against out, as one bar. */}
@@ -217,12 +241,21 @@ export function MoneyCard({ summary }: { summary: DaySummary }) {
         </div>
         {cash.methods.length > 0 && (
           <table className="mt-sm w-full text-body-sm" aria-label="Money in and out by method">
+            <thead>
+              <tr className="text-overline text-text-tertiary">
+                <th scope="col" className="pb-xxs text-left font-normal">Method</th>
+                <th scope="col" className="pb-xxs text-right font-normal">In</th>
+                <th scope="col" className="pb-xxs text-right font-normal">Out</th>
+              </tr>
+            </thead>
             <tbody className="divide-y divide-border-light">
               {cash.methods.map((m) => (
                 <tr key={m.method}>
-                  <td className="py-xxs text-text-secondary">{methodLabel(m.method)}</td>
-                  <td className="py-xxs text-right tabular text-success">{m.received ? compactMoney(m.received) : '—'}</td>
-                  <td className="w-20 py-xxs text-right tabular text-text-primary">{m.paid ? compactMoney(m.paid) : '—'}</td>
+                  <th scope="row" className="py-xxs text-left font-normal text-text-secondary">
+                    {methodLabel(m.method)}
+                  </th>
+                  <td className="py-xxs text-right tabular text-success">{m.received ? dayMoney(m.received) : '–'}</td>
+                  <td className="py-xxs pl-sm text-right tabular text-text-primary">{m.paid ? dayMoney(m.paid) : '–'}</td>
                 </tr>
               ))}
             </tbody>
@@ -231,7 +264,7 @@ export function MoneyCard({ summary }: { summary: DaySummary }) {
         <div className="mt-xs flex items-baseline justify-between border-t border-border-light pt-xs">
           <span className="text-label-md text-text-primary">Net</span>
           <span className={cn('text-label-lg tabular', cash.net < 0 ? 'text-danger' : 'text-text-primary')}>
-            {formatMoney(cash.net)}
+            {dayMoney(cash.net)}
           </span>
         </div>
       </div>
@@ -243,22 +276,22 @@ export function MoneyCard({ summary }: { summary: DaySummary }) {
           <dl className="flex flex-col gap-xxs" aria-label="Sales after returns">
             <div className="flex items-baseline justify-between">
               <dt className="text-text-secondary">Sales</dt>
-              <dd className="tabular text-text-primary">{formatMoney(sales.total)}</dd>
+              <dd className="tabular text-text-primary">{dayMoney(sales.total)}</dd>
             </div>
             <div className="flex items-baseline justify-between">
               <dt className="text-text-secondary">Returns</dt>
-              <dd className="tabular text-danger">−{formatMoney(sales.returns)}</dd>
+              <dd className="tabular text-danger">{dayMoney(-sales.returns)}</dd>
             </div>
             <div className="flex items-baseline justify-between border-t border-border-light pt-xxs">
               <dt className="text-label-md text-text-primary">Net sales</dt>
-              <dd className="text-label-lg tabular text-text-primary">{formatMoney(sales.net)}</dd>
+              <dd className="text-label-lg tabular text-text-primary">{dayMoney(sales.net)}</dd>
             </div>
           </dl>
         </div>
       )}
       {sales.unpaid > 0 && (
         <p className="border-t border-border-light bg-surface-2 px-lg py-xs text-caption text-text-secondary">
-          <span className="tabular text-text-primary">{formatMoney(sales.unpaid)}</span> of this day’s sales is still unpaid.
+          <span className="tabular text-text-primary">{dayMoney(sales.unpaid)}</span> of this day’s sales is still unpaid.
         </p>
       )}
     </RailCard>
@@ -309,7 +342,7 @@ export function BestSellersCard({ summary }: { summary: DaySummary }) {
  * What sold in the period and now needs buying in: out of stock first, then
  * the items at or below their reorder point. Stock is as it stands now.
  */
-export function ReorderCard({ reorder }: { reorder: DayReorderRow[] }) {
+export function ReorderCard({ reorder, period }: { reorder: DayReorderRow[]; period: string }) {
   if (reorder.length === 0) return null;
   const shown = reorder.slice(0, 8);
   return (
@@ -317,6 +350,9 @@ export function ReorderCard({ reorder }: { reorder: DayReorderRow[] }) {
       title="Reorder soon"
       aside={<span className="text-caption text-text-tertiary">{reorder.length} {reorder.length === 1 ? 'item' : 'items'}</span>}
     >
+      <p className="border-b border-border-light bg-surface-2 px-lg py-xxs text-caption text-text-secondary">
+        Stock now, for items sold {period}
+      </p>
       <ul className="divide-y divide-border-light" aria-label="Items to reorder">
         {shown.map((r) => (
           <li key={r.itemId}>
@@ -342,11 +378,113 @@ export function ReorderCard({ reorder }: { reorder: DayReorderRow[] }) {
       {reorder.length > shown.length && (
         <Link
           to="/inventory"
-          className="flex items-center justify-between border-t border-border-light px-lg py-xs text-label-md text-primary hover:bg-surface-hover"
+          className="flex items-center justify-between border-t border-border-light px-lg py-xs text-label-md text-text-link hover:bg-surface-hover"
         >
-          {reorder.length - shown.length} more in Inventory
+          See {reorder.length - shown.length} more in Inventory
           <ArrowRight className="size-4" aria-hidden="true" />
         </Link>
+      )}
+    </RailCard>
+  );
+}
+
+/**
+ * The buying side of the day: purchase orders placed, goods received against
+ * them and bills raised from them — then, for the owner, where the company's
+ * purchase orders stand now (still to arrive, overdue, received but unbilled).
+ */
+export function PurchasingCard({ summary }: { summary: DaySummary }) {
+  const p = summary.purchasing;
+  if (!p) return null;
+  const quiet = p.placed.count === 0 && p.received.count === 0 && p.billed.count === 0;
+  const pos = (n: number) => `${n.toLocaleString('en-US')} ${n === 1 ? 'PO' : 'POs'}`;
+  const dayRows: Array<{ label: string; note: string; value: number }> = [
+    { label: 'Placed', note: count(p.placed.count, 'purchase_order'), value: p.placed.total },
+    {
+      label: 'Goods received',
+      note: p.received.count ? `At cost · on ${pos(p.received.count)}` : 'Nothing arrived',
+      value: p.received.total,
+    },
+    { label: 'Billed from POs', note: count(p.billed.count, 'bill'), value: p.billed.total },
+  ];
+  const now = p.position;
+  return (
+    <RailCard
+      title="Purchasing"
+      aside={
+        <Link
+          to="/purchase-orders"
+          className="inline-flex items-center gap-[2px] text-caption text-text-link hover:underline"
+        >
+          Purchase orders <ArrowRight className="size-3" aria-hidden="true" />
+        </Link>
+      }
+    >
+      {quiet ? (
+        <p className="px-lg py-md text-body-sm text-text-secondary">
+          No purchase orders placed, goods received or bills from POs on this day.
+        </p>
+      ) : (
+        <dl className="divide-y divide-border-light px-lg" aria-label="Purchasing on the day">
+          {dayRows.map((r) => (
+            <div key={r.label} className="flex items-baseline justify-between gap-md py-xs">
+              <div className="min-w-0">
+                <dt className="text-body-sm text-text-primary">{r.label}</dt>
+                <p className="text-caption text-text-tertiary">{r.note}</p>
+              </div>
+              <dd className="shrink-0 text-label-md tabular text-text-primary">{dayMoney(r.value)}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {p.topVendors.length > 0 && (
+        <div className="border-t border-border-light px-lg py-sm">
+          <p className="mb-xs text-overline text-text-tertiary">Ordered from</p>
+          <RankedBars
+            points={p.topVendors.map((v) => ({
+              key: v.id,
+              label: v.name,
+              value: v.total,
+              hint: count(v.count, 'purchase_order'),
+            }))}
+            format={(v) => compactMoney(v)}
+            emptyLabel="No purchase orders on this day."
+            hrefFor={(id) => (id ? `/vendors/${encodeURIComponent(id)}` : null)}
+          />
+        </div>
+      )}
+      {now && (
+        <div className="border-t border-border-light bg-surface-2 px-lg py-sm">
+          <p className="text-overline text-text-tertiary">Right now</p>
+          <dl className="mt-xxs flex flex-col" aria-label="Purchase orders right now">
+            <div className="flex items-baseline justify-between gap-md py-xxs">
+              <dt className="text-body-sm text-text-secondary">
+                Still to arrive <span className="text-caption text-text-tertiary">· {pos(now.open.count)}</span>
+              </dt>
+              <dd className="shrink-0 text-body-sm tabular text-text-primary">{dayMoney(now.open.total)}</dd>
+            </div>
+            <div className="flex items-baseline justify-between gap-md py-xxs">
+              <dt className={cn('text-body-sm', now.overdue.count ? 'text-danger' : 'text-text-secondary')}>
+                Overdue <span className="text-caption text-text-tertiary">· {pos(now.overdue.count)}</span>
+                {now.overdue.oldest && (
+                  <span className="block text-caption text-text-tertiary">
+                    Expected since {dayShortLabel(now.overdue.oldest)}
+                  </span>
+                )}
+              </dt>
+              <dd className={cn('shrink-0 text-body-sm tabular', now.overdue.count ? 'text-danger' : 'text-text-primary')}>
+                {dayMoney(now.overdue.total)}
+              </dd>
+            </div>
+            <div className="flex items-baseline justify-between gap-md py-xxs">
+              <dt className="text-body-sm text-text-secondary">
+                Received, not billed{' '}
+                <span className="text-caption text-text-tertiary">· {pos(now.receivedNotBilled.count)}</span>
+              </dt>
+              <dd className="shrink-0 text-body-sm tabular text-text-primary">{dayMoney(now.receivedNotBilled.total)}</dd>
+            </div>
+          </dl>
+        </div>
       )}
     </RailCard>
   );
@@ -365,6 +503,9 @@ export function TeamCard({ team, onSelect }: { team: DayUserRow[]; onSelect: (us
   const most = Math.max(...team.map((t) => t.documents), 1);
   return (
     <RailCard title="Team activity">
+      <p className="border-b border-border-light px-lg py-xxs text-caption text-text-tertiary">
+        Documents each person prepared. Choose someone to see only their day.
+      </p>
       {team.length === 0 ? (
         <p className="px-lg py-md text-body-sm text-text-secondary">Nobody entered anything on this day.</p>
       ) : (
@@ -375,6 +516,7 @@ export function TeamCard({ team, onSelect }: { team: DayUserRow[]; onSelect: (us
               t.salesOrders.count ? `${t.salesOrders.count} orders` : null,
               t.estimates.count ? `${t.estimates.count} quotes` : null,
               t.receipts.count ? `${t.receipts.count} receipts` : null,
+              t.purchaseOrders.count ? `${t.purchaseOrders.count} POs · ${compactMoney(t.purchaseOrders.total)}` : null,
             ].filter(Boolean);
             const body = (
               <>
@@ -398,7 +540,7 @@ export function TeamCard({ team, onSelect }: { team: DayUserRow[]; onSelect: (us
                     <span className="block h-full rounded-full bg-primary-200" style={{ width: `${(t.documents / most) * 100}%` }} />
                   </span>
                   <span className="mt-[3px] block truncate text-caption text-text-tertiary">
-                    {parts.length ? parts.join(' · ') : t.userId ? 'Other documents only' : 'Purchase orders record no creator'}
+                    {parts.length ? parts.join(' · ') : t.userId ? 'Other documents only' : 'Entered before people were recorded'}
                   </span>
                 </span>
               </>

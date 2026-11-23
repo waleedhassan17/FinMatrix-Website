@@ -82,7 +82,7 @@ export function DayNavigator({
         trigger={
           <button
             type="button"
-            aria-label="Pick a day"
+            aria-label={`Pick a day — showing ${format(parse(date), 'EEEE d MMMM yyyy')}`}
             className={cn(
               'flex h-10 min-w-0 items-center gap-sm rounded-md border border-border bg-surface px-sm text-left transition-colors',
               'hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus',

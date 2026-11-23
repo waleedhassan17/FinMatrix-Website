@@ -12,6 +12,7 @@ import {
   dayEntriesPage,
   dayItemSheetOwner,
   dayItemSheetStaff,
+  daySummaryBuying,
   daySummaryOwner,
   daySummaryStaff,
 } from '@/test/msw/daySummaryFixtures';
@@ -71,7 +72,7 @@ describe('DaySummaryPage', () => {
     renderReport('/reports/day-summary', '/reports/day-summary', <DaySummaryPage />, { role: 'admin' });
     expect(await screen.findByRole('list', { name: 'Team activity' }, LOAD)).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Day Summary' })).toBeInTheDocument();
-    expect(screen.getByText('Gross profit')).toBeInTheDocument();
+    expect(screen.getByText('Gross profit (books)')).toBeInTheDocument();
     expect(screen.getByText('2 back-dated entries')).toBeInTheDocument();
     expect(screen.getAllByText('Rs 245,000.00').length).toBeGreaterThan(0);
   });
@@ -82,7 +83,7 @@ describe('DaySummaryPage', () => {
     await screen.findByRole('table', { name: 'Day Book' }, LOAD);
     expect(screen.getByRole('heading', { name: 'My day' })).toBeInTheDocument();
     expect(screen.queryByRole('list', { name: 'Team activity' })).toBeNull();
-    expect(screen.queryByText('Gross profit')).toBeNull();
+    expect(screen.queryByText('Gross profit (books)')).toBeNull();
     expect(screen.queryByRole('button', { name: /Daily summary/ })).toBeNull();
   });
 
@@ -90,11 +91,12 @@ describe('DaySummaryPage', () => {
     serve(daySummaryOwner);
     renderReport('/reports/day-summary', '/reports/day-summary', <DaySummaryPage />, { role: 'admin' });
     await screen.findByRole('table', { name: 'Day Book' }, LOAD);
-    fireEvent.click(screen.getByRole('button', { name: /^Receipts/ }));
+    // The Documents card's line (the side column comes first in the page).
+    fireEvent.click(screen.getAllByRole('button', { name: /^Receipts/ })[0]);
     await waitFor(() =>
       expect(entryRequests().some((u) => u.searchParams.get('type') === 'receipt')).toBe(true),
     );
-    expect(screen.getByRole('button', { name: /^Receipts/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getAllByRole('button', { name: /^Receipts/ })[0]).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('flags a back-dated row with the day it is dated', async () => {
@@ -112,9 +114,9 @@ describe('DaySummaryPage', () => {
     serve(daySummaryOwner);
     renderReport('/reports/day-summary', '/reports/day-summary', <DaySummaryPage />, { role: 'admin' });
     await screen.findByRole('table', { name: 'Day Book' }, LOAD);
-    const tabs = screen.getByRole('tablist', { name: 'Day Book filter' });
-    expect(within(tabs).queryByRole('tab', { name: /Quotations/ })).toBeNull();
-    fireEvent.click(within(tabs).getByRole('tab', { name: /Back-dated/ }));
+    const tabs = screen.getByRole('group', { name: 'Day Book filter' });
+    expect(within(tabs).queryByRole('button', { name: /Quotations/ })).toBeNull();
+    fireEvent.click(within(tabs).getByRole('button', { name: /Back-dated/ }));
     await waitFor(() =>
       expect(entryRequests().some((u) => u.searchParams.get('type') === 'backdated')).toBe(true),
     );
@@ -124,7 +126,7 @@ describe('DaySummaryPage', () => {
     serve(daySummaryOwner);
     renderReport('/reports/day-summary', '/reports/day-summary', <DaySummaryPage />, { role: 'admin' });
     await screen.findByRole('table', { name: 'Day Book' }, LOAD);
-    fireEvent.click(screen.getByRole('button', { name: 'Pick a day' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Pick a day/ }));
     fireEvent.click(await screen.findByRole('gridcell', { name: 'Thursday 12 November 2026' }));
     await waitFor(() =>
       expect(summaryRequests().some((u) => u.searchParams.get('date') === '2026-11-12')).toBe(true),
@@ -135,7 +137,7 @@ describe('DaySummaryPage', () => {
     serve(daySummaryOwner);
     renderReport('/reports/day-summary', '/reports/day-summary', <DaySummaryPage />, { role: 'admin' });
     await screen.findByRole('table', { name: 'Day Book' }, LOAD);
-    fireEvent.click(screen.getByRole('button', { name: 'Pick a day' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Pick a day/ }));
     expect(await screen.findByRole('gridcell', { name: 'Friday 20 November 2026' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Yesterday' }));
     await waitFor(() =>
@@ -315,6 +317,60 @@ describe('DaySummaryPage — item-wise sales', () => {
     expect(screen.queryByRole('heading', { name: 'Item-wise sales' })).not.toBeInTheDocument();
     expect(screen.queryByText(/could not be loaded/)).not.toBeInTheDocument();
   });
+
+  it('a business that buys on POs gets Selling and Buying rows, and the Purchasing card', async () => {
+    serve(daySummaryBuying);
+    renderReport('/reports/day-summary', '/reports/day-summary', <DaySummaryPage />, { role: 'admin' });
+    await screen.findByRole('table', { name: 'Day Book' }, LOAD);
+    const buying = screen.getByRole('region', { name: 'Buying' });
+    expect(within(buying).getByText('POs placed')).toBeInTheDocument();
+    expect(within(buying).getByText('Goods received')).toBeInTheDocument();
+    expect(within(buying).getByText('Bills')).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Selling' })).getByText('Orders booked')).toBeInTheDocument();
+    const day = screen.getByLabelText('Purchasing on the day');
+    expect(day).toHaveTextContent('Rs 90,000.00');
+    expect(day).toHaveTextContent('At cost · on 2 POs');
+    const now = screen.getByLabelText('Purchase orders right now');
+    expect(now).toHaveTextContent('Rs 120,000.00');
+    expect(now).toHaveTextContent('Rs 35,000.00');
+    expect(screen.getByRole('link', { name: /Nestle Distributors/ })).toHaveAttribute('href', '/vendors/v1');
+    // Overdue POs are something to look at — on the Purchase Orders page.
+    expect(screen.getByRole('link', { name: /2 purchase orders overdue/ })).toHaveAttribute('href', '/purchase-orders');
+    expect(screen.getByRole('button', { name: /1 order cancelled or withdrawn/ })).toBeInTheDocument();
+    expect(screen.getByText(/3 POs · /)).toBeInTheDocument();
+  });
+
+  it('a plan without purchase orders (or an older server) keeps the four tiles and no Purchasing card', async () => {
+    serve(daySummaryOwner);
+    renderReport('/reports/day-summary', '/reports/day-summary', <DaySummaryPage />, { role: 'admin' });
+    await screen.findByRole('table', { name: 'Day Book' }, LOAD);
+    expect(screen.queryByRole('region', { name: 'Buying' })).toBeNull();
+    expect(screen.getByText('Purchases')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Purchasing on the day')).toBeNull();
+  });
+
+  it('a day that fails to load never leaves the previous day’s figures on screen', async () => {
+    serve(daySummaryOwner);
+    server.use(
+      http.get('*/reports/day-summary', ({ request }) => {
+        const url = new URL(request.url);
+        requestLog.push(url);
+        if (url.searchParams.get('date') === '2026-11-18') {
+          return HttpResponse.json({ success: false, error: { code: 'X', message: 'boom' } }, { status: 500 });
+        }
+        return HttpResponse.json({ success: true, data: daySummaryOwner });
+      }),
+    );
+    renderReport('/reports/day-summary', '/reports/day-summary', <DaySummaryPage />, { role: 'admin' });
+    await screen.findByRole('table', { name: 'Day Book' }, LOAD);
+    expect(screen.getAllByText('Ali Traders').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Previous day' }));
+    const alert = await screen.findByRole('alert', {}, { timeout: 8000 });
+    expect(alert).toHaveTextContent(/could not be loaded/);
+    expect(alert).not.toHaveTextContent('boom');
+    expect(screen.queryByText('Ali Traders')).toBeNull();
+    expect(screen.queryByRole('table', { name: 'Day Book' })).toBeNull();
+  }, 20_000);
 
   it('the money card nets the day’s returns', async () => {
     serve({ ...daySummaryOwner, sales: { ...daySummaryOwner.sales, returns: 3000, net: 242000 } });

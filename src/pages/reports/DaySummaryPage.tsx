@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { FilePlus2, Users } from 'lucide-react';
+import { CalendarDays, ChevronLeft, FilePlus2, RefreshCw, Users } from 'lucide-react';
 import { useCallback, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 
@@ -19,6 +19,7 @@ import {
   DocumentsCard,
   MoneyCard,
   ProfitCard,
+  PurchasingCard,
   ReorderCard,
   TeamCard,
   TopCustomersCard,
@@ -37,6 +38,7 @@ import {
   itemShareLines,
   itemSheetCsvRows,
   itemSheetPdfSection,
+  sheetPeriodLabel,
   type ItemGrouping,
   type ItemSort,
 } from '@/models/dayItemSheet';
@@ -50,6 +52,7 @@ import {
   dayShareText,
   filterLabel,
   sortLabel,
+  zoneLabel,
   type CompareKey,
 } from '@/models/daySummary';
 import { addDays, isoToday } from '@/models/document';
@@ -193,6 +196,7 @@ export default function DaySummaryPage() {
   };
   const setPageSize = (next: number) => update({ size: next === DAY_BOOK_PAGE_SIZES[0] ? null : String(next), page: null });
   const setSearch = useCallback((next: string) => update({ q: next || null, page: null }), [update]);
+  const setItemSearch = useCallback((next: string) => update({ iq: next || null }), [update]);
   const setSort = (next: DayEntrySort) => update({ sort: next === 'newest' ? null : next, page: null });
   const setFilter = (next: DayEntryFilter) => {
     update({ type: next === 'all' ? null : next, page: null });
@@ -250,7 +254,7 @@ export default function DaySummaryPage() {
         period: dayLongLabel(day),
         basis: `Day Book: ${viewLabel}`,
       }),
-      ...dayCsvRows(s, all.items),
+      ...dayCsvRows(s, all.items, compare),
       ...(sheetForDay ? [[], ['Item-wise sales'], ...itemSheetCsvRows(sheetForDay, sheetView)] : []),
       ...(all.truncated ? [[], [`Day Book: first ${all.items.length} of ${all.total} entries.`]] : []),
     ];
@@ -260,7 +264,7 @@ export default function DaySummaryPage() {
   const pdfSections = async () => {
     if (!s) return [];
     const all = await getAllDayEntries(bookView, PDF_ROW_CAP);
-    const sections = dayPdfSections(s, all.items);
+    const sections = dayPdfSections(s, all.items, compare);
     if (sheetForDay && sheetForDay.rows.length > 0) {
       // After the money, before the Day Book's long list.
       const at = sections.findIndex((x) => x.title === 'Day Book');
@@ -284,6 +288,15 @@ export default function DaySummaryPage() {
 
   const kinds = new Set(s?.kinds ?? []);
   const refetching = summary.isFetching && !summary.isLoading;
+  // A day that failed to load must not leave the previous day's figures up;
+  // a failed background refresh of the same day keeps them, and says so.
+  const loadFailed = Boolean(summary.error) && (!s || summary.isPlaceholderData);
+  const refreshFailed = Boolean(summary.error) && Boolean(s) && !summary.isPlaceholderData;
+  const reorderPeriod = sheet
+    ? sheet.from === sheet.to
+      ? `on ${dayLongLabel(sheet.from)}`
+      : `in ${sheetPeriodLabel(sheet.from, sheet.to)}`
+    : '';
   const pickPerson = (id: string | null) => update({ by: id, type: null });
 
   return (
@@ -292,7 +305,7 @@ export default function DaySummaryPage() {
         className="print:hidden"
         title={title}
         description={subtitle}
-        meta={[dayLongLabel(day), s ? `${s.timezone} time` : null, scopeLabel ?? null].filter(Boolean)}
+        meta={[dayLongLabel(day), s ? zoneLabel(s.timezone) : null, scopeLabel ?? null].filter(Boolean)}
         actions={
           <>
             {isOwner && <DigestSettings />}
@@ -346,19 +359,48 @@ export default function DaySummaryPage() {
         </div>
       </Card>
 
+      {/* On paper the page header is hidden with the controls; this says what it is. */}
+      <div className="hidden print:block">
+        <p className="text-h4 text-text-primary">
+          {company.name ? `${company.name} — ` : ''}
+          {who && !ownOnly ? `Day Summary — ${who.name}` : title}
+        </p>
+        <p className="text-body-sm text-text-secondary">
+          {dayLongLabel(day)}
+          {s ? ` · ${zoneLabel(s.timezone)}` : ''} · {compareLabel(compare)}
+        </p>
+      </div>
+
       {summary.isLoading && <DaySkeleton />}
 
-      {!summary.isLoading && summary.error && (
-        <Card className="p-xl">
-          <p className="text-label-lg text-text-primary">The day could not be loaded</p>
-          <p className="mt-xxs text-body-sm text-text-secondary">{(summary.error as Error).message}</p>
-          <Button variant="secondary" className="mt-lg" onClick={() => void summary.refetch()}>
+      {!summary.isLoading && loadFailed && (
+        <Card className="flex flex-col items-start gap-xs p-xl" role="alert">
+          <p className="text-label-lg text-text-primary">{dayLongLabel(day)} could not be loaded</p>
+          <p className="text-body-sm text-text-secondary">
+            {summary.error instanceof ApiError && summary.error.status === 403
+              ? 'You do not have access to this day’s figures.'
+              : 'Check the connection and try again. Nothing on this page is shown until the day loads, so no figures from another day are mixed in.'}
+          </p>
+          <Button variant="secondary" className="mt-sm" onClick={() => void summary.refetch()}>
+            <RefreshCw className="size-4" />
             Try again
           </Button>
         </Card>
       )}
 
-      {s && !summary.error && (
+      {refreshFailed && (
+        <div
+          role="status"
+          className="flex items-center justify-between gap-sm rounded-md border border-warning-light bg-warning-lighter px-md py-xs text-body-sm text-text-primary print:hidden"
+        >
+          <span>Couldn’t refresh — the figures below are from {new Date(summary.dataUpdatedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.</span>
+          <Button variant="text" size="sm" onClick={() => void summary.refetch()}>
+            Retry
+          </Button>
+        </div>
+      )}
+
+      {s && !loadFailed && (
         <div
           className={cn(
             'flex flex-col gap-lg transition-opacity duration-200 motion-reduce:transition-none',
@@ -367,49 +409,71 @@ export default function DaySummaryPage() {
           aria-busy={refetching}
         >
           {s.isEmpty && (
-            <Card className="flex flex-col items-start gap-sm border border-dashed border-border p-lg sm:flex-row sm:items-center sm:justify-between">
+            <Card className="flex flex-col items-center gap-sm border border-dashed border-border px-lg py-xl text-center">
+              <span className="flex size-12 items-center justify-center rounded-full bg-surface-2 text-text-tertiary">
+                <CalendarDays className="size-6" aria-hidden="true" />
+              </span>
               <div>
                 <p className="text-label-lg text-text-primary">Nothing recorded on {dayLongLabel(day)}</p>
-                <p className="text-body-sm text-text-secondary">
-                  No invoices, orders, receipts or bills are dated this day{ownOnly ? ' under your name' : ''}.
+                <p className="mx-auto mt-xxs max-w-[32rem] text-body-sm text-text-secondary">
+                  No invoices, orders, receipts{kinds.has('purchase_order') ? ', purchase orders' : ''} or bills are
+                  dated this day{ownOnly ? ' under your name' : ''}, and nothing was entered for an earlier day.
                 </p>
               </div>
-              {day === today && (
-                <div className="flex gap-xs">
+              <div className="flex flex-wrap justify-center gap-xs print:hidden">
+                <Button variant="secondary" size="sm" onClick={() => setDate(addDays(day, -1))}>
+                  <ChevronLeft className="size-4" />
+                  Previous day
+                </Button>
+                {day !== today && (
+                  <Button variant="secondary" size="sm" onClick={() => setDate(today)}>
+                    Go to today
+                  </Button>
+                )}
+                {day === today && (
                   <Button asChild size="sm">
                     <Link to="/invoices/new">
                       <FilePlus2 className="size-4" />
                       New invoice
                     </Link>
                   </Button>
-                  {kinds.has('sales_order') && (
-                    <Button asChild variant="secondary" size="sm">
-                      <Link to="/sales-orders/new">New sales order</Link>
-                    </Button>
-                  )}
-                </div>
-              )}
+                )}
+              </div>
             </Card>
           )}
 
           <DayKpis summary={s} compare={compare} />
 
+          {/* An empty day is one message, not a wall of empty cards — the item
+              sheet stays only when it is looking at a range of its own. */}
+          {(!s.isEmpty || sheetMode === 'range') && (
           <div className="grid items-start gap-lg xl:grid-cols-3">
             {/* The side column first on a narrow screen: what needs attention
-                comes before a long list. */}
-            <aside className="order-first flex min-w-0 flex-col gap-lg xl:order-none xl:col-start-3 xl:row-start-1">
+                comes before a long list. Between 1024 and 1279px its cards
+                flow in two columns rather than one long stack. */}
+            {!s.isEmpty && (
+            <aside
+              className={cn(
+                'order-first flex min-w-0 flex-col gap-lg xl:order-none xl:col-start-3 xl:row-start-1',
+                'lg:block lg:columns-2 lg:gap-lg lg:[&>*]:mb-lg lg:[&>*]:break-inside-avoid',
+                'xl:flex xl:columns-auto xl:[&>*]:mb-0',
+                'print:block print:columns-2 print:gap-lg print:[&>*]:mb-lg print:[&>*]:break-inside-avoid',
+              )}
+            >
               <AttentionCard summary={s} active={filter} onSelect={setFilter} />
-              {sheet?.reorder && <ReorderCard reorder={sheet.reorder} />}
+              {sheet?.reorder && <ReorderCard reorder={sheet.reorder} period={reorderPeriod} />}
               <ProfitCard summary={s} />
               <DocumentsCard summary={s} active={filter} onSelect={setFilter} />
               <MoneyCard summary={s} />
+              <PurchasingCard summary={s} />
               <TopCustomersCard summary={s} />
               <BestSellersCard summary={s} />
               {s.team && <TeamCard team={s.team} onSelect={(id: string) => pickPerson(id)} />}
             </aside>
+            )}
 
             <div className="flex min-w-0 flex-col gap-lg xl:col-span-2 xl:col-start-1 xl:row-start-1">
-              <HourlyActivity hourly={s.hourly} />
+              {!s.isEmpty && <HourlyActivity hourly={s.hourly} />}
               {!itemsUnavailable && (
               <ItemSales
                 sheet={sheet}
@@ -426,7 +490,7 @@ export default function DaySummaryPage() {
                 sort={itemSort}
                 onSort={(x) => update({ is: x === 'code' ? null : x })}
                 q={itemQ}
-                onSearch={(x) => update({ iq: x || null })}
+                onSearch={setItemSearch}
                 company={company}
                 scopeLabel={scopeLabel}
                 canDrill={!ownOnly && !createdBy}
@@ -439,6 +503,7 @@ export default function DaySummaryPage() {
                 }
               />
               )}
+              {!s.isEmpty && (
               <DayBook
                 summary={s}
                 filter={filter}
@@ -458,13 +523,19 @@ export default function DaySummaryPage() {
                 onSort={setSort}
                 showBy={!ownOnly}
               />
+              )}
             </div>
           </div>
+          )}
 
           <p className="text-caption text-text-tertiary">
             Documents count on the day they are dated, so these figures agree with the P&amp;L and the other
-            reports. Drafts, voids and cancelled orders are listed but not counted. Back-dated entries were made on
-            this day for an earlier one. Use ← and → to step through days.
+            reports. Drafts, voids, cancelled sales orders and withdrawn purchase orders are listed but not counted.
+            Back-dated entries were made on this day for an earlier one.
+            <span className="hidden [@media(hover:hover)_and_(pointer:fine)]:inline print:hidden">
+              {' '}
+              Use ← and → to step through days.
+            </span>
           </p>
         </div>
       )}

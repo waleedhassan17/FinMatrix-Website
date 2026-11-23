@@ -8,13 +8,16 @@ import {
   hourWindow,
   dayChange,
   dayCsvRows,
+  dayMoney,
+  dayPdfSections,
   dayShareText,
   entryHref,
+  entryTime,
   hourLabel,
   relativeDayName,
 } from '@/models/daySummary';
 import { daySummarySerializer, dayEntriesSerializer } from '@/serializers/daySummarySerializer';
-import { dayEntriesPage, daySummaryOwner, daySummaryStaff } from '@/test/msw/daySummaryFixtures';
+import { dayEntriesPage, daySummaryBuying, daySummaryOwner, daySummaryStaff } from '@/test/msw/daySummaryFixtures';
 
 const owner = daySummarySerializer(daySummaryOwner);
 
@@ -107,6 +110,73 @@ describe('exports', () => {
     expect(last[1]).toBe('Receipts');
     expect(last[5]).toBe('400.00');
     expect(last[7]).toBe('Sara Staff');
+  });
+});
+
+describe('purchasing', () => {
+  const buying = daySummarySerializer(daySummaryBuying);
+
+  it('reads the buying figures, and an older server as none', () => {
+    expect(buying.headline.purchaseOrders?.count).toBe(3);
+    expect(buying.headline.goodsReceived?.total).toBe(74000);
+    expect(buying.purchasing?.position?.overdue).toEqual({ count: 2, total: 35000, oldest: '2026-11-12' });
+    expect(buying.team?.[0].purchaseOrders).toEqual({ count: 3, total: 90000 });
+    expect(owner.purchasing).toBeNull();
+    expect(owner.headline.purchaseOrders).toBeNull();
+    expect(owner.team?.[0].purchaseOrders).toEqual({ count: 0, total: 0 });
+  });
+
+  it('flags overdue POs with a link, and calls withdrawn POs what they are', () => {
+    const items = attentionItems(buying);
+    const overdue = items.find((i) => i.key === 'overdue-pos');
+    expect(overdue).toMatchObject({ href: '/purchase-orders', count: 2, label: '2 purchase orders overdue' });
+    expect(overdue?.detail).toContain('Rs 35,000.00 still to arrive');
+    expect(items.find((i) => i.key === 'cancelled')?.label).toBe('1 order cancelled or withdrawn');
+  });
+
+  it('puts the buying side in the CSV, the PDF and the WhatsApp text', () => {
+    const rows = dayCsvRows(buying, []);
+    expect(rows.map((r) => r[0])).toEqual(expect.arrayContaining(['POs placed', 'Goods received', 'Bills']));
+    expect(rows).toContainEqual(['Overdue (now)', '2', '35000.00']);
+    expect(rows).toContainEqual(['Supplier: Nestle Distributors', '2', '60000.00']);
+    const pdf = dayPdfSections(buying, []);
+    expect(pdf.map((x) => x.title)).toContain('Purchasing');
+    const text = dayShareText(buying, 'Acme');
+    expect(text).toContain('POs placed: Rs 90,000.00 (3 purchase orders)');
+    expect(text).toContain('Goods received: Rs 74,000.00 at cost (2 purchase orders)');
+    expect(text).toContain('Bills: Rs 40,000.00 (1 bill)');
+    expect(text).toContain('⚠ 2 purchase orders overdue');
+  });
+});
+
+describe('exports follow the comparison chosen', () => {
+  it('heads the CSV and the PDF with the chosen comparison', () => {
+    const csv = dayCsvRows(owner, [], 'lastWeek');
+    expect(csv[0]).toEqual(['Headline', 'Count', 'Amount', 'Same day last week', 'Day before']);
+    expect(csv[1]).toEqual(['Sales', '12', '245000.00', '245000.00', '200000.00']);
+    const pdf = dayPdfSections(owner, [], 'lastWeek');
+    expect(pdf[0].columns[3].header).toBe('Same day last week');
+  });
+
+  it('leaves out of the WhatsApp text the figures that were nil', () => {
+    const quietOrders = daySummarySerializer({
+      ...daySummaryOwner,
+      headline: { ...daySummaryOwner.headline, orders: { ...daySummaryOwner.headline.orders, count: 0, total: 0 } },
+    });
+    expect(dayShareText(quietOrders, 'Acme')).not.toContain('Orders booked');
+  });
+});
+
+describe('money and times', () => {
+  it('shows a negative with a true minus sign', () => {
+    expect(dayMoney(-3000)).toBe('−Rs 3,000.00');
+    expect(dayMoney(3000)).toBe('Rs 3,000.00');
+  });
+
+  it('gives entry times on the company clock, not the device’s', () => {
+    expect(entryTime('2026-11-19T10:15:00.000Z', 'Asia/Karachi')).toBe('15:15');
+    expect(entryTime('2026-11-19T10:15:00.000Z', 'UTC')).toBe('10:15');
+    expect(entryTime('', 'UTC')).toBe('—');
   });
 });
 
