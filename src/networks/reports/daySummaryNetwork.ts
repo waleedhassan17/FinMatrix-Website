@@ -5,11 +5,14 @@
 import { api, toApiError, unwrapEnvelope } from '@/networks/network/apiHelpers';
 import {
   dayEntriesSerializer,
+  dayItemSheetSerializer,
   daySummarySerializer,
   dayScheduleSerializer,
   type DayEntriesPage,
   type DayEntryFilter,
   type DayEntrySort,
+  type DayItemCompare,
+  type DayItemSheet,
   type DaySummary,
   type DaySummarySchedule,
 } from '@/serializers/daySummarySerializer';
@@ -65,6 +68,31 @@ export const getDayEntries = async (params: DayEntriesQuery): Promise<DayEntries
       },
     });
     return dayEntriesSerializer(unwrapEnvelope(response.data));
+  } catch (e) {
+    throw toApiError(e);
+  }
+};
+
+/**
+ * The item-wise sales sheet for one day, or a range when `to` differs from
+ * `from`: per item sold, free, returned, net units and net sales (and cost
+ * and profit for an owner), compared with `compare`'s period.
+ */
+export const getDayItems = async (params: {
+  from: string;
+  to: string;
+  createdBy?: string | null;
+  compare?: DayItemCompare | null;
+}): Promise<DayItemSheet> => {
+  try {
+    const response = await api.get('/reports/day-summary/items', {
+      params: {
+        ...(params.from === params.to ? { date: params.from } : { from: params.from, to: params.to }),
+        ...(params.createdBy ? { createdBy: params.createdBy } : {}),
+        ...(params.compare ? { compare: params.compare } : {}),
+      },
+    });
+    return dayItemSheetSerializer(unwrapEnvelope(response.data));
   } catch (e) {
     throw toApiError(e);
   }

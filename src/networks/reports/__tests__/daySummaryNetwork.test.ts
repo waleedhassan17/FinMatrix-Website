@@ -3,10 +3,10 @@
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import { getAllDayEntries } from '@/networks/reports/daySummaryNetwork';
+import { getAllDayEntries, getDayItems } from '@/networks/reports/daySummaryNetwork';
 import { requestLog } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
-import { busyDayBook } from '@/test/msw/daySummaryFixtures';
+import { busyDayBook, dayItemSheetOwner } from '@/test/msw/daySummaryFixtures';
 import { startMsw } from '@/test/renderReport';
 
 startMsw();
@@ -45,5 +45,27 @@ describe('getAllDayEntries — what an export is built from', () => {
     expect(some.items).toHaveLength(500);
     expect(some.total).toBe(2500);
     expect(some.truncated).toBe(true);
+  });
+});
+
+describe('getDayItems — the item-wise sheet', () => {
+  it('asks for one day by date, a range by from and to, with the comparison', async () => {
+    server.use(
+      http.get('*/reports/day-summary/items', ({ request }) => {
+        requestLog.push(new URL(request.url));
+        return HttpResponse.json({ success: true, data: dayItemSheetOwner });
+      }),
+    );
+    const day = await getDayItems({ from: '2026-11-19', to: '2026-11-19', compare: 'previous' });
+    await getDayItems({ from: '2026-10-25', to: '2026-10-26', createdBy: 'u-staff', compare: 'lastWeek' });
+    expect(day.rows).toHaveLength(5);
+    const [one, range] = requestLog;
+    expect(Object.fromEntries(one.searchParams)).toEqual({ date: '2026-11-19', compare: 'previous' });
+    expect(Object.fromEntries(range.searchParams)).toEqual({
+      from: '2026-10-25',
+      to: '2026-10-26',
+      createdBy: 'u-staff',
+      compare: 'lastWeek',
+    });
   });
 });

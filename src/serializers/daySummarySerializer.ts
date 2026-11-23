@@ -102,7 +102,17 @@ export interface DaySummary {
   };
   trendDates: string[];
   documents: DayDocumentRow[];
-  sales: { subtotal: number; discount: number; tax: number; total: number; unpaid: number };
+  sales: {
+    subtotal: number;
+    discount: number;
+    tax: number;
+    total: number;
+    unpaid: number;
+    /** Customer returns (credit memos) dated the day, tax included. */
+    returns: number;
+    /** total − returns. */
+    net: number;
+  };
   cash: { methods: DayMethodRow[]; received: number; paid: number; net: number };
   topCustomers: DayPartyRow[];
   topItems: DayItemRow[];
@@ -159,6 +169,91 @@ export interface DayEntriesPage {
   page: number;
   limit: number;
   pages: number;
+}
+
+/** What the item sheet compares itself with. */
+export const DAY_ITEM_COMPARES = ['previous', 'lastWeek'] as const;
+export type DayItemCompare = (typeof DAY_ITEM_COMPARES)[number];
+
+/**
+ * One line of the item-wise sales sheet: a stock item, or a service or charge
+ * named by its wording. `net` = sold + free − returned; `value` is net sales
+ * (before tax, after the invoice's discount, less returns).
+ */
+export interface DayItemSheetRow {
+  kind: 'item' | 'service';
+  itemId: string | null;
+  code: string | null;
+  name: string;
+  unit: string | null;
+  category: string | null;
+  agency: string | null;
+  sold: number;
+  free: number;
+  returned: number;
+  net: number;
+  value: number;
+  returnsValue: number;
+  /** Owner only. */
+  cost: number | null;
+  profit: number | null;
+  margin: number | null;
+  costMissing: boolean;
+  /** Net sales in the comparison period; null when none was asked for. */
+  compareValue: number | null;
+}
+
+/** Sold only in the comparison period: counted in a group's comparison. */
+export interface DayItemCompareOnly {
+  kind: 'item' | 'service';
+  itemId: string | null;
+  name: string;
+  category: string | null;
+  agency: string | null;
+  compareValue: number;
+}
+
+export interface DayReorderRow {
+  itemId: string;
+  code: string;
+  name: string;
+  unit: string | null;
+  onHand: number;
+  reorderPoint: number;
+  reorderQuantity: number;
+  outOfStock: boolean;
+}
+
+export interface DayItemSheet {
+  from: string;
+  to: string;
+  today: string;
+  currency: string;
+  scope: DaySummary['scope'];
+  compare: DayItemCompare | null;
+  compareFrom: string | null;
+  compareTo: string | null;
+  rows: DayItemSheetRow[];
+  compareOnly: DayItemCompareOnly[];
+  totals: {
+    lines: number;
+    sold: number;
+    free: number;
+    returned: number;
+    net: number;
+    value: number;
+    returnsValue: number;
+    cost: number | null;
+    profit: number | null;
+    margin: number | null;
+    compareValue: number | null;
+  };
+  hasFree: boolean;
+  showCost: boolean;
+  reconciliation: { salesBeforeTax: number; returns: number; netSales: number; matches: boolean };
+  /** Null when the plan keeps no stock. */
+  reorder: DayReorderRow[] | null;
+  generatedAt: string;
 }
 
 export interface DaySummarySchedule {
@@ -243,6 +338,9 @@ export const daySummarySerializer = (raw: unknown): DaySummary => {
       tax: money(sales.tax),
       total: money(sales.total),
       unpaid: money(sales.unpaid),
+      returns: money(sales.returns),
+      // An older server sends no `net`: nothing was netted, so it is the total.
+      net: sales.net === undefined ? money(sales.total) : money(sales.net),
     },
     cash: {
       methods: arr(cash.methods)
@@ -341,6 +439,95 @@ export const dayEntriesSerializer = (raw: unknown): DayEntriesPage => {
     page: int(r.page) || 1,
     limit: int(r.limit) || 50,
     pages: int(r.pages),
+  };
+};
+
+const moneyOrNull = (v: unknown): number | null => (v === null || v === undefined ? null : money(v));
+const lineKind = (v: unknown): 'item' | 'service' => (v === 'service' ? 'service' : 'item');
+
+export const dayItemSheetSerializer = (raw: unknown): DayItemSheet => {
+  const r = obj(raw);
+  const scope = obj(r.scope);
+  const totals = obj(r.totals);
+  const tie = obj(r.reconciliation);
+  const compare = (DAY_ITEM_COMPARES as readonly string[]).includes(String(r.compare))
+    ? (r.compare as DayItemCompare)
+    : null;
+  return {
+    from: str(r.from),
+    to: str(r.to, str(r.from)),
+    today: str(r.today),
+    currency: str(r.currency, 'PKR'),
+    scope: { ownOnly: scope.ownOnly === true, createdBy: person(scope.createdBy) },
+    compare,
+    compareFrom: strOrNull(r.compareFrom),
+    compareTo: strOrNull(r.compareTo),
+    rows: arr(r.rows)
+      .map(obj)
+      .map((x) => ({
+        kind: lineKind(x.kind),
+        itemId: strOrNull(x.itemId),
+        code: strOrNull(x.code),
+        name: str(x.name, 'Item'),
+        unit: strOrNull(x.unit),
+        category: strOrNull(x.category),
+        agency: strOrNull(x.agency),
+        sold: money(x.sold),
+        free: money(x.free),
+        returned: money(x.returned),
+        net: money(x.net),
+        value: money(x.value),
+        returnsValue: money(x.returnsValue),
+        cost: moneyOrNull(x.cost),
+        profit: moneyOrNull(x.profit),
+        margin: moneyOrNull(x.margin),
+        costMissing: x.costMissing === true,
+        compareValue: moneyOrNull(x.compareValue),
+      })),
+    compareOnly: arr(r.compareOnly)
+      .map(obj)
+      .map((x) => ({
+        kind: lineKind(x.kind),
+        itemId: strOrNull(x.itemId),
+        name: str(x.name, 'Item'),
+        category: strOrNull(x.category),
+        agency: strOrNull(x.agency),
+        compareValue: money(x.compareValue),
+      })),
+    totals: {
+      lines: int(totals.lines),
+      sold: money(totals.sold),
+      free: money(totals.free),
+      returned: money(totals.returned),
+      net: money(totals.net),
+      value: money(totals.value),
+      returnsValue: money(totals.returnsValue),
+      cost: moneyOrNull(totals.cost),
+      profit: moneyOrNull(totals.profit),
+      margin: moneyOrNull(totals.margin),
+      compareValue: moneyOrNull(totals.compareValue),
+    },
+    hasFree: r.hasFree === true,
+    showCost: r.showCost === true,
+    reconciliation: {
+      salesBeforeTax: money(tie.salesBeforeTax),
+      returns: money(tie.returns),
+      netSales: money(tie.netSales),
+      matches: tie.matches === true,
+    },
+    reorder: Array.isArray(r.reorder)
+      ? r.reorder.map(obj).map((x) => ({
+          itemId: str(x.itemId),
+          code: str(x.code),
+          name: str(x.name, 'Item'),
+          unit: strOrNull(x.unit),
+          onHand: money(x.onHand),
+          reorderPoint: money(x.reorderPoint),
+          reorderQuantity: money(x.reorderQuantity),
+          outOfStock: x.outOfStock === true,
+        }))
+      : null,
+    generatedAt: str(r.generatedAt),
   };
 };
 

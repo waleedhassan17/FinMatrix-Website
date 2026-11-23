@@ -19,18 +19,30 @@ import {
   DocumentsCard,
   MoneyCard,
   ProfitCard,
+  ReorderCard,
   TeamCard,
   TopCustomersCard,
 } from '@/features/daySummary/DayRail';
 import { DigestSettings } from '@/features/daySummary/DigestSettings';
 import { ExportMenu } from '@/features/daySummary/ExportMenu';
 import { HourlyActivity } from '@/features/daySummary/HourlyActivity';
+import { ItemSales, type SheetPeriodMode } from '@/features/daySummary/ItemSales';
 import { readEnum, readIso, useReportParams } from '@/features/reports/useReportParams';
 import { whatsappUrl } from '@/features/share/shareDocument';
 import { useIsOwner } from '@/hooks/useCapability';
 import { cn } from '@/lib/cn';
 import {
+  ITEM_GROUPINGS,
+  ITEM_SORTS,
+  itemShareLines,
+  itemSheetCsvRows,
+  itemSheetPdfSection,
+  type ItemGrouping,
+  type ItemSort,
+} from '@/models/dayItemSheet';
+import {
   COMPARE_KEYS,
+  compareLabel,
   DAY_BOOK_PAGE_SIZES,
   dayCsvRows,
   dayLongLabel,
@@ -42,7 +54,8 @@ import {
 } from '@/models/daySummary';
 import { addDays, isoToday } from '@/models/document';
 import { csvHeaderBlock, downloadCsv, toCsv } from '@/models/reportCsv';
-import { getAllDayEntries, getDayEntries, getDaySummary } from '@/networks/reports/daySummaryNetwork';
+import { ApiError } from '@/networks/network/apiHelpers';
+import { getAllDayEntries, getDayEntries, getDayItems, getDaySummary } from '@/networks/reports/daySummaryNetwork';
 import {
   DAY_DOC_KINDS,
   DAY_ENTRY_FILTERS,
@@ -132,6 +145,31 @@ export default function DaySummaryPage() {
   });
   const bookPages = entries.data?.pages ?? 0;
 
+  // ── Item-wise sales: the chosen day, or a range of its own ──────────────
+  const sheetMode: SheetPeriodMode = params.get('ip') === 'range' ? 'range' : 'day';
+  const groupBy = readEnum<ItemGrouping>(params.get('ig'), ITEM_GROUPINGS, 'category');
+  const itemSort = readEnum<ItemSort>(params.get('is'), ITEM_SORTS, 'code');
+  const itemQ = (params.get('iq') ?? '').trim().slice(0, 100);
+  const rangeFrom = readIso(params.get('ifrom')) ?? addDays(day, -6);
+  const rangeTo = readIso(params.get('ito')) ?? day;
+  const [sheetFrom, sheetTo] =
+    sheetMode === 'range' ? (rangeFrom <= rangeTo ? [rangeFrom, rangeTo] : [rangeTo, rangeFrom]) : [day, day];
+  const items = useQuery({
+    queryKey: ['reports', 'day-summary', 'items', sheetFrom, sheetTo, createdBy, compare],
+    queryFn: () =>
+      getDayItems({ from: sheetFrom, to: sheetTo, createdBy, compare: compare === 'yesterday' ? 'previous' : 'lastWeek' }),
+    enabled: Boolean(s),
+    placeholderData: keepPreviousData,
+    // A 404 is a server from before the item sheet: an answer, not a hiccup.
+    retry: (count, error) => !(error instanceof ApiError && error.status === 404) && count < 1,
+  });
+  // That server simply has no item sheet: the card stays hidden rather than erring.
+  const itemsUnavailable = items.error instanceof ApiError && items.error.status === 404;
+  const sheet = items.data;
+  const sheetView = { groupBy, sort: itemSort, q: itemQ };
+  // The sheet joins the day's exports only when it covers that day.
+  const sheetForDay = sheet && sheet.from === day && sheet.to === day ? sheet : undefined;
+
   // A page past the end (rows were voided, a link from yesterday): the last.
   useEffect(() => {
     if (!entries.isPlaceholderData && bookPages > 0 && pageNo > bookPages) {
@@ -213,6 +251,7 @@ export default function DaySummaryPage() {
         basis: `Day Book: ${viewLabel}`,
       }),
       ...dayCsvRows(s, all.items),
+      ...(sheetForDay ? [[], ['Item-wise sales'], ...itemSheetCsvRows(sheetForDay, sheetView)] : []),
       ...(all.truncated ? [[], [`Day Book: first ${all.items.length} of ${all.total} entries.`]] : []),
     ];
     return downloadCsv(`day-summary-${day}`, toCsv(out));
@@ -222,6 +261,11 @@ export default function DaySummaryPage() {
     if (!s) return [];
     const all = await getAllDayEntries(bookView, PDF_ROW_CAP);
     const sections = dayPdfSections(s, all.items);
+    if (sheetForDay && sheetForDay.rows.length > 0) {
+      // After the money, before the Day Book's long list.
+      const at = sections.findIndex((x) => x.title === 'Day Book');
+      sections.splice(at === -1 ? sections.length : at, 0, itemSheetPdfSection(sheetForDay, sheetView));
+    }
     if (all.truncated) {
       sections.push({
         columns: [{ header: '' }],
@@ -233,7 +277,9 @@ export default function DaySummaryPage() {
 
   const shareOnWhatsApp = () => {
     if (!s) return;
-    window.open(whatsappUrl(null, dayShareText(s, company.name)), '_blank', 'noopener,noreferrer');
+    const extra = sheetForDay ? itemShareLines(sheetForDay, groupBy) : [];
+    const text = [dayShareText(s, company.name), ...(extra.length ? ['', ...extra] : [])].join('\n');
+    window.open(whatsappUrl(null, text), '_blank', 'noopener,noreferrer');
   };
 
   const kinds = new Set(s?.kinds ?? []);
@@ -353,6 +399,7 @@ export default function DaySummaryPage() {
                 comes before a long list. */}
             <aside className="order-first flex min-w-0 flex-col gap-lg xl:order-none xl:col-start-3 xl:row-start-1">
               <AttentionCard summary={s} active={filter} onSelect={setFilter} />
+              {sheet?.reorder && <ReorderCard reorder={sheet.reorder} />}
               <ProfitCard summary={s} />
               <DocumentsCard summary={s} active={filter} onSelect={setFilter} />
               <MoneyCard summary={s} />
@@ -363,6 +410,35 @@ export default function DaySummaryPage() {
 
             <div className="flex min-w-0 flex-col gap-lg xl:col-span-2 xl:col-start-1 xl:row-start-1">
               <HourlyActivity hourly={s.hourly} />
+              {!itemsUnavailable && (
+              <ItemSales
+                sheet={sheet}
+                loading={items.isLoading}
+                fetching={items.isFetching && items.isPlaceholderData}
+                error={items.error && !items.data ? (items.error as Error) : null}
+                onRetry={() => void items.refetch()}
+                mode={sheetMode}
+                onMode={(m) => update({ ip: m === 'range' ? 'range' : null })}
+                range={{ startDate: sheetFrom, endDate: sheetTo }}
+                onRange={(r) => update({ ip: 'range', ifrom: r.startDate || null, ito: r.endDate || null })}
+                groupBy={groupBy}
+                onGroupBy={(g) => update({ ig: g === 'category' ? null : g })}
+                sort={itemSort}
+                onSort={(x) => update({ is: x === 'code' ? null : x })}
+                q={itemQ}
+                onSearch={(x) => update({ iq: x || null })}
+                company={company}
+                scopeLabel={scopeLabel}
+                canDrill={!ownOnly && !createdBy}
+                compareLabel={
+                  sheetMode === 'range'
+                    ? compare === 'yesterday'
+                      ? 'vs the period before'
+                      : 'vs a week earlier'
+                    : compareLabel(compare)
+                }
+              />
+              )}
               <DayBook
                 summary={s}
                 filter={filter}

@@ -15,7 +15,8 @@ import { Card } from '@/components/ui/Card';
 import { RankedBars } from '@/features/reports/RankedBars';
 import { cn } from '@/lib/cn';
 import { KIND_META, attentionItems, methodLabel } from '@/models/daySummary';
-import type { DayEntryFilter, DaySummary, DayUserRow } from '@/serializers/daySummarySerializer';
+import { formatQty } from '@/models/inventory';
+import type { DayEntryFilter, DayReorderRow, DaySummary, DayUserRow } from '@/serializers/daySummarySerializer';
 import { compactMoney, formatMoney } from '@/utils/money';
 
 /** One card of the side column: a heading, an optional aside, its body. */
@@ -234,6 +235,27 @@ export function MoneyCard({ summary }: { summary: DaySummary }) {
           </span>
         </div>
       </div>
+      {sales.returns > 0 && (
+        <div className="flex flex-col gap-xxs border-t border-border-light px-lg py-sm text-body-sm">
+          <p className="text-overline text-text-tertiary" aria-hidden="true">
+            Sales after returns
+          </p>
+          <dl className="flex flex-col gap-xxs" aria-label="Sales after returns">
+            <div className="flex items-baseline justify-between">
+              <dt className="text-text-secondary">Sales</dt>
+              <dd className="tabular text-text-primary">{formatMoney(sales.total)}</dd>
+            </div>
+            <div className="flex items-baseline justify-between">
+              <dt className="text-text-secondary">Returns</dt>
+              <dd className="tabular text-danger">−{formatMoney(sales.returns)}</dd>
+            </div>
+            <div className="flex items-baseline justify-between border-t border-border-light pt-xxs">
+              <dt className="text-label-md text-text-primary">Net sales</dt>
+              <dd className="text-label-lg tabular text-text-primary">{formatMoney(sales.net)}</dd>
+            </div>
+          </dl>
+        </div>
+      )}
       {sales.unpaid > 0 && (
         <p className="border-t border-border-light bg-surface-2 px-lg py-xs text-caption text-text-secondary">
           <span className="tabular text-text-primary">{formatMoney(sales.unpaid)}</span> of this day’s sales is still unpaid.
@@ -272,13 +294,60 @@ export function BestSellersCard({ summary }: { summary: DaySummary }) {
             key: i.itemId ?? `line-${n}`,
             label: i.name,
             value: i.total,
-            hint: `${i.quantity.toLocaleString('en-US')} sold`,
+            hint: `${i.quantity.toLocaleString('en-US')} net units`,
           }))}
           format={(v) => compactMoney(v)}
           emptyLabel="No items sold on this day."
           hrefFor={(key) => (key.startsWith('line-') ? null : `/inventory/${encodeURIComponent(key)}`)}
         />
       </div>
+    </RailCard>
+  );
+}
+
+/**
+ * What sold in the period and now needs buying in: out of stock first, then
+ * the items at or below their reorder point. Stock is as it stands now.
+ */
+export function ReorderCard({ reorder }: { reorder: DayReorderRow[] }) {
+  if (reorder.length === 0) return null;
+  const shown = reorder.slice(0, 8);
+  return (
+    <RailCard
+      title="Reorder soon"
+      aside={<span className="text-caption text-text-tertiary">{reorder.length} {reorder.length === 1 ? 'item' : 'items'}</span>}
+    >
+      <ul className="divide-y divide-border-light" aria-label="Items to reorder">
+        {shown.map((r) => (
+          <li key={r.itemId}>
+            <Link
+              to={`/inventory/${encodeURIComponent(r.itemId)}`}
+              className="flex items-center justify-between gap-sm px-lg py-xs hover:bg-surface-hover"
+            >
+              <span className="min-w-0">
+                <span className="block truncate text-body-sm text-text-primary">{r.name}</span>
+                <span className="block text-caption text-text-tertiary">
+                  {r.code}
+                  {r.reorderPoint > 0 && ` · reorder at ${formatQty(r.reorderPoint)}`}
+                  {r.reorderQuantity > 0 && ` · order ${formatQty(r.reorderQuantity)}`}
+                </span>
+              </span>
+              <span className={cn('shrink-0 text-right text-label-md tabular', r.outOfStock ? 'text-danger' : 'text-warning')}>
+                {r.outOfStock ? 'Out of stock' : `${formatQty(r.onHand)} left`}
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+      {reorder.length > shown.length && (
+        <Link
+          to="/inventory"
+          className="flex items-center justify-between border-t border-border-light px-lg py-xs text-label-md text-primary hover:bg-surface-hover"
+        >
+          {reorder.length - shown.length} more in Inventory
+          <ArrowRight className="size-4" aria-hidden="true" />
+        </Link>
+      )}
     </RailCard>
   );
 }

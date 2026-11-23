@@ -36,6 +36,8 @@ export interface ItemMonthPanelProps {
   /** That month, clipped to the explorer's window. */
   range: ReportRange | null;
   onClose: () => void;
+  /** Names a period that is not a month ("Thu 26 Nov", "25 – 26 Oct 2026"). */
+  periodLabel?: string;
 }
 
 /**
@@ -48,7 +50,7 @@ export interface ItemMonthPanelProps {
  * this endpoint answers 404, and the panel says the detail is not available
  * rather than "nothing sold".
  */
-export function ItemMonthPanel({ itemId, itemName, period, range, onClose }: ItemMonthPanelProps) {
+export function ItemMonthPanel({ itemId, itemName, period, range, onClose, periodLabel }: ItemMonthPanelProps) {
   const open = period !== null && range !== null;
   const query = useInfiniteQuery({
     queryKey: ['reports', 'item-entries', itemId, range],
@@ -63,7 +65,7 @@ export function ItemMonthPanel({ itemId, itemName, period, range, onClose }: Ite
   const entries = pages.flatMap((p) => p.entries);
   const first = pages[0];
   const unavailable = query.error instanceof ApiError && query.error.status === 404;
-  const month = period ? longMonth(period) : '';
+  const month = periodLabel ?? (period ? longMonth(period) : '');
 
   return (
     <SidePanel
