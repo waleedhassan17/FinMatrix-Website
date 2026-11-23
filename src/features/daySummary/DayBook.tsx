@@ -9,7 +9,7 @@ import { SearchInput } from '@/components/ui/SearchInput';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { cn } from '@/lib/cn';
-import { KIND_META, entryHref, filterLabel, sortLabel } from '@/models/daySummary';
+import { KIND_META, dayMoney, entryHref, entryTime, filterLabel, sortLabel } from '@/models/daySummary';
 import { formatShortDate } from '@/models/reportPeriod';
 import type {
   DayEntriesPage,
@@ -18,10 +18,6 @@ import type {
   DayEntrySort,
   DaySummary,
 } from '@/serializers/daySummarySerializer';
-import { compactMoney, formatMoney } from '@/utils/money';
-
-const time = (iso: string) =>
-  iso ? new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '—';
 
 /** How long typing pauses before the search runs. */
 const SEARCH_DELAY_MS = 300;
@@ -177,11 +173,11 @@ export function DayBook({
     data && total > 0 ? (
       <span className="tabular">
         {voids ? (
-          <>{formatMoney(data.excludedTotal)} voided or deleted</>
+          <>{dayMoney(data.excludedTotal)} voided or deleted</>
         ) : (
           <>
-            <span className="text-text-primary">{formatMoney(data.countedTotal)}</span> counted
-            {data.excludedTotal > 0 && <> · {compactMoney(data.excludedTotal)} not counted</>}
+            <span className="text-text-primary">{dayMoney(data.countedTotal)}</span> counted
+            {data.excludedTotal > 0 && <> · {dayMoney(data.excludedTotal)} not counted</>}
           </>
         )}
       </span>
@@ -208,15 +204,14 @@ export function DayBook({
             containerClassName="w-full sm:w-64"
           />
         </div>
-        <div role="tablist" aria-label="Day Book filter" className="-mx-xxs mt-xs flex gap-xxs overflow-x-auto pb-sm">
+        <div role="group" aria-label="Day Book filter" className="-mx-xxs mt-xs flex gap-xxs overflow-x-auto pb-sm">
           {tabsFor(summary, filter).map((t) => {
             const on = t.filter === filter;
             return (
               <button
                 key={t.filter}
                 type="button"
-                role="tab"
-                aria-selected={on}
+                aria-pressed={on}
                 onClick={() => onFilter(t.filter)}
                 className={cn(
                   'inline-flex shrink-0 items-center gap-xxs whitespace-nowrap rounded-full border px-sm py-[5px] text-label-sm transition-colors',
@@ -285,7 +280,7 @@ export function DayBook({
               scrolls sideways and wraps every number onto three lines. */}
           <ul className="divide-y divide-border-light sm:hidden" aria-label="Day Book entries">
             {rows.map((e) => (
-              <PhoneRow key={`m-${e.kind}-${e.id}-${e.createdAt}`} e={e} voids={voids} showBy={showBy} />
+              <PhoneRow key={`m-${e.kind}-${e.id}-${e.createdAt}`} e={e} voids={voids} showBy={showBy} tz={summary.timezone} />
             ))}
           </ul>
 
@@ -317,7 +312,7 @@ export function DayBook({
               </thead>
               <tbody className="divide-y divide-border-light">
                 {rows.map((e) => (
-                  <TableRow key={`${e.kind}-${e.id}-${e.createdAt}`} e={e} voids={voids} showBy={showBy} />
+                  <TableRow key={`${e.kind}-${e.id}-${e.createdAt}`} e={e} voids={voids} showBy={showBy} tz={summary.timezone} />
                 ))}
               </tbody>
             </table>
@@ -352,10 +347,10 @@ function DocumentLabel({ e }: { e: DayEntry }) {
   );
 }
 
-function TableRow({ e, voids, showBy }: { e: DayEntry; voids: boolean; showBy: boolean }) {
+function TableRow({ e, voids, showBy, tz }: { e: DayEntry; voids: boolean; showBy: boolean; tz: string }) {
   return (
     <tr className={cn('transition-colors hover:bg-surface-hover', !e.counted && !voids && 'text-text-secondary')}>
-      <td className="whitespace-nowrap py-sm pl-lg pr-sm align-top tabular text-text-tertiary">{time(e.createdAt)}</td>
+      <td className="whitespace-nowrap py-sm pl-lg pr-sm align-top tabular text-text-tertiary">{entryTime(e.createdAt, tz)}</td>
       <td className="px-sm py-sm">
         <span className="flex items-baseline gap-xs">
           <DocumentLabel e={e} />
@@ -379,7 +374,7 @@ function TableRow({ e, voids, showBy }: { e: DayEntry; voids: boolean; showBy: b
           !e.counted && !voids ? 'text-text-tertiary line-through' : 'text-text-primary',
         )}
       >
-        {formatMoney(e.amount)}
+        {dayMoney(e.amount)}
       </td>
       <td className="px-sm py-sm align-top">
         {e.status ? <StatusBadge status={e.status} /> : <span className="text-text-tertiary">—</span>}
@@ -393,7 +388,7 @@ function TableRow({ e, voids, showBy }: { e: DayEntry; voids: boolean; showBy: b
   );
 }
 
-function PhoneRow({ e, voids, showBy }: { e: DayEntry; voids: boolean; showBy: boolean }) {
+function PhoneRow({ e, voids, showBy, tz }: { e: DayEntry; voids: boolean; showBy: boolean; tz: string }) {
   const struck = !e.counted && !voids;
   return (
     <li className={cn('px-lg py-sm', struck && 'text-text-secondary')}>
@@ -401,13 +396,13 @@ function PhoneRow({ e, voids, showBy }: { e: DayEntry; voids: boolean; showBy: b
         <span className="min-w-0 truncate">
           <DocumentLabel e={e} />
         </span>
-        <span className={cn('shrink-0 tabular text-label-md', struck && 'line-through')}>{formatMoney(e.amount)}</span>
+        <span className={cn('shrink-0 tabular text-label-md', struck && 'line-through')}>{dayMoney(e.amount)}</span>
       </div>
       <p className="truncate text-caption text-text-secondary">
         {KIND_META[e.kind].label} · {e.partyName ?? '—'}
       </p>
       <div className="mt-xxs flex flex-wrap items-center gap-x-xs gap-y-xxs text-caption text-text-tertiary">
-        <span className="tabular">{time(e.createdAt)}</span>
+        <span className="tabular">{entryTime(e.createdAt, tz)}</span>
         {showBy && e.createdBy && <span>· {e.createdBy.name}</span>}
         {e.backdated && <span className="text-warning">· dated {formatShortDate(e.date)}</span>}
         {e.status && <StatusBadge status={e.status} className="ml-auto" />}

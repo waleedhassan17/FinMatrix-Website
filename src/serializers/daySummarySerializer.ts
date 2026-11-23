@@ -78,7 +78,31 @@ export interface DayUserRow {
   salesOrders: DayFigure;
   estimates: DayFigure;
   receipts: DayFigure;
+  /** Purchase orders placed (not drafts, not withdrawn). */
+  purchaseOrders: DayFigure;
   documents: number;
+}
+
+/** Where the company's purchase orders stand now — not tied to the day. Owner only. */
+export interface DayPurchasePosition {
+  /** Sent or partly received: the value still to arrive (tax included, like a PO's total). */
+  open: DayFigure;
+  /** Of those, expected before today; `oldest` is the earliest expected date. */
+  overdue: DayFigure & { oldest: string | null };
+  /** Received but not yet billed by the supplier: the POs' GRNI balance. */
+  receivedNotBilled: DayFigure;
+}
+
+/** The buying side of the day. */
+export interface DayPurchasing {
+  /** Purchase orders dated the day: not drafts, not withdrawn. */
+  placed: DayFigure;
+  /** Stock received against purchase orders, at cost; `count` is purchase orders. */
+  received: DayFigure;
+  /** Bills raised from purchase orders, dated the day. */
+  billed: DayFigure;
+  topVendors: DayPartyRow[];
+  position: DayPurchasePosition | null;
 }
 
 export interface DayMember {
@@ -99,6 +123,10 @@ export interface DaySummary {
     received: DayKpi;
     orders: DayKpi | null;
     purchases: DayKpi;
+    /** Purchase orders placed. Null when the plan has none (or an older server). */
+    purchaseOrders: DayKpi | null;
+    /** Stock received against purchase orders, at cost. Null without purchase orders. */
+    goodsReceived: DayKpi | null;
   };
   trendDates: string[];
   documents: DayDocumentRow[];
@@ -130,9 +158,12 @@ export interface DaySummary {
   attention: {
     backdated: number;
     drafts: number;
+    /** Cancelled sales orders and withdrawn purchase orders. */
     cancelledOrders: number;
     voided: DayFigure | null;
   };
+  /** Null when the plan has no purchase orders (or an older server). */
+  purchasing: DayPurchasing | null;
   isEmpty: boolean;
   generatedAt: string;
 }
@@ -300,6 +331,31 @@ const kpi = (v: unknown): DayKpi => {
   };
 };
 
+const party = (fallback: string) => (v: unknown): DayPartyRow => {
+  const c = obj(v);
+  return { id: str(c.id), name: str(c.name, fallback), ...figure(c) };
+};
+
+const purchasing = (v: unknown): DayPurchasing | null => {
+  if (!v || typeof v !== 'object') return null;
+  const r = obj(v);
+  const pos = r.position ? obj(r.position) : null;
+  const overdue = pos ? obj(pos.overdue) : {};
+  return {
+    placed: figure(r.placed),
+    received: figure(r.received),
+    billed: figure(r.billed),
+    topVendors: arr(r.topVendors).map(party('Unnamed supplier')),
+    position: pos
+      ? {
+          open: figure(pos.open),
+          overdue: { ...figure(overdue), oldest: strOrNull(overdue.oldest) },
+          receivedNotBilled: figure(pos.receivedNotBilled),
+        }
+      : null,
+  };
+};
+
 const person = (v: unknown): { id: string; name: string } | null => {
   const r = obj(v);
   const id = strOrNull(r.id);
@@ -326,6 +382,8 @@ export const daySummarySerializer = (raw: unknown): DaySummary => {
       received: kpi(headline.received),
       orders: headline.orders ? kpi(headline.orders) : null,
       purchases: kpi(headline.purchases),
+      purchaseOrders: headline.purchaseOrders ? kpi(headline.purchaseOrders) : null,
+      goodsReceived: headline.goodsReceived ? kpi(headline.goodsReceived) : null,
     },
     trendDates: arr(r.trendDates).map((d) => str(d)),
     documents: arr(r.documents)
@@ -350,9 +408,7 @@ export const daySummarySerializer = (raw: unknown): DaySummary => {
       paid: money(cash.paid),
       net: money(cash.net),
     },
-    topCustomers: arr(r.topCustomers)
-      .map(obj)
-      .map((c) => ({ id: str(c.id), name: str(c.name, 'Unnamed customer'), ...figure(c) })),
+    topCustomers: arr(r.topCustomers).map(party('Unnamed customer')),
     topItems: arr(r.topItems)
       .map(obj)
       .map((i) => ({
@@ -382,6 +438,7 @@ export const daySummarySerializer = (raw: unknown): DaySummary => {
           salesOrders: figure(t.salesOrders),
           estimates: figure(t.estimates),
           receipts: figure(t.receipts),
+          purchaseOrders: figure(t.purchaseOrders),
           documents: int(t.documents),
         }))
       : null,
@@ -403,6 +460,7 @@ export const daySummarySerializer = (raw: unknown): DaySummary => {
       cancelledOrders: int(attention.cancelledOrders),
       voided: attention.voided ? figure(attention.voided) : null,
     },
+    purchasing: purchasing(r.purchasing),
     isEmpty: r.isEmpty === true,
     generatedAt: str(r.generatedAt),
   };

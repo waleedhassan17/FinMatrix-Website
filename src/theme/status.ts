@@ -45,6 +45,8 @@ const STATUS_TIER_OF: Record<string, StatusTier> = {
   draft: 'neutral',
   void: 'neutral',
   cancelled: 'neutral',
+  // A purchase order called off before anything arrived (Day Summary).
+  withdrawn: 'neutral',
   inactive: 'neutral',
   unassigned: 'neutral',
   archived: 'neutral',

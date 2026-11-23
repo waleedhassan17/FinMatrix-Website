@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Popover } from '@/components/ui/Popover';
 import { Select } from '@/components/ui/Select';
 import { cn } from '@/lib/cn';
-import { DIGEST_HOURS, hourLabel } from '@/models/daySummary';
+import { DIGEST_HOURS, hourLabel, zoneLabel } from '@/models/daySummary';
 import {
   getDaySummarySchedule,
   saveDaySummarySchedule,
@@ -24,12 +24,16 @@ export function DigestSettings() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const schedule = useQuery({ queryKey: digestKey, queryFn: getDaySummarySchedule });
+  // Until the saved settings are in hand the form has nothing true to show, and
+  // saving it would overwrite them with defaults — so it waits, or offers a retry.
+  const ready = Boolean(schedule.data);
   const [enabled, setEnabled] = useState(false);
   const [hour, setHour] = useState(21);
   const [email, setEmail] = useState(true);
 
   // Each time it opens, the form starts from what is saved.
   const openChange = (next: boolean) => {
+    if (next && !schedule.data && schedule.isError) void schedule.refetch();
     if (next && schedule.data) {
       setEnabled(schedule.data.enabled);
       setHour(schedule.data.hour);
@@ -47,9 +51,9 @@ export function DigestSettings() {
         saved.enabled ? `Daily summary on — ${hourLabel(saved.hour)} every day` : 'Daily summary turned off',
       );
     },
-    onError: (e) =>
+    onError: () =>
       toast.error('Could not save the daily summary', {
-        description: e instanceof Error ? e.message : undefined,
+        description: 'Nothing was changed. Check the connection and try again.',
       }),
   });
 
@@ -64,9 +68,9 @@ export function DigestSettings() {
       onOpenChange={openChange}
       align="end"
       trigger={
-        <Button variant="secondary" size="sm" disabled={schedule.isLoading} aria-label="Daily digest settings">
+        <Button variant="secondary" size="sm" disabled={schedule.isLoading} aria-label="Daily summary settings">
           <BellRing className="size-4" />
-          <span className="hidden sm:inline">Daily digest</span>
+          <span className="hidden sm:inline">Daily summary</span>
           <span
             className={cn(
               'inline-flex items-center gap-[3px] rounded-full px-[6px] py-[1px] text-label-sm',
@@ -74,7 +78,7 @@ export function DigestSettings() {
             )}
           >
             <span className={cn('size-1.5 rounded-full', on ? 'bg-success' : 'bg-text-tertiary')} aria-hidden="true" />
-            {on ? hourLabel(schedule.data?.hour ?? 21) : 'Off'}
+            {!ready ? '—' : on ? hourLabel(schedule.data?.hour ?? 21) : 'Off'}
           </span>
         </Button>
       }
@@ -82,8 +86,22 @@ export function DigestSettings() {
       <p className="text-label-lg text-text-primary">Daily summary</p>
       <p className="mt-xxs text-body-sm text-text-secondary">
         Every owner gets this page’s headline in the bell at the time you choose
-        {schedule.data?.timezone ? ` (${schedule.data.timezone} time)` : ''}.
+        {schedule.data?.timezone ? ` (${zoneLabel(schedule.data.timezone)})` : ''}.
       </p>
+
+      {!ready ? (
+        <div className="mt-md flex flex-col items-start gap-sm" role="status">
+          <p className="text-body-sm text-text-secondary">
+            {schedule.isError ? 'Your current settings could not be loaded.' : 'Loading your settings…'}
+          </p>
+          {schedule.isError && (
+            <Button variant="secondary" size="sm" onClick={() => void schedule.refetch()}>
+              Try again
+            </Button>
+          )}
+        </div>
+      ) : (
+        <>
 
       <label className="mt-md flex items-center gap-sm text-body-sm text-text-primary">
         <input
@@ -124,6 +142,8 @@ export function DigestSettings() {
           {save.isPending ? 'Saving…' : 'Save'}
         </Button>
       </div>
+        </>
+      )}
     </Popover>
   );
 }

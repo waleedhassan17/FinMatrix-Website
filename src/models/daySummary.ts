@@ -67,6 +67,39 @@ export const KIND_META: Record<DayDocKind, KindMeta> = {
 export const count = (n: number, kind: DayDocKind): string =>
   `${n.toLocaleString('en-US')} ${n === 1 ? KIND_META[kind].one : KIND_META[kind].many}`;
 
+/**
+ * Money as Day Summary shows it: the full amount, with a true minus sign (−)
+ * like the compact figures, so a negative never reads as a hyphen.
+ */
+export const dayMoney = (n: number): string => formatMoney(n).replace(/^-/, '−');
+
+/** "Pakistan Standard Time" — the company's zone in words (the IANA name if unknown). */
+export const zoneLabel = (timeZone: string): string => {
+  try {
+    const part = new Intl.DateTimeFormat('en-GB', { timeZone, timeZoneName: 'long' })
+      .formatToParts(new Date())
+      .find((p) => p.type === 'timeZoneName');
+    return part?.value ?? timeZone;
+  } catch {
+    return timeZone;
+  }
+};
+
+/**
+ * "14:05" — when a document was entered, on the company's clock (not the
+ * device's), so a Day Book read abroad still matches the hourly chart.
+ */
+export const entryTime = (iso: string, timeZone?: string): string => {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  try {
+    return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone });
+  } catch {
+    return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  }
+};
+
 /** Where a Day Book row opens; null for a deleted document or one with no page. */
 export const entryHref = (entry: Pick<DayEntry, 'kind' | 'id' | 'deleted'>): string | null => {
   if (entry.deleted || !entry.id) return null;
@@ -142,7 +175,11 @@ export const dayChange = (
 // ─── Needs attention ─────────────────────────────────────────────────────
 
 export interface AttentionItem {
-  filter: DayEntryFilter;
+  key: string;
+  /** The Day Book filter the line narrows to… */
+  filter?: DayEntryFilter;
+  /** …or, for something outside the day's documents, the page that lists it. */
+  href?: string;
   label: string;
   detail: string;
   count: number;
@@ -152,8 +189,10 @@ export interface AttentionItem {
 export const attentionItems = (s: DaySummary): AttentionItem[] => {
   const a = s.attention;
   const out: AttentionItem[] = [];
+  const buying = s.kinds.includes('purchase_order');
   if (a.backdated > 0) {
     out.push({
+      key: 'backdated',
       filter: 'backdated',
       count: a.backdated,
       label: `${a.backdated} back-dated ${a.backdated === 1 ? 'entry' : 'entries'}`,
@@ -162,26 +201,48 @@ export const attentionItems = (s: DaySummary): AttentionItem[] => {
   }
   if (a.drafts > 0) {
     out.push({
+      key: 'drafts',
       filter: 'drafts',
       count: a.drafts,
       label: `${a.drafts} ${a.drafts === 1 ? 'draft' : 'drafts'} not posted`,
-      detail: 'Draft invoices and bills are not in the books until they are posted.',
+      detail: buying
+        ? 'Draft invoices and bills are not in the books, and draft purchase orders have not gone to the supplier.'
+        : 'Draft invoices and bills are not in the books until they are posted.',
     });
   }
   if (a.voided && a.voided.count > 0) {
     out.push({
+      key: 'voided',
       filter: 'voided',
       count: a.voided.count,
-      label: `${a.voided.count} voided or deleted (${formatMoney(a.voided.total)})`,
+      label: `${a.voided.count} voided or deleted (${dayMoney(a.voided.total)})`,
       detail: 'Documents cancelled on this day, and who did it.',
     });
   }
   if (a.cancelledOrders > 0) {
+    const n = a.cancelledOrders;
     out.push({
+      key: 'cancelled',
       filter: 'cancelled',
-      count: a.cancelledOrders,
-      label: `${a.cancelledOrders} sales ${a.cancelledOrders === 1 ? 'order' : 'orders'} cancelled`,
-      detail: 'Orders dated this day that will not be delivered.',
+      count: n,
+      label: buying
+        ? `${n} ${n === 1 ? 'order' : 'orders'} cancelled or withdrawn`
+        : `${n} sales ${n === 1 ? 'order' : 'orders'} cancelled`,
+      detail: buying
+        ? 'Sales orders that will not be delivered, and purchase orders called off before anything arrived.'
+        : 'Orders dated this day that will not be delivered.',
+    });
+  }
+  const overdue = s.purchasing?.position?.overdue;
+  if (overdue && overdue.count > 0) {
+    out.push({
+      key: 'overdue-pos',
+      href: '/purchase-orders',
+      count: overdue.count,
+      label: `${overdue.count} purchase ${overdue.count === 1 ? 'order' : 'orders'} overdue`,
+      detail: `${dayMoney(overdue.total)} still to arrive${
+        overdue.oldest ? `, expected since ${dayShortLabel(overdue.oldest)}` : ''
+      } — chase the supplier or close it.`,
     });
   }
   return out;
@@ -218,22 +279,56 @@ export const DAY_BOOK_PAGE_SIZES = [25, 50, 100] as const;
 
 // ─── Exports ─────────────────────────────────────────────────────────────
 
-const time = (iso: string) =>
-  iso ? new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '';
+/** The headline figures in screen order: selling, then buying. */
+export const headlineRows = (s: DaySummary): Array<[string, DayKpi]> => {
+  const h = s.headline;
+  const rows: Array<[string, DayKpi | null]> = [
+    ['Sales', h.sales],
+    ['Money received', h.received],
+    ['Orders booked', h.orders],
+    ['POs placed', h.purchaseOrders],
+    ['Goods received', h.goodsReceived],
+    [h.purchaseOrders ? 'Bills' : 'Purchases', h.purchases],
+  ];
+  return rows.filter((r): r is [string, DayKpi] => r[1] !== null);
+};
 
-const headlineRows = (s: DaySummary): Array<[string, DayKpi]> => [
-  ['Sales', s.headline.sales],
-  ['Money received', s.headline.received],
-  ...(s.headline.orders ? ([['Orders booked', s.headline.orders]] as Array<[string, DayKpi]>) : []),
-  ['Purchases', s.headline.purchases],
-];
+/** "Day before" / "Same day last week" — the comparison column's heading. */
+export const compareHeading = (key: CompareKey): string => (key === 'yesterday' ? 'Day before' : 'Same day last week');
 
-/** The CSV: headline figures, documents by type, money by method, then the Day Book. */
-export const dayCsvRows = (s: DaySummary, entries: DayEntry[]): CsvRow[] => {
+/** The buying section of the exports: the day, then (owner) where POs stand now. */
+const purchasingRows = (s: DaySummary): Array<[string, string, number]> => {
+  const p = s.purchasing;
+  if (!p) return [];
+  const rows: Array<[string, string, number]> = [
+    ['Purchase orders placed', String(p.placed.count), p.placed.total],
+    ['Goods received (at cost)', `${p.received.count} POs`, p.received.total],
+    ['Billed from purchase orders', String(p.billed.count), p.billed.total],
+  ];
+  if (p.position) {
+    rows.push(
+      ['Open, still to arrive (now)', String(p.position.open.count), p.position.open.total],
+      ['Overdue (now)', String(p.position.overdue.count), p.position.overdue.total],
+      ['Received, not yet billed (now)', String(p.position.receivedNotBilled.count), p.position.receivedNotBilled.total],
+    );
+  }
+  return rows;
+};
+
+/** The CSV: headline figures, documents by type, money by method, buying, then the Day Book. */
+export const dayCsvRows = (s: DaySummary, entries: DayEntry[], compare: CompareKey = 'yesterday'): CsvRow[] => {
   const out: CsvRow[] = [];
-  out.push(['Headline', 'Count', 'Amount', 'Day before', 'Same day last week']);
+  // The comparison chosen on screen first, the other after it.
+  const other: CompareKey = compare === 'yesterday' ? 'lastWeek' : 'yesterday';
+  out.push(['Headline', 'Count', 'Amount', compareHeading(compare), compareHeading(other)]);
   for (const [label, k] of headlineRows(s)) {
-    out.push([label, String(k.count), csvAmount(k.total), csvAmount(k.previousDay.total), csvAmount(k.sameDayLastWeek.total)]);
+    out.push([
+      label,
+      String(k.count),
+      csvAmount(k.total),
+      csvAmount(comparedFigure(k, compare).total),
+      csvAmount(comparedFigure(k, other).total),
+    ]);
   }
   out.push([]);
   out.push(['Document', 'Count', 'Amount']);
@@ -242,11 +337,18 @@ export const dayCsvRows = (s: DaySummary, entries: DayEntry[]): CsvRow[] => {
   out.push(['Method', 'Received', 'Paid out']);
   for (const m of s.cash.methods) out.push([methodLabel(m.method), csvAmount(m.received), csvAmount(m.paid)]);
   out.push(['Total', csvAmount(s.cash.received), csvAmount(s.cash.paid)]);
+  const buying = purchasingRows(s);
+  if (buying.length > 0) {
+    out.push([]);
+    out.push(['Purchasing', 'Count', 'Amount']);
+    for (const [label, n, amount] of buying) out.push([label, n, csvAmount(amount)]);
+    for (const v of s.purchasing?.topVendors ?? []) out.push([`Supplier: ${v.name}`, String(v.count), csvAmount(v.total)]);
+  }
   out.push([]);
-  out.push(['Time', 'Type', 'Number', 'Date', 'Party', 'Amount', 'Status', 'Entered by', 'Counted']);
+  out.push([`Time (${s.timezone})`, 'Type', 'Number', 'Date', 'Party', 'Amount', 'Status', 'Entered by', 'Counted']);
   for (const e of entries) {
     out.push([
-      time(e.createdAt),
+      entryTime(e.createdAt, s.timezone),
       KIND_META[e.kind].label,
       e.number ?? '',
       e.date,
@@ -261,7 +363,11 @@ export const dayCsvRows = (s: DaySummary, entries: DayEntry[]): CsvRow[] => {
 };
 
 /** The PDF's tables, from the same figures as the screen. */
-export const dayPdfSections = (s: DaySummary, entries: DayEntry[]): ReportSection[] => {
+export const dayPdfSections = (
+  s: DaySummary,
+  entries: DayEntry[],
+  compare: CompareKey = 'yesterday',
+): ReportSection[] => {
   const sections: ReportSection[] = [
     {
       title: 'Headline',
@@ -269,10 +375,10 @@ export const dayPdfSections = (s: DaySummary, entries: DayEntry[]): ReportSectio
         { header: '', flex: 3 },
         { header: 'Count', align: 'right' },
         { header: 'Amount', align: 'right', flex: 2 },
-        { header: 'Day before', align: 'right', flex: 2 },
+        { header: compareHeading(compare), align: 'right', flex: 2 },
       ],
       rows: headlineRows(s).map(([label, k]) => ({
-        cells: [label, String(k.count), k.total, k.previousDay.total],
+        cells: [label, String(k.count), k.total, comparedFigure(k, compare).total],
       })),
     },
     {
@@ -299,6 +405,18 @@ export const dayPdfSections = (s: DaySummary, entries: DayEntry[]): ReportSectio
       ],
     });
   }
+  const buying = purchasingRows(s);
+  if (buying.length > 0) {
+    sections.push({
+      title: 'Purchasing',
+      columns: [
+        { header: '', flex: 4 },
+        { header: 'Count', align: 'right' },
+        { header: 'Amount', align: 'right', flex: 2 },
+      ],
+      rows: buying.map(([label, n, amount]) => ({ cells: [label, n, amount] })),
+    });
+  }
   if (entries.length > 0) {
     sections.push({
       title: 'Day Book',
@@ -312,8 +430,8 @@ export const dayPdfSections = (s: DaySummary, entries: DayEntry[]): ReportSectio
       ],
       rows: entries.map((e) => ({
         cells: [
-          time(e.createdAt),
-          KIND_META[e.kind].label,
+          entryTime(e.createdAt, s.timezone),
+          KIND_META[e.kind].one.replace(/^./, (c) => c.toUpperCase()),
           e.number ?? '—',
           e.partyName ?? '—',
           e.amount,
@@ -339,16 +457,25 @@ export const dayShareText = (s: DaySummary, companyName: string): string => {
     lines.push('Nothing was recorded on this day.');
   } else {
     const h = s.headline;
-    lines.push(`Sales: ${formatMoney(h.sales.total)} (${count(h.sales.count, 'invoice')})`);
-    lines.push(`Received: ${formatMoney(h.received.total)} (${count(h.received.count, 'receipt')})`);
-    if (h.orders) lines.push(`Orders booked: ${formatMoney(h.orders.total)} (${count(h.orders.count, 'sales_order')})`);
-    lines.push(`Purchases: ${formatMoney(h.purchases.total)} (${count(h.purchases.count, 'bill')})`);
-    if (s.sales.unpaid > 0) lines.push(`Still unpaid from these sales: ${formatMoney(s.sales.unpaid)}`);
-    if (s.profit) lines.push(`Gross profit: ${formatMoney(s.profit.grossProfit)}`);
+    // Sales and money received always; the rest only when there was some.
+    const line = (label: string, k: DayKpi | null, kind: DayDocKind, always = false) => {
+      if (k && (always || k.count > 0 || k.total !== 0)) lines.push(`${label}: ${dayMoney(k.total)} (${count(k.count, kind)})`);
+    };
+    line('Sales', h.sales, 'invoice', true);
+    line('Received', h.received, 'receipt', true);
+    line('Orders booked', h.orders, 'sales_order');
+    line('POs placed', h.purchaseOrders, 'purchase_order');
+    if (h.goodsReceived && h.goodsReceived.count > 0) {
+      lines.push(`Goods received: ${dayMoney(h.goodsReceived.total)} at cost (${count(h.goodsReceived.count, 'purchase_order')})`);
+    }
+    line(h.purchaseOrders ? 'Bills' : 'Purchases', h.purchases, 'bill');
+    if (s.sales.returns > 0) lines.push(`Returns: ${dayMoney(s.sales.returns)} · net sales ${dayMoney(s.sales.net)}`);
+    if (s.sales.unpaid > 0) lines.push(`Still unpaid from these sales: ${dayMoney(s.sales.unpaid)}`);
+    if (s.profit) lines.push(`Gross profit (books): ${dayMoney(s.profit.grossProfit)}`);
     if (s.topCustomers.length > 0) {
       lines.push('');
       lines.push('Top customers:');
-      for (const c of s.topCustomers.slice(0, 3)) lines.push(`• ${c.name} — ${formatMoney(c.total)}`);
+      for (const c of s.topCustomers.slice(0, 3)) lines.push(`• ${c.name} — ${dayMoney(c.total)}`);
     }
     const flags = attentionItems(s);
     if (flags.length > 0) {
