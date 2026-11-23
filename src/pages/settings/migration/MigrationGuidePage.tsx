@@ -78,7 +78,7 @@ export default function MigrationGuidePage() {
         <p className="text-body-sm text-text-secondary">{guide.findVersion}</p>
         <p className="text-body-sm text-text-primary">Covered: {guide.versions.join(' · ')}</p>
         {versionsInSteps.length > 1 && (
-          <div className="max-w-sm print:hidden">
+          <div className="max-w-[24rem] print:hidden">
             <Select label="Show the steps for" value={version} options={versionsInSteps.map((v) => ({ value: v, label: v }))} onChange={setVersion} />
           </div>
         )}
