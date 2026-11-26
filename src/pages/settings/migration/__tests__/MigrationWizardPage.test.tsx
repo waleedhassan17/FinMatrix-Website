@@ -29,6 +29,7 @@ vi.mock('@/networks/settings/migrationNetwork', () => ({
   commitMigration: vi.fn(),
   rollbackMigration: vi.fn(),
   closeMigration: vi.fn(),
+  requestMigrationHelp: vi.fn(async () => ({ sent: true, reference: 'MIG-B1' })),
   downloadCertificate: vi.fn(),
   downloadStarterWorkbook: vi.fn(),
 }));
