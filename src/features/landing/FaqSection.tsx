@@ -9,28 +9,31 @@
 //
 // The trial question is answered honestly. Someone asking it has already decided
 // they want the product, so the answer says exactly what they get and — just as
-// plainly — what they do not: the trial is reviewed by a person, not instant.
+// plainly — what they do not: one trial per business, a few checked by a person.
 
+import { Link } from 'react-router-dom';
 import { Mail, Plus } from 'lucide-react';
 
 import { Reveal } from '@/components/motion/Reveal';
 import { CONTACT_EMAILS } from '@/features/landing/constants';
 import { SectionIntro } from '@/features/landing/SectionIntro';
 
-// BILLING-DISABLED BUILD: three of these answered questions about trials,
-// plans and expiry. Nothing is sold during the warehouse testing phase, so
-// each one described a thing that does not exist. The trial question is
-// replaced by the question a visitor now actually has — what it costs and
-// how they get in — rather than dropped silently.
+// Each answer says only what the product does. The free trial is real and
+// normally instant; a few requests are checked by a person; nothing is sold
+// online; and data is never deleted when a trial ends.
 const FAQS = [
   {
-    q: 'What does it cost right now?',
-    a: 'Nothing. FinMatrix is in a testing phase with a small number of warehouses, and every feature is included at no charge — no credit card, no plan to pick. Registration is not instant: after you create an account and set up your company, our team reviews it and switches it on, usually within one business day.',
+    q: 'Is there a free trial?',
+    a: 'Yes — 30 days with the full Warehouse system and one delivery rider, no credit card. Most trials start the moment you set up your company; a few are checked by our team first, usually within 24 hours. There is one free trial per business.',
   },
-  // {
-  //   q: 'Is there a free trial?',
-  //   a: 'Yes. You get 30 days with every feature and one delivery rider, with no credit card. It is not instant: after you register and set up your company, our team reviews the request and activates it — usually within 24 hours — and the 30 days start then. Subscribe whenever you are ready; plans are paid by bank transfer for a fixed term and nothing renews automatically.',
-  // },
+  {
+    q: 'What happens when the trial ends?',
+    a: 'Your account pauses and your data is kept — nothing is deleted. You can still sign in, download a full backup of your company, and press "Request activation": our team agrees a plan with you and switches it on. There is no online payment.',
+  },
+  {
+    q: 'Can I bring my data from my current software?',
+    a: 'Yes. The Migration Center reads the exports of the common accounting packages used in Pakistan, and plain spreadsheets. It checks your opening balances, customers, suppliers and stock to the rupee against your old system before anything is posted, and you can undo the import.',
+  },
   {
     q: 'How do my staff get accounts?',
     a: 'You create them. In Settings → Users you add a team member, and FinMatrix issues a username and password for you to hand over. Staff sign in with that username — they never need an email address, and if someone forgets their password you reset it yourself.',
@@ -94,6 +97,9 @@ export function FaqSection() {
                     </li>
                   ))}
                 </ul>
+                <Link to="/book-demo" className="mt-sm inline-block text-label-md text-primary hover:underline">
+                  Book a demo →
+                </Link>
               </div>
             </div>
           </Reveal>

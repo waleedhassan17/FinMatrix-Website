@@ -8,12 +8,11 @@
 //
 // The reassurance line states facts, and only facts the product delivers.
 //
-// There IS now a free trial, so "free trial" and "no credit card required" may be
-// said — there is no card anywhere in the flow. What may NOT be said is "instant
-// access": a person reviews every trial request, and the owner is told it is
-// activated within 24 hours. The landing page must promise exactly that, never
-// something the backend will not do thirty seconds after sign-up. "Cancel
-// anytime" stays out as well: nothing renews, so there is nothing to cancel.
+// The free trial normally starts the moment it is asked for; a few requests are
+// checked by a person first. The copy says exactly that — "most trials start
+// instantly; a few are checked within 24 hours" — never a flat "instant access".
+// "No credit card required" is true: there is no card anywhere in the flow.
+// "Cancel anytime" stays out: nothing renews, so there is nothing to cancel.
 // landingHonesty.test.tsx enforces all of this.
 
 import { ArrowRight, CalendarClock, Check } from 'lucide-react';
@@ -21,19 +20,9 @@ import { Link } from 'react-router-dom';
 
 import { Button } from '@/components/ui/Button';
 import { Reveal } from '@/components/motion/Reveal';
-import { CONTACT_EMAILS_MAILTO } from '@/features/landing/constants';
-
-/** Same mail as the hero's, so a buyer who scrolled past it still has the door. */
-const DEMO_HREF = `mailto:${CONTACT_EMAILS_MAILTO}?subject=${encodeURIComponent(
-  'FinMatrix demo request',
-)}`;
-
-// BILLING-DISABLED BUILD: the middle fact promised a free trial, and
-// "nothing renews automatically" answers a question nobody can ask when
-// there is nothing to renew.
 const FACTS = [
   'No credit card required',
-  'Your account is activated after a review, usually within one business day',
+  'Most trials start instantly; a few are checked within 24 hours',
   'Every feature included',
 ];
 // const FACTS = [
@@ -67,11 +56,9 @@ export function CtaSection() {
               Put your stock and your ledger on the same page
             </h2>
 
-            {/* BILLING-DISABLED BUILD: was "try every feature free for 30
-                days". */}
             <p className="mx-auto mt-lg max-w-[560px] text-body-lg text-white/75">
-              Set up your company in minutes and get every feature.
-              Add your team when you are ready.
+              Set up your company in minutes and try every feature free for 30 days.
+              Bring your data in from your old system, and add your team when you are ready.
             </p>
 
             <div className="mt-xxl flex flex-wrap justify-center gap-sm">
@@ -85,7 +72,7 @@ export function CtaSection() {
                 className="bg-surface px-xl text-primary-900 shadow-lg hover:bg-primary-50"
               >
                 <Link to="/register">
-                  Create an account
+                  Start your 30-day free trial
                   <ArrowRight className="size-4" aria-hidden="true" />
                 </Link>
               </Button>
@@ -103,10 +90,10 @@ export function CtaSection() {
                 asChild
                 className="border border-white/20 bg-white/5 px-xl text-text-inverse hover:bg-white/10"
               >
-                <a href={DEMO_HREF}>
+                <Link to="/book-demo">
                   <CalendarClock className="size-4" aria-hidden="true" />
                   Book a demo
-                </a>
+                </Link>
               </Button>
             </div>
 

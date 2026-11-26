@@ -36,26 +36,12 @@ import {
   useScrollY,
 } from '@/components/motion/useScrollY';
 import { HeroPreview } from '@/features/landing/HeroPreview';
-import { CONTACT_EMAILS_MAILTO } from '@/features/landing/constants';
 
 const PROOF = [
   'Double-entry ledger',
   'Maker-checker approvals',
   'Web console + Android app',
 ];
-
-/**
- * A demo request, as a mail rather than a form.
- *
- * A contact form needs somewhere to POST, and there is no endpoint for one. The
- * honest options were a mailto or a form that silently drops what a buyer types
- * into it; the second is worse than having no demo path at all.
- */
-const DEMO_HREF = `mailto:${CONTACT_EMAILS_MAILTO}?subject=${encodeURIComponent(
-  'FinMatrix demo request',
-)}&body=${encodeURIComponent(
-  'Company:\nWhat you move / sell:\nTeam size:\nWhere you are based:\n\nAnything you want us to cover:',
-)}`;
 
 export function HeroSection() {
   const scrollY = useScrollY();
@@ -134,9 +120,8 @@ export function HeroSection() {
                 asChild
                 className="bg-surface px-xl text-primary-900 shadow-lg hover:bg-primary-50"
               >
-                {/* BILLING-DISABLED BUILD: was "Start your free trial". */}
                 <Link to="/register">
-                  Create an account
+                  Start your 30-day free trial
                   <ArrowRight className="size-4" aria-hidden="true" />
                 </Link>
               </Button>
@@ -152,17 +137,17 @@ export function HeroSection() {
                 asChild
                 className="border border-white/20 bg-white/5 px-xl text-text-inverse hover:bg-white/10"
               >
-                <a href={DEMO_HREF}>
+                <Link to="/book-demo">
                   <CalendarClock className="size-4" aria-hidden="true" />
                   Book a demo
-                </a>
+                </Link>
               </Button>
             </div>
-            {/* BILLING-DISABLED BUILD: promised a 30-day trial. What is
-                actually true now is the review step, so that is all it says. */}
+            {/* Honest about the one exception: most trials start the moment
+                they are asked for; a few are checked by a person first. */}
             <p className="mt-sm text-body-sm text-white/65">
-              Every feature, no credit card. Your account is activated after a quick review —
-              usually within one business day.
+              Every feature, no credit card. Most trials start instantly; a few are checked by our
+              team within 24 hours.
             </p>
           </Reveal>
 
