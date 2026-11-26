@@ -1,9 +1,12 @@
 // ═══ FinMatrix Web — Migration Center and backup error messages ═══
 //
-// Every code the Migration Center and the backup can return, in plain words.
-// The web app has no i18n system yet, so the Urdu map holds placeholders
-// marked TODO_UR for translation; `migrationErrorMessage` falls back to
-// English (and then to the server's own sentence) whenever a string is missing.
+// Every code the Migration Center and the backup can return, in plain words,
+// in English and Urdu. `migrationErrorMessage` answers in the reader's chosen
+// language (see i18n/lang), falls back to English when a string is missing,
+// and to the server's own sentence for a code it does not know.
+
+import { currentLang, pick, type Lang } from '@/i18n/lang';
+import { LAUNCH_ERRORS } from '@/i18n/launchStrings';
 
 export const MIGRATION_ERROR_CODES = [
   'MIGRATION_REQUIRES_EMPTY_BOOKS',
@@ -55,6 +58,7 @@ export const MIGRATION_ERROR_CODES = [
   'SOURCE_TOTALS_MISMATCH',
   'SOURCE_NET_CREDIT',
   'MIGRATION_CHART_CHANGED',
+  'ACCOUNT_NOT_FOUND',
 ] as const;
 
 export type MigrationErrorCode = (typeof MIGRATION_ERROR_CODES)[number];
@@ -109,26 +113,79 @@ export const MIGRATION_ERRORS_EN: Record<MigrationErrorCode, string> = {
   SOURCE_TOTALS_MISMATCH: "A report's own printed total does not match its lines. Export it again from your old system, unchanged, and upload it.",
   SOURCE_NET_CREDIT: 'Some customers or vendors have more credit than open invoices or bills. Accept to bring the rest in as advances, or apply the credits in your old system first.',
   MIGRATION_CHART_CHANGED: 'The chart of accounts changed after your files were checked. Check the files again (re-upload one, or change any answer) so the plan matches the chart.',
+  ACCOUNT_NOT_FOUND: 'One of the system accounts the import needs (receivables, payables, stock or opening balance equity) is missing from your chart of accounts. Restore it in Chart of accounts, then try again.',
 };
 
-/** TODO_UR: every entry awaits translation; until then English is shown. */
-export const MIGRATION_ERRORS_UR: Record<MigrationErrorCode, string> = Object.fromEntries(
-  MIGRATION_ERROR_CODES.map((c) => [c, `TODO_UR ${c}`]),
-) as Record<MigrationErrorCode, string>;
-
-const isTodo = (s: string | undefined) => !s || s.startsWith('TODO_UR');
+/** Urdu — written for launch; a native speaker should review before release. */
+export const MIGRATION_ERRORS_UR: Record<MigrationErrorCode, string> = {
+  MIGRATION_REQUIRES_EMPTY_BOOKS: 'اس کمپنی کے کھاتوں میں پہلے سے لین دین موجود ہیں۔ مائیگریشن سینٹر صرف اُس کمپنی میں اوپننگ بیلنس لاتا ہے جس نے ابھی کچھ پوسٹ نہ کیا ہو۔',
+  MIGRATION_INVALID_TRANSITION: 'مائیگریشن کے اس مرحلے پر یہ قدم دستیاب نہیں۔',
+  MIGRATION_FILE_TOO_LARGE: 'یہ فائل بہت بڑی ہے۔ ہر اسپریڈشیٹ زیادہ سے زیادہ 25 MB ہو سکتی ہے (بڑی فائل کو کئی فائلوں میں تقسیم کریں)؛ Peachtree بیک اپ (.ptb) زیادہ سے زیادہ 2 GB۔',
+  MIGRATION_FILE_UNREADABLE: 'ہم یہ فائل نہیں کھول سکے۔ اسے دوبارہ .xlsx یا .csv کے طور پر محفوظ کریں (یا Tally کو XML میں ایکسپورٹ کریں) اور پھر کوشش کریں۔',
+  MIGRATION_UNKNOWN_SHEET: 'ہم یہ نہیں سمجھ سکے کہ ایک شیٹ میں کیا ہے۔ اس کی قسم منتخب کریں، یا اسے چھوڑ دیں۔',
+  MIGRATION_REQUIRED_COLUMN_MISSING: 'ایک شیٹ میں ضروری کالم موجود نہیں۔ وہ کالم منتخب کریں جس میں یہ معلومات ہے۔',
+  MIGRATION_FEATURE_DISABLED: 'آپ کے پلان میں انوینٹری شامل نہیں، اس لیے اسٹاک امپورٹ نہیں ہو سکتا۔',
+  AMBIGUOUS_DATE_FORMAT: 'اس فائل کی تاریخیں دن/مہینہ یا مہینہ/دن دونوں طرح پڑھی جا سکتی ہیں۔ بتائیں کون سی درست ہے۔',
+  INVALID_AMOUNT: 'ایک رقم ایسا عدد نہیں جو ہم پڑھ سکیں۔',
+  INVALID_DATE: 'ایک تاریخ ایسی نہیں جو ہم پڑھ سکیں۔',
+  INVALID_VALUE: 'ایک قدر ہمارے لیے نامعلوم ہے۔ منتخب کریں کہ اس کا مطلب کیا ہے۔',
+  MISSING_REQUIRED_VALUE: 'ایک ضروری قدر خالی ہے۔',
+  MAPPING_UNCONFIRMED: 'ہمیں اس میچ کا یقین نہیں۔ اس کی تصدیق کریں یا کوئی اور منتخب کریں۔',
+  AMOUNT_READBACK_MISMATCH: 'یہ رقم دو طرح پڑھی جا سکتی ہے۔ اسے سادہ لکھیں (مثلاً 120000) تاکہ ایک ہی مطلب نکلے۔',
+  DATE_READBACK_MISMATCH: 'یہ تاریخ دو طرح پڑھی جا سکتی ہے۔ اسے سال-مہینہ-دن کی شکل میں لکھیں (مثلاً 2026-06-30)۔',
+  DUPLICATE_RECORD: 'یہ ریکارڈ دو بار آیا ہے۔ قطاریں ملا دیں یا ایک چھوڑ دیں۔',
+  UNKNOWN_ACCOUNT: 'آپ کے ٹرائل بیلنس کا ایک اکاؤنٹ آپ کے چارٹ آف اکاؤنٹس میں نہیں۔ اسے میپ کریں، یا بنا لیں۔',
+  UNKNOWN_CUSTOMER: 'ایک انوائس میں ایسے کسٹمر کا نام ہے جو ہمیں نہیں ملا۔ اسے کسی کسٹمر سے ملائیں، یا نیا بنائیں۔',
+  UNKNOWN_VENDOR: 'ایک بل میں ایسے وینڈر کا نام ہے جو ہمیں نہیں ملا۔ اسے کسی وینڈر سے ملائیں، یا نیا بنائیں۔',
+  UNKNOWN_ITEM: 'اسٹاک کی ایک لائن میں ایسا آئٹم ہے جو ہمیں نہیں ملا۔ اسے Items شیٹ میں شامل کریں۔',
+  AI_QUESTION: 'میپنگ اسسٹنٹ آپ سے ایک سوال پوچھنا چاہتا ہے۔',
+  CHECK_FAILED: 'ایک مطابقتی جانچ ناکام ہوئی، اس لیے کچھ بھی امپورٹ نہیں ہوا۔ جانچ میں دکھائی گئی بات درست کریں اور جانچ دوبارہ چلائیں۔',
+  NOT_SIGNED_OFF: 'امپورٹ سے پہلے سرٹیفکیٹ دیکھیں، ہر اسپاٹ چیک پر نشان لگائیں، پھر منظوری دیں۔',
+  ROLLBACK_BLOCKED: 'یہ مائیگریشن اب واپس نہیں ہو سکتی، کیونکہ نئے ریکارڈ اس پر منحصر ہیں۔',
+  MIGRATED_DOCUMENT_IMMUTABLE: 'یہ دستاویز آپ کی مائیگریشن سے آئی ہے۔ مائیگریشن واپس لیں، یا اسے ادائیگی یا کریڈٹ سے نمٹائیں۔',
+  EXPORT_NOT_READY: 'یہ بیک اپ ابھی تیار ہو رہا ہے۔ تھوڑی دیر بعد دوبارہ کوشش کریں۔',
+  EXPORT_EXPIRED: 'اس بیک اپ کی مدت ختم ہو گئی ہے۔ نیا بیک اپ بنائیں۔',
+  EXPORT_LINK_INVALID: 'یہ ڈاؤن لوڈ لنک درست نہیں۔ نیا بیک اپ بنائیں۔',
+  EXPORT_RATE_LIMITED: 'آپ ایک گھنٹے میں زیادہ سے زیادہ 3 بیک اپ بنا سکتے ہیں۔ تازہ ترین ڈاؤن لوڈ کریں، یا بعد میں کوشش کریں۔',
+  MIGRATION_UPLOAD_INCOMPLETE: 'بیک اپ کا کچھ حصہ ابھی نہیں پہنچا۔ وہی فائل دوبارہ منتخب کریں: صرف باقی حصے بھیجے جائیں گے۔',
+  MIGRATION_UPLOAD_PART_CORRUPT: 'بیک اپ کا ایک حصہ راستے میں خراب ہو گیا۔ وہی فائل دوبارہ منتخب کریں: صرف خراب حصے دوبارہ بھیجے جائیں گے۔',
+  MIGRATION_USE_LARGE_UPLOAD: 'Peachtree بیک اپ (.ptb) حصوں میں بھیجا جاتا ہے۔ اسے اکیلے اپ لوڈ والی جگہ میں ڈالیں۔',
+  MIGRATION_SERVER_DISK_FULL: 'اس وقت سرور پر یہ بیک اپ پڑھنے کی جگہ کم ہے۔ یہ خود دوبارہ کوشش کرے گا؛ اگر پھر بھی ناکام ہو تو سپورٹ سے رابطہ کریں۔',
+  MIGRATION_PTB_UNREADABLE: 'یہ پڑھنے کے قابل Peachtree بیک اپ نہیں۔ Peachtree میں File → Back Up استعمال کریں، اور وہ فائل بالکل ویسی ہی اپ لوڈ کریں۔',
+  MIGRATION_PTB_UNSUPPORTED: 'یہ بیک اپ Peachtree / Sage 50 کے ایسے ورژن کا ہے جو FinMatrix ابھی نہیں پڑھ سکتا۔ سپورٹ سے رابطہ کریں اور Peachtree کا ورژن بتائیں۔',
+  MIGRATION_PTB_TABLE_MISSING: 'اس بیک اپ میں کمپنی کا کچھ حصہ موجود نہیں۔ Peachtree میں پوری کمپنی کے لیے File → Back Up کریں، اور وہ فائل اپ لوڈ کریں۔',
+  PEACHTREE_CROSSCHECK_FAILED: 'اس بیک اپ میں Peachtree کے اپنے اعداد آپس میں نہیں ملتے۔ Peachtree میں ڈیٹا ویریفکیشن چلائیں (File → Data Verification)، نیا بیک اپ بنائیں اور اپ لوڈ کریں۔',
+  PEACHTREE_POSTED_AFTER_CUTOVER: 'Peachtree میں آپ کی کٹ اوور تاریخ یا اس کے بعد کی انٹریاں موجود ہیں۔ Peachtree کی آخری انٹری کے بعد کی کٹ اوور تاریخ منتخب کریں۔',
+  PEACHTREE_CONTROL_DIFFERENCE: 'Peachtree کا ایک کنٹرول اکاؤنٹ اپنے کسٹمرز، وینڈرز یا آئٹمز سے نہیں ملتا۔ فرق کو الگ اکاؤنٹ میں رکھنے کے لیے قبول کریں، یا اسے Peachtree میں درست کریں۔',
+  PEACHTREE_NET_CREDIT: 'کچھ کسٹمرز یا وینڈرز کے کھلے دستاویزات کے بعد کریڈٹ بچ گیا ہے۔ انہیں ایڈوانس کے طور پر لانے کے لیے قبول کریں۔',
+  PEACHTREE_FISCAL_YEAR: 'Peachtree کا مالی سال اس کمپنی سے مختلف مہینے میں شروع ہوتا ہے۔ امپورٹ سے پہلے دونوں کو ایک جیسا کریں۔',
+  PEACHTREE_REPORTS_MISSING: 'Peachtree کی General Ledger Trial Balance، Aged Receivables اور Aged Payables رپورٹس (اور اگر اسٹاک رکھتے ہیں تو Inventory Valuation) کٹ اوور سے ایک دن پہلے کی تاریخ پر Excel میں ایکسپورٹ کر کے اپ لوڈ کریں۔',
+  PEACHTREE_REPORT_MISMATCH: 'Peachtree کی ایک رپورٹ بیک اپ سے نہیں ملتی۔ اسی کمپنی سے، کٹ اوور سے ایک دن پہلے کی تاریخ پر رپورٹس دوبارہ ایکسپورٹ کر کے اپ لوڈ کریں۔',
+  SOURCE_REPORTS_MISSING: 'ایک رپورٹ ابھی درکار ہے: آپ کے ٹرائل بیلنس میں ایسا بیلنس ہے جس کی وضاحت یہ رپورٹ کرتی ہے (وصولیاں، ادائیگیاں یا اسٹاک)۔ اسے کٹ اوور سے ایک دن پہلے کی تاریخ پر ایکسپورٹ کر کے اپ لوڈ کریں۔',
+  SOURCE_REPORT_DUPLICATE: 'ایک ہی رپورٹ دو بار اپ لوڈ ہوئی ہے۔ ان میں سے ایک ہٹا دیں۔',
+  SOURCE_REPORT_DATE: 'ایک رپورٹ کٹ اوور سے ایک دن پہلے کی تاریخ کی نہیں۔ اگر سب رپورٹس درست ہیں تو کٹ اوور تاریخ بدلیں، ورنہ رپورٹ درست تاریخ کے لیے دوبارہ ایکسپورٹ کریں۔',
+  SOURCE_TOTALS_MISMATCH: 'ایک رپورٹ کا اپنا چھپا ہوا ٹوٹل اس کی لائنوں سے نہیں ملتا۔ اسے اپنے پرانے سسٹم سے بغیر تبدیلی کے دوبارہ ایکسپورٹ کر کے اپ لوڈ کریں۔',
+  SOURCE_NET_CREDIT: 'کچھ کسٹمرز یا وینڈرز کا کریڈٹ کھلی انوائسز یا بلوں سے زیادہ ہے۔ باقی کو ایڈوانس کے طور پر لانے کے لیے قبول کریں، یا پہلے اپنے پرانے سسٹم میں کریڈٹ لاگو کریں۔',
+  MIGRATION_CHART_CHANGED: 'آپ کی فائلیں جانچنے کے بعد چارٹ آف اکاؤنٹس بدل گیا ہے۔ فائلیں دوبارہ جانچیں (ایک فائل دوبارہ اپ لوڈ کریں، یا کوئی جواب بدلیں) تاکہ منصوبہ چارٹ سے مطابقت رکھے۔',
+  ACCOUNT_NOT_FOUND: 'امپورٹ کے لیے درکار ایک سسٹم اکاؤنٹ (وصولیاں، ادائیگیاں، اسٹاک یا اوپننگ بیلنس ایکویٹی) آپ کے چارٹ آف اکاؤنٹس میں موجود نہیں۔ اسے چارٹ آف اکاؤنٹس میں بحال کریں، پھر دوبارہ کوشش کریں۔',
+};
 
 /**
  * The sentence for an error code. Unknown codes fall back to the server's own
  * message, then to a generic sentence — never to a raw code.
  */
-export function migrationErrorMessage(code: string | undefined | null, serverMessage?: string | null, lang: 'en' | 'ur' = 'en'): string {
+export function migrationErrorMessage(
+  code: string | undefined | null,
+  serverMessage?: string | null,
+  lang: Lang = currentLang(),
+): string {
   if (code && (MIGRATION_ERROR_CODES as readonly string[]).includes(code)) {
     const key = code as MigrationErrorCode;
-    if (lang === 'ur' && !isTodo(MIGRATION_ERRORS_UR[key])) return MIGRATION_ERRORS_UR[key];
-    return MIGRATION_ERRORS_EN[key];
+    return lang === 'ur' ? MIGRATION_ERRORS_UR[key] || MIGRATION_ERRORS_EN[key] : MIGRATION_ERRORS_EN[key];
   }
-  return serverMessage?.trim() || 'Something went wrong. Please try again.';
+  // A trial that ended, a suspended company: the launch messages cover them.
+  if (code && LAUNCH_ERRORS[code]) return pick(LAUNCH_ERRORS[code], lang);
+  return serverMessage?.trim() || (lang === 'ur' ? 'کچھ غلط ہو گیا۔ دوبارہ کوشش کریں۔' : 'Something went wrong. Please try again.');
 }
 
 /** Short headings for the Fix step's groups; the sentence above explains each. */

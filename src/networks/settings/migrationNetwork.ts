@@ -58,6 +58,9 @@ export const signOffMigration = (id: string) => call<MigrationBatch>(() => api.p
 export const commitMigration = (id: string) => call<{ batch: MigrationBatch; certificate: CertificatePreview }>(() => api.post(`/migrations/${id}/commit`, undefined, LONG_RUNNING));
 export const rollbackMigration = (id: string) => call<{ batch: MigrationBatch; result: { reversed: number; removed: Record<string, number> } }>(() => api.post(`/migrations/${id}/rollback`, undefined, LONG_RUNNING));
 export const closeMigration = (id: string) => call<MigrationBatch>(() => api.post(`/migrations/${id}/close`));
+/** "Ask for help": emails FinMatrix support the batch reference, its open problems and check results — never row data. */
+export const requestMigrationHelp = (id: string, message?: string) =>
+  call<{ sent: boolean; reference: string }>(() => api.post(`/migrations/${id}/help-request`, { message: message?.trim() || undefined }));
 
 /** Long timeouts: the certificate preview runs the whole dry run on the server. */
 export async function downloadCertificate(id: string): Promise<void> {
