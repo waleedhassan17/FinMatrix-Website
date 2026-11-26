@@ -125,10 +125,5 @@ export const MIGRATION_SOURCES: MigrationSource[] = [
 
 export const sourceById = (id: string) => MIGRATION_SOURCES.find((s) => s.id === id);
 
-/** "Ask for help": the support inbox and how a batch is referred to. */
-export const MIGRATION_SUPPORT = {
-  email: 'support@finmatrix.pk',
-  subject: (batchId: string) => `Migration help — ${supportReference(batchId)}`,
-};
-
+/** How a batch is referred to with support (matches the server's MIG-XXXXXXXX). */
 export const supportReference = (batchId: string) => `MIG-${batchId.slice(0, 8).toUpperCase()}`;

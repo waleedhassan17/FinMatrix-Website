@@ -1,9 +1,10 @@
 // ═══ FinMatrix Web — Migration Center and backup error messages ═══
 //
 // Every code the Migration Center and the backup can return, in plain words.
-// The web app has no i18n system yet, so the Urdu map holds placeholders
-// marked TODO_UR for translation; `migrationErrorMessage` falls back to
-// English (and then to the server's own sentence) whenever a string is missing.
+// `migrationErrorMessage` falls back to the launch messages (a trial that
+// ended, a suspension), then to the server's own sentence.
+
+import { LAUNCH_ERRORS } from '@/config/launchStrings';
 
 export const MIGRATION_ERROR_CODES = [
   'MIGRATION_REQUIRES_EMPTY_BOOKS',
@@ -55,6 +56,7 @@ export const MIGRATION_ERROR_CODES = [
   'SOURCE_TOTALS_MISMATCH',
   'SOURCE_NET_CREDIT',
   'MIGRATION_CHART_CHANGED',
+  'ACCOUNT_NOT_FOUND',
 ] as const;
 
 export type MigrationErrorCode = (typeof MIGRATION_ERROR_CODES)[number];
@@ -109,25 +111,19 @@ export const MIGRATION_ERRORS_EN: Record<MigrationErrorCode, string> = {
   SOURCE_TOTALS_MISMATCH: "A report's own printed total does not match its lines. Export it again from your old system, unchanged, and upload it.",
   SOURCE_NET_CREDIT: 'Some customers or vendors have more credit than open invoices or bills. Accept to bring the rest in as advances, or apply the credits in your old system first.',
   MIGRATION_CHART_CHANGED: 'The chart of accounts changed after your files were checked. Check the files again (re-upload one, or change any answer) so the plan matches the chart.',
+  ACCOUNT_NOT_FOUND: 'One of the system accounts the import needs (receivables, payables, stock or opening balance equity) is missing from your chart of accounts. Restore it in Chart of accounts, then try again.',
 };
-
-/** TODO_UR: every entry awaits translation; until then English is shown. */
-export const MIGRATION_ERRORS_UR: Record<MigrationErrorCode, string> = Object.fromEntries(
-  MIGRATION_ERROR_CODES.map((c) => [c, `TODO_UR ${c}`]),
-) as Record<MigrationErrorCode, string>;
-
-const isTodo = (s: string | undefined) => !s || s.startsWith('TODO_UR');
 
 /**
  * The sentence for an error code. Unknown codes fall back to the server's own
  * message, then to a generic sentence — never to a raw code.
  */
-export function migrationErrorMessage(code: string | undefined | null, serverMessage?: string | null, lang: 'en' | 'ur' = 'en'): string {
+export function migrationErrorMessage(code: string | undefined | null, serverMessage?: string | null): string {
   if (code && (MIGRATION_ERROR_CODES as readonly string[]).includes(code)) {
-    const key = code as MigrationErrorCode;
-    if (lang === 'ur' && !isTodo(MIGRATION_ERRORS_UR[key])) return MIGRATION_ERRORS_UR[key];
-    return MIGRATION_ERRORS_EN[key];
+    return MIGRATION_ERRORS_EN[code as MigrationErrorCode];
   }
+  // A trial that ended, a suspended company: the launch messages cover them.
+  if (code && LAUNCH_ERRORS[code]) return LAUNCH_ERRORS[code];
   return serverMessage?.trim() || 'Something went wrong. Please try again.';
 }
 

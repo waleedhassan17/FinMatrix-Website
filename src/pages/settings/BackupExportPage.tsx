@@ -28,6 +28,26 @@ const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '�
  * this page polls while one is in flight and downloads through the signed link.
  */
 export default function BackupExportPage() {
+  return (
+    <div className="flex flex-col gap-lg">
+      <SettingsTabs />
+      <div>
+        <h1 className="text-h2 text-text-primary">Backup & export</h1>
+        <p className="text-body-sm text-text-secondary">
+          Download your whole company as one ZIP file — your records, your reports and your attachments. Keep it safe; it is yours.
+        </p>
+      </div>
+      <BackupPanel />
+    </div>
+  );
+}
+
+/**
+ * The backup cards on their own: also shown on the "trial ended" page, where
+ * the owner can still download everything (data ownership never depends on
+ * paying — the server allows exactly these calls for a lapsed company).
+ */
+export function BackupPanel({ compact = false }: { compact?: boolean }) {
   const queryClient = useQueryClient();
   const [includeXlsx, setIncludeXlsx] = useState(false);
 
@@ -50,28 +70,22 @@ export default function BackupExportPage() {
   const busy = create.isPending || anyInFlight(rows);
 
   return (
-    <div className="flex flex-col gap-lg">
-      <SettingsTabs />
-      <div>
-        <h1 className="text-h2 text-text-primary">Backup & export</h1>
-        <p className="text-body-sm text-text-secondary">
-          Download your whole company as one ZIP file — your records, your reports and your attachments. Keep it safe; it is yours.
-        </p>
-      </div>
-
+    <div className="flex flex-col gap-lg text-left">
       <Card className="flex flex-col gap-md p-lg">
-        <SectionHeader title="What a backup holds" />
-        <ul className="grid gap-md sm:grid-cols-2">
-          {BACKUP_CONTENTS.map((c) => (
-            <li key={c.title} className="flex gap-sm">
-              <ShieldCheck className="mt-[2px] h-4 w-4 shrink-0 text-success" aria-hidden />
-              <div>
-                <p className="text-label-md text-text-primary">{c.title}</p>
-                <p className="text-body-sm text-text-secondary">{c.body}</p>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <SectionHeader title={compact ? 'Download a full backup' : 'What a backup holds'} />
+        {!compact && (
+          <ul className="grid gap-md sm:grid-cols-2">
+            {BACKUP_CONTENTS.map((c) => (
+              <li key={c.title} className="flex gap-sm">
+                <ShieldCheck className="mt-[2px] h-4 w-4 shrink-0 text-success" aria-hidden />
+                <div>
+                  <p className="text-label-md text-text-primary">{c.title}</p>
+                  <p className="text-body-sm text-text-secondary">{c.body}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
         <div className="flex flex-col gap-md border-t border-border-light pt-md sm:flex-row sm:items-center sm:justify-between">
           <Switch
             checked={includeXlsx}

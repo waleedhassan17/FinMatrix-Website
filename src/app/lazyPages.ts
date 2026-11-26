@@ -41,6 +41,7 @@ export const RegisterPage = lazyWithReload(() => import('@/pages/auth/RegisterPa
 export const ForgotPasswordPage = lazyWithReload(() => import('@/pages/auth/ForgotPasswordPage'));
 export const VerifyEmailPage = lazyWithReload(() => import('@/pages/auth/VerifyEmailPage'));
 export const PrivacyPage = lazyWithReload(() => import('@/pages/legal/PrivacyPage'));
+export const BookDemoPage = lazyWithReload(() => import('@/pages/public/BookDemoPage'));
 export const DataDeletionPage = lazyWithReload(() => import('@/pages/legal/DataDeletionPage'));
 export const AccountStatusPage = lazyWithReload(() => import('@/pages/auth/AccountStatusPage'));
 

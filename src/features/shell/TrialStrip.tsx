@@ -1,36 +1,45 @@
 // ═══════════════════════════════════════════════════════
 // FinMatrix Web — Free trial countdown (app chrome)
 // ═══════════════════════════════════════════════════════
-// A slim strip above the top bar while a free trial is RUNNING: approved, not
-// converted to a paid plan, not over. Hidden in every other state — a pending
-// request has nothing to count, a paid company has nothing to be reminded of.
+// A slim strip above the top bar while a free trial is RUNNING: days left
+// (Asia/Karachi calendar days, as the server's reminders count them), warning
+// styling in the last 3 days, "Request activation" (no online payment — the
+// team switches the plan on) and "Book onboarding call".
 //
-// No billing request of its own: it reads the plan summary signin and /auth/me
-// already return. When the tab regains focus it re-reads /auth/me at most once
-// a minute, so an approval or conversion that happened elsewhere (the phone,
-// the admin console) takes the strip away without a reload.
+// No billing request of its own: it reads the summary sign-in and /auth/me
+// already return, and re-reads /auth/me on focus at most once a minute so a
+// conversion done elsewhere takes the strip away without a reload.
 //
-// Owners only. Subscribing is an owner action, and a staff member cannot act on
-// "subscribe".
+// Owners only: activation is an owner action.
 
-import { Clock, Gift } from 'lucide-react';
+import { CalendarClock, Clock, Gift } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { ActivationRequestDialog } from '@/features/launch/ActivationRequestDialog';
+import { fill, LAUNCH } from '@/config/launchStrings';
 import { cn } from '@/lib/cn';
-import { pluralDays, trialDaysLeft } from '@/models/trial';
+import { trialDaysLeft } from '@/models/trial';
 import { authMe } from '@/networks/auth/authNetwork';
-import { selectIsOwner, selectSubscription, setIdentity } from '@/store/authSlice';
+import {
+  selectCompanyId,
+  selectIsOwner,
+  selectSubscription,
+  setIdentity,
+} from '@/store/authSlice';
 import { useAppDispatch, useAppSelector } from '@/store/store';
 
 const REFRESH_MIN_INTERVAL_MS = 60_000;
+/** The last days of a trial get the warning colour. */
+export const TRIAL_URGENT_DAYS = 3;
 
 export function TrialStrip() {
   const dispatch = useAppDispatch();
   const subscription = useAppSelector(selectSubscription);
   const isOwner = useAppSelector(selectIsOwner);
+  const companyId = useAppSelector(selectCompanyId);
   const [now, setNow] = useState(() => new Date());
-  // Set when the strip first shows (the identity was just fetched), not at render.
+  const [open, setOpen] = useState(false);
   const lastRefresh = useRef<number | null>(null);
 
   const days = trialDaysLeft(subscription, now);
@@ -46,7 +55,7 @@ export function TrialStrip() {
       authMe()
         .then((me) => dispatch(setIdentity(me)))
         .catch(() => {
-          /* the session bridges handle a dead token; keep the strip as is */
+          /* the session bridges handle a dead token */
         });
     };
     window.addEventListener('focus', onFocus);
@@ -55,34 +64,60 @@ export function TrialStrip() {
 
   if (!visible || days === null) return null;
 
-  const paymentInReview = subscription?.paymentStatus === 'submitted';
-  const urgent = days <= 7;
-  const Icon = paymentInReview ? Clock : Gift;
+  const activationInReview = subscription?.paymentStatus === 'submitted';
+  const urgent = days <= TRIAL_URGENT_DAYS;
+  const Icon = activationInReview ? Clock : Gift;
+  const label =
+    days <= 0
+      ? LAUNCH.trialOneDayLeft
+      : days === 1
+        ? LAUNCH.trialDayLeft
+        : fill(LAUNCH.trialDaysLeft, { n: days });
 
   return (
     <div
       role="status"
+      data-urgent={urgent ? 'true' : 'false'}
       className={cn(
         'flex flex-wrap items-center gap-x-sm gap-y-xxs px-md py-xs text-body-sm lg:px-lg',
         urgent ? 'bg-warning-lighter text-text-primary' : 'bg-info-light text-text-primary',
       )}
+     
     >
       <Icon
         className={cn('size-4 shrink-0', urgent ? 'text-warning' : 'text-info')}
         aria-hidden="true"
       />
       <span className="text-label-md">
-        {paymentInReview
-          ? `Payment under review · ${pluralDays(days)} of your free trial left`
-          : `${pluralDays(days)} left in your free trial`}
+        {activationInReview ? `${label} · ${LAUNCH.activationPending}` : label}
       </span>
-      {!paymentInReview && (
-        <Link
-          to="/account/renew"
+      {!activationInReview && companyId && (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
           className="text-label-md text-primary underline-offset-2 hover:underline"
         >
-          Subscribe
-        </Link>
+          {LAUNCH.requestActivation}
+        </button>
+      )}
+      <Link
+        to="/book-demo"
+        className="inline-flex items-center gap-xxs text-label-md text-primary underline-offset-2 hover:underline"
+      >
+        <CalendarClock className="size-3.5" aria-hidden="true" />
+        {LAUNCH.bookOnboarding}
+      </Link>
+      {companyId && (
+        <ActivationRequestDialog
+          companyId={companyId}
+          open={open}
+          onOpenChange={setOpen}
+          onDone={() => {
+            authMe()
+              .then((me) => dispatch(setIdentity(me)))
+              .catch(() => undefined);
+          }}
+        />
       )}
     </div>
   );

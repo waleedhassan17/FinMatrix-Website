@@ -128,6 +128,7 @@ import {
   VerifyEmailPage,
   PrivacyPage,
   DataDeletionPage,
+  BookDemoPage,
 } from '@/app/lazyPages';
 import { AppLayout } from '@/features/shell/AppLayout';
 import { navHistory, SHELL_ROUTE_ID } from '@/features/shell/navHistory';
@@ -261,6 +262,8 @@ export const router = createBrowserRouter([
       { path: '/verify-email', element: <VerifyEmailPage /> },
       // Public on purpose: Meta (WhatsApp) and app stores need these URLs.
       { path: '/privacy', element: <PrivacyPage /> },
+      // Book a demo: public, no login. Every demo link points here.
+      { path: '/book-demo', element: <BookDemoPage /> },
       { path: '/data-deletion', element: <DataDeletionPage /> },
 
       // The company is gated. Outside RequireActiveCompany, or it would

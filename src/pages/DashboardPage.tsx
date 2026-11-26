@@ -1,3 +1,4 @@
+import { MigrationSetupCard } from '@/features/dashboard/MigrationSetupCard';
 import { useQuery } from '@tanstack/react-query';
 import { CollectionsCard } from '@/features/messaging/CollectionsCard';
 import { useConnect } from '@/features/messaging/useConnect';
@@ -108,6 +109,9 @@ export default function DashboardPage() {
           </>
         }
       />
+
+      {/* First for a new company: bring the old books in. */}
+      <MigrationSetupCard visible={data?.migrationPrompt.visible ?? false} />
 
       {summaryFailed && (
         <Card className="flex items-start gap-sm border border-danger-light bg-danger-lighter p-lg">

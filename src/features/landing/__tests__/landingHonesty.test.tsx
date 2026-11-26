@@ -11,12 +11,12 @@
 //
 //   FBR / tax compliance — the product has tax RATES and a liability report. It
 //       has no compliance certification, and claiming one is a regulatory claim.
-//   instant access — there IS a 30-day free trial now, and "free trial" and "no
-//       credit card required" are true and may be said. What is still false is
-//       that it starts on the spot: a person reviews every request and activates
-//       it within 24 hours. "Instant", "immediately", "right away" would promise
-//       what the backend does not do, and that is the claim that would actively
-//       mislead a buyer into signing up.
+//   unqualified instant access — the 30-day free trial normally starts the
+//       moment it is asked for, but a few requests are held for a person, who
+//       decides within 24 hours. So "instantly" may appear ONLY in the sentence
+//       that also says so ("Most trials start instantly; a few are checked by
+//       our team within 24 hours"). "Immediately", "right away" and a bare
+//       "instant" would promise more than the backend guarantees.
 //   competitor names and "N% cheaper" — we are not making comparative price
 //       claims about other companies' products.
 //   user / business counts, "trusted by" — invented social proof. There is no
@@ -54,8 +54,11 @@ const BANNED: [RegExp, string][] = [
  * ban would forbid answering the question at all — pushing the copy toward
  * silence on the thing a buyer most wants to know.
  */
+/** The one sentence allowed to say "instantly", because it carries the exception. */
+const HONEST_TRIAL_SENTENCE = /most trials start instantly; a few are checked( by our team)? within 24 hours/gi;
+
 const BANNED_OUTSIDE_FAQ: [RegExp, string][] = [
-  [/instant(ly)?\b/i, 'trials are reviewed by a person, not instant'],
+  [/instant(ly)?\b/i, 'a few trials are reviewed by a person, so "instant" needs its exception'],
   [/immediately/i, 'trials are reviewed by a person, not immediate'],
   [/right away|straight away/i, 'trials are reviewed by a person'],
   [/cancel anytime/i, 'nothing auto-renews, so there is nothing to cancel'],
@@ -86,41 +89,29 @@ describe('landing page claims', () => {
     const { container } = renderLanding();
     const faq = container.querySelector('#faq');
     faq?.remove();
-    expect(container.textContent ?? '').not.toMatch(pattern);
+    const text = (container.textContent ?? '').replace(HONEST_TRIAL_SENTENCE, '');
+    expect(text).not.toMatch(pattern);
   });
 
-  // ── BILLING-DISABLED BUILD ──────────────────────────────────────────
-  // The honest claim inverted. There is no trial to offer during the
-  // warehouse testing phase, so the page must not offer one — and it still
-  // has to disclose the review, which is the part a visitor would otherwise
-  // discover only after signing up.
-  //
-  // This replaces the test below rather than deleting it: without something
-  // here, the BANNED patterns above are satisfied by a page that says nothing
-  // about how anyone actually gets in, which is the failure this file exists
-  // to catch.
-  it('promises no free trial, and still discloses the review', () => {
+  // The trial is offered, and the exception is disclosed up front: a few
+  // trials are checked by a person within 24 hours.
+  it('offers the 30-day free trial and discloses the review', () => {
     const { container } = renderLanding();
     const text = container.textContent ?? '';
 
-    expect(text).not.toMatch(/free trial/i);
-    expect(text).not.toMatch(/30 days/i);
-    // The wait is still stated up front, before signup.
-    expect(text).toMatch(/review/i);
-    expect(text).toMatch(/one business day/i);
+    expect(text).toMatch(/start your 30-day free trial/i);
+    expect(text).toMatch(/a few are checked by our team within 24 hours/i);
   });
 
-  // it('answers the trial question rather than dodging it — including the review', () => {
-  //   const { container } = renderLanding();
-  //   const faq = container.querySelector('#faq')?.textContent ?? '';
-  //
-  //   // The question has to be asked AND answered, and the answer has to carry
-  //   // the part a buyer would otherwise discover later: it is reviewed, not
-  //   // instant. Without this the bans above are satisfied by saying nothing.
-  //   expect(faq).toMatch(/is there a free trial\?\s*yes\./i);
-  //   expect(faq).toMatch(/not instant/i);
-  //   expect(faq).toMatch(/24 hours/i);
-  // });
+  it('answers the trial questions rather than dodging them', () => {
+    const { container } = renderLanding();
+    const faq = container.querySelector('#faq')?.textContent ?? '';
+    expect(faq).toMatch(/is there a free trial\?\s*yes/i);
+    expect(faq).toMatch(/24 hours/i);
+    // Ending the trial deletes nothing — and there is no online payment.
+    expect(faq).toMatch(/nothing is deleted/i);
+    expect(faq).toMatch(/no online payment/i);
+  });
 
   it('never offers the trial without saying it is reviewed', () => {
     const { container } = renderLanding();
@@ -150,18 +141,23 @@ describe('landing page structure', () => {
 
     expect(hrefs).toContain('/register');
     expect(hrefs).toContain('/get-started');
+    // "Book a demo" is a real page now, never a mailto.
+    expect(hrefs).toContain('/book-demo');
+    const mailtos = [...container.querySelectorAll('a[href^="mailto:"]')]
+      .map((a) => a.textContent ?? '')
+      .filter((t) => /demo/i.test(t));
+    expect(mailtos).toEqual([]);
     // Nothing may point at a route that does not exist.
     for (const href of hrefs) {
       expect(href).not.toBe('#');
     }
   });
 
-  // BILLING-DISABLED BUILD: there is no payment model to state. What must
-  // still be said before signup is that a person approves the account —
-  // same principle, the step that actually exists.
-  it('states the approval step before signup, not after', () => {
+  // What happens after the trial is said before signup, not after: no
+  // online payment — the team switches a plan on.
+  it('states how a plan is switched on before signup, not after', () => {
     const { container } = renderLanding();
-    expect(container.textContent ?? '').toMatch(/we review and approve/i);
+    expect(container.textContent ?? '').toMatch(/request activation/i);
   });
 
   // it('states the manual payment model before signup, not after', () => {

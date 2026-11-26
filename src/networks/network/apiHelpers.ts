@@ -175,8 +175,25 @@ api.interceptors.response.use(
     // deactivated, or un-approved. Identity only learns companyStatus at
     // signin and cold start, so without this the user sits on dead screens.
     if (error.response?.status === 403) {
-      if (extractErrorCode(error) === 'COMPANY_NOT_ACTIVE') {
+      const code403 = extractErrorCode(error);
+      if (
+        code403 === 'COMPANY_NOT_ACTIVE' ||
+        code403 === 'TRIAL_ENDED' ||
+        code403 === 'SUBSCRIPTION_EXPIRED' ||
+        code403 === 'COMPANY_SUSPENDED'
+      ) {
         emitCompanyStatusStale();
+      }
+    }
+
+    // A suspended account, or sessions revoked by FinMatrix: no refresh can
+    // help, so sign out now and say why (SessionGate shows the message).
+    if (error.response?.status === 401 && !isAuthRoute) {
+      const code401 = extractErrorCode(error);
+      if (code401 === 'ACCOUNT_SUSPENDED' || code401 === 'SESSION_REVOKED') {
+        clearTokens();
+        emitSessionExpired(code401);
+        return Promise.reject(error);
       }
     }
 
@@ -228,7 +245,13 @@ api.interceptors.response.use(
         // Skipped for sign-out itself: that flow already resets state, and a
         // "Session expired" toast would be wrong during an intentional exit.
         if (!url.includes('/auth/signout') && !url.includes('/auth/logout')) {
-          emitSessionExpired();
+          // The refresh itself may say the account was suspended.
+          const refreshCode = extractErrorCode(refreshError);
+          emitSessionExpired(
+            refreshCode === 'ACCOUNT_SUSPENDED' || refreshCode === 'SESSION_REVOKED'
+              ? refreshCode
+              : undefined,
+          );
         }
         return Promise.reject(refreshError);
       } finally {
@@ -257,6 +280,16 @@ export const extractErrorMessage = (error: unknown): string => {
       return `Server error (${status}). Please try again later.`;
     }
 
+    // The throttler's own text is a class name ("ThrottlerException: Too Many
+    // Requests", and older servers label it INTERNAL_ERROR), so a plain 429
+    // gets our sentence; a 429 with its own code (EXPORT_RATE_LIMITED) keeps
+    // the server's specific one.
+    const serverCode =
+      typeof data === 'object' && data !== null ? (data as { error?: { code?: string } }).error?.code : undefined;
+    if (status === 429 && (!serverCode || serverCode === 'RATE_LIMIT' || serverCode === 'INTERNAL_ERROR')) {
+      return 'Too many attempts. Please wait a few minutes and try again.';
+    }
+
     if (typeof data === 'object' && data !== null) {
       // NestJS standard: { error: { message } }
       const serverMsg = data.error?.message;
@@ -270,7 +303,6 @@ export const extractErrorMessage = (error: unknown): string => {
     }
 
     if (status === 401) return 'Invalid email or password.';
-    if (status === 429) return 'Too many requests. Please wait a moment.';
     if (status === 403) return 'You do not have permission for this action.';
     if (status === 404) return 'Resource not found.';
     if (status === 502 || status === 503)

@@ -10,20 +10,18 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { AlertCircle } from 'lucide-react';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { BILLING_DISABLED_BUILD } from '@/config/featureFlags';
+import { StartPathChooser } from '@/features/launch/StartPathChooser';
 import { OnboardingShell } from '@/features/onboarding/OnboardingShell';
-// BILLING-DISABLED BUILD: submitCompanyForApproval is called from here now
-// that there is no plan/payment step to carry it.
-import { createCompany, submitCompanyForApproval } from '@/networks/companies/companiesNetwork';
+import { createCompany } from '@/networks/companies/companiesNetwork';
 import { setStoredCompanyId } from '@/networks/network/apiHelpers';
 import { authMe, authRefreshSession } from '@/networks/auth/authNetwork';
-import { setIdentity } from '@/store/authSlice';
-import { useAppDispatch } from '@/store/store';
+import { selectCompany, selectCompanyStatus, setIdentity } from '@/store/authSlice';
+import { useAppDispatch, useAppSelector } from '@/store/store';
+import { readSignupPrefill } from '@/features/launch/signupPrefill';
 
 const schema = z.object({
   name: z.string().trim().min(2, 'Enter your business name.'),
@@ -51,9 +49,16 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 export default function CompanySetupPage() {
-  const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const [formError, setFormError] = useState('');
+  // A draft company already exists (created here, or before a reload): the
+  // only step left is choosing how to start.
+  const existing = useAppSelector(selectCompany);
+  const existingStatus = useAppSelector(selectCompanyStatus);
+  const [createdId, setCreatedId] = useState<string | null>(
+    existing?.id && existingStatus === 'draft' ? existing.id : null,
+  );
+  const prefill = readSignupPrefill();
 
   const {
     register,
@@ -62,9 +67,9 @@ export default function CompanySetupPage() {
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      name: '',
+      name: prefill.business ?? '',
       industry: '',
-      phone: '',
+      phone: prefill.phone ?? '',
       email: '',
       taxId: '',
       street: '',
@@ -101,29 +106,8 @@ export default function CompanySetupPage() {
       // Before anything else: every later request is scoped by this.
       setStoredCompanyId(company.id);
 
-      // ── BILLING-DISABLED BUILD ────────────────────────────────────────
-      // This used to hand off to /onboarding/plan, which is where the
-      // submit-for-approval call lived. With no plan or payment step, this
-      // IS the end of onboarding, so it submits here.
-      //
-      // Submit BEFORE re-reading identity, so the authMe() below already
-      // reports `pending` and the guards route to /account-status rather
-      // than bouncing the owner back through onboarding.
-      //
-      // Non-fatal on purpose: if it fails the company stays a draft, and
-      // AccountStatusPage's draft branch offers "Submit for approval" to
-      // retry. Better than an error on a screen whose work is done.
-      if (BILLING_DISABLED_BUILD) {
-        try {
-          await submitCompanyForApproval(company.id);
-        } catch {
-          /* AccountStatusPage's draft branch retries this */
-        }
-      }
-
       // The session was minted before this company existed, so its token names
-      // none. Re-issue it now: the server fills the company in, and the owner
-      // needs no second sign-in once the company is approved.
+      // none. Re-issue it now: the server fills the company in.
       await authRefreshSession();
 
       // Re-read identity so the guards stop treating this owner as company-less.
@@ -134,9 +118,8 @@ export default function CompanySetupPage() {
         /* /account-status re-reads it anyway */
       }
 
-      navigate(BILLING_DISABLED_BUILD ? '/account-status' : '/onboarding/plan', {
-        replace: true,
-      });
+      // Last step: how to start — the free trial, or account approval.
+      setCreatedId(company.id);
     } catch (e) {
       setFormError(
         e instanceof Error ? e.message : 'Something went wrong. Please try again.',
@@ -144,15 +127,21 @@ export default function CompanySetupPage() {
     }
   };
 
+  if (createdId) {
+    return (
+      <OnboardingShell step={1} title="Almost there" subtitle="Your company is set up.">
+        <div className="max-w-[880px] rounded-xl border border-border-light bg-surface p-xl shadow-lg sm:p-xxl">
+          <StartPathChooser companyId={createdId} />
+        </div>
+      </OnboardingShell>
+    );
+  }
+
   return (
     <OnboardingShell
       step={1}
       title="Tell us about your business"
-      subtitle={
-        BILLING_DISABLED_BUILD
-          ? 'This names your company on invoices and reports, and it is what our team reviews before your account goes live. You can change any of it later in Settings.'
-          : 'This names your company on invoices and reports. You can change any of it later in Settings.'
-      }
+      subtitle="This names your company on invoices and reports. You can change any of it later in Settings."
     >
       <form
         onSubmit={handleSubmit(onSubmit)}
@@ -242,11 +231,7 @@ export default function CompanySetupPage() {
         </div>
 
         <Button type="submit" size="lg" className="mt-xxl" disabled={isSubmitting}>
-          {isSubmitting
-            ? 'Submitting…'
-            : BILLING_DISABLED_BUILD
-              ? 'Submit for approval'
-              : 'Continue to plans'}
+          {isSubmitting ? 'Saving…' : 'Continue'}
         </Button>
       </form>
     </OnboardingShell>

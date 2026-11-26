@@ -30,6 +30,8 @@ interface RawUser {
 }
 
 export interface RawAuthPayload {
+  /** While pending: a held free trial, an approval request, or a payment. */
+  pendingKind?: string | null;
   user?: RawUser;
   companyId?: string | null;
   company?: { id?: string; name?: string; status?: string } | null;
@@ -83,6 +85,9 @@ export const subscriptionSerializer = (raw: unknown): SubscriptionSummary | null
     isTrial: r.isTrial === true,
     trialStartedAt: isoOrNull(r.trialStartedAt),
     trialConvertedAt: isoOrNull(r.trialConvertedAt),
+    subscriptionStatus: typeof r.subscriptionStatus === 'string' ? r.subscriptionStatus : undefined,
+    trialEnded: r.trialEnded === true,
+    suspended: r.suspended === true,
   };
 };
 
@@ -110,6 +115,10 @@ export const identitySerializer = (raw: RawAuthPayload): Identity => {
     companyType: type && COMPANY_TYPES.includes(type) ? type : null,
     features: (raw.features as Features | null) ?? null,
     subscription: subscriptionSerializer(raw.subscription),
+    pendingKind:
+      raw.pendingKind === 'trial' || raw.pendingKind === 'approval' || raw.pendingKind === 'payment'
+        ? raw.pendingKind
+        : null,
   };
 };
 

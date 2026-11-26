@@ -48,8 +48,8 @@ describe('migrationErrorMessage', () => {
     }
   });
 
-  it('falls back to English for untranslated Urdu, then to the server sentence, never a raw code', () => {
-    expect(migrationErrorMessage('EXPORT_EXPIRED', null, 'ur')).toBe(MIGRATION_ERRORS_EN.EXPORT_EXPIRED);
+  it('gives the plain sentence, then falls back to the server sentence, never a raw code', () => {
+    expect(migrationErrorMessage('EXPORT_EXPIRED', null)).toBe(MIGRATION_ERRORS_EN.EXPORT_EXPIRED);
     expect(migrationErrorMessage('SOMETHING_NEW', 'The server says why.')).toBe('The server says why.');
     expect(migrationErrorMessage(undefined, '')).toBe('Something went wrong. Please try again.');
   });

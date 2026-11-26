@@ -15,15 +15,17 @@ type Handler = () => void;
 // dispatches signOut() so the UI actually returns to sign-in, instead of
 // sitting on dead screens whose every request 401s until the next reload.
 
-let sessionExpiredHandler: Handler | null = null;
+/** Why the session ended, when the server said: ACCOUNT_SUSPENDED, SESSION_REVOKED. */
+type SessionExpiredHandler = (reason?: string) => void;
+let sessionExpiredHandler: SessionExpiredHandler | null = null;
 
-export const setSessionExpiredHandler = (h: Handler | null): void => {
+export const setSessionExpiredHandler = (h: SessionExpiredHandler | null): void => {
   sessionExpiredHandler = h;
 };
 
-export const emitSessionExpired = (): void => {
+export const emitSessionExpired = (reason?: string): void => {
   if (isIntentionalSignOut()) return;
-  sessionExpiredHandler?.();
+  sessionExpiredHandler?.(reason);
 };
 
 // ─── Intentional sign-out ───────────────────────────────────────────────

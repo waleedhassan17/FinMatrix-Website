@@ -14,12 +14,13 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { AlertCircle, Check, Eye, EyeOff } from 'lucide-react';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { AuthShell } from '@/features/auth/AuthShell';
+import { captureSignupPrefill } from '@/features/launch/signupPrefill';
 import { authRegister } from '@/networks/auth/authNetwork';
 import { setIdentity } from '@/store/authSlice';
 import { useAppDispatch } from '@/store/store';
@@ -57,6 +58,9 @@ export default function RegisterPage() {
   const dispatch = useAppDispatch();
   const [formError, setFormError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  // A demo's "Start your free trial" link: /register?ref=demo_<id>&name=…
+  const location = useLocation();
+  const [prefill] = useState(() => captureSignupPrefill(location.search));
 
   const {
     register,
@@ -66,9 +70,9 @@ export default function RegisterPage() {
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      displayName: '',
-      email: '',
-      phone: '',
+      displayName: prefill.name ?? '',
+      email: prefill.email ?? '',
+      phone: prefill.phone ?? '',
       password: '',
       confirm: '',
     },
@@ -84,6 +88,7 @@ export default function RegisterPage() {
         password: values.password,
         displayName: values.displayName,
         phone: values.phone,
+        ref: prefill.ref,
       });
 
       // The session signup returns is kept, so the verify screen can watch for
@@ -211,13 +216,12 @@ export default function RegisterPage() {
           {isSubmitting ? 'Creating account…' : 'Create account'}
         </Button>
 
-        {/* Said before signup, not after: every company is reviewed by a
-            person before it goes live, and an owner who learns that only at
-            the end feels misled. */}
+        {/* Said before signup, not after: what happens next, including the
+            few trials a person checks first, so nobody is surprised later. */}
         <p className="text-caption text-text-secondary">
-          Next: confirm your email and tell us about your business. Our team
-          reviews every new company before it goes live, and we email you the
-          moment yours is approved.
+          Next: confirm your email and tell us about your business, then start
+          your free trial — most start instantly; a few are checked by our team
+          within 24 hours.
         </p>
       </form>
     </AuthShell>

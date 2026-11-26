@@ -5,8 +5,23 @@ import { MIGRATION_SOURCES } from '@/config/migrationSources';
 
 /** What the server can mark a file as: a starter sheet, 'ptb', or "<source>:<report>". */
 const SHEETS = new Set(['accounts', 'customers', 'vendors', 'items', 'trial_balance', 'open_invoices', 'open_bills', 'stock', 'ptb']);
-const REPORTS = new Set(['chart_of_accounts', 'customer_list', 'vendor_list', 'item_list', 'trial_balance', 'aged_receivables', 'aged_payables', 'inventory_valuation', 'contact_list']);
-const known = (d: string) => SHEETS.has(d) || (/^[a-z_]+:[a-z_]+$/.test(d) && REPORTS.has(d.split(':')[1]));
+/**
+ * The reports each source's parser profile reads on the server
+ * (backend src/modules/migrations/sources/reports/profiles/*). A guide may
+ * only promise a "<source>:<report>" tick that the server can produce.
+ */
+const REPORTS: Record<string, string[]> = {
+  peachtree: ['trial_balance', 'aged_receivables', 'aged_payables', 'inventory_valuation', 'chart_of_accounts', 'customer_list', 'vendor_list', 'item_list'],
+  quickbooks_online: ['trial_balance', 'aged_receivables', 'aged_payables', 'inventory_valuation', 'chart_of_accounts', 'customer_list', 'vendor_list', 'item_list'],
+  quickbooks_desktop: ['trial_balance', 'aged_receivables', 'aged_payables', 'inventory_valuation', 'chart_of_accounts', 'customer_list', 'vendor_list', 'item_list'],
+  xero: ['trial_balance', 'aged_receivables', 'aged_payables', 'inventory_valuation', 'chart_of_accounts', 'contact_list', 'item_list'],
+  zoho_books: ['trial_balance', 'aged_receivables', 'aged_payables', 'inventory_valuation', 'chart_of_accounts', 'contact_list', 'item_list', 'transactions'],
+};
+const known = (d: string) => {
+  if (SHEETS.has(d)) return true;
+  const m = /^([a-z_]+):([a-z_]+)$/.exec(d);
+  return !!m && (REPORTS[m[1]] ?? []).includes(m[2]);
+};
 
 describe('migration guides', () => {
   it('every guide is for a known source, complete, and only names files FinMatrix can recognise', () => {
@@ -18,7 +33,7 @@ describe('migration guides', () => {
       for (const f of g.files) {
         expect(f.how.length).toBeGreaterThan(0);
         for (const h of f.how) expect(h.steps.length).toBeGreaterThan(0);
-        for (const d of f.detects) expect(known(d)).toBe(true);
+        for (const d of f.detects) expect(known(d), `${g.source} ${f.id}: ${d}`).toBe(true);
         for (const r of f.routes ?? []) expect(g.routes?.some((x) => x.id === r)).toBe(true);
       }
     }

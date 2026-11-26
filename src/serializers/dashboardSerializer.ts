@@ -52,6 +52,11 @@ export interface DashboardData {
   period?: { startDate?: string; endDate?: string } | null;
   /** True when the company has no transactions at all — show the checklist. */
   isEmpty: boolean;
+  /**
+   * The "Bring your data from your old system" card: shown until a migration
+   * is closed or the owner dismisses it (server-side, per company).
+   */
+  migrationPrompt: { visible: boolean; imported: boolean; inProgress: boolean };
 }
 
 const num = (v: MoneyInput): number => toNumber(v);
@@ -146,6 +151,15 @@ export const dashboardSerializer = (raw: unknown): DashboardData => {
     recentTransactions,
     alerts: asArray(d.alerts).map(alertSerializer),
     period: (d.period as DashboardData['period']) ?? null,
+    migrationPrompt: (() => {
+      const setup = (d.setup ?? {}) as Record<string, unknown>;
+      const mp = (setup.migrationPrompt ?? {}) as Record<string, unknown>;
+      return {
+        visible: mp.visible === true,
+        imported: mp.imported === true,
+        inProgress: mp.inProgress === true,
+      };
+    })(),
     isEmpty:
       totalRevenue === 0 &&
       totalExpenses === 0 &&
