@@ -24,7 +24,6 @@ vi.mock('@/networks/auth/authNetwork', () => ({
 }));
 
 import { StartPathChooser } from '@/features/launch/StartPathChooser';
-import { setLang } from '@/i18n/lang';
 import { FALLBACK_PUBLIC_CONFIG } from '@/networks/launch/launchNetwork';
 import * as launch from '@/networks/launch/launchNetwork';
 import { ApiError } from '@/networks/network/apiHelpers';
@@ -34,7 +33,6 @@ const eligible = {
   eligible: true,
   reason: null,
   message: null,
-  messageUr: null,
   signupMode: 'trial' as const,
   trialDays: 30,
 };
@@ -47,7 +45,6 @@ const show = () =>
 
 beforeEach(() => {
   vi.clearAllMocks();
-  setLang('en');
   vi.mocked(launch.getPublicConfig).mockResolvedValue({ ...FALLBACK_PUBLIC_CONFIG, signupMode: 'trial' });
   vi.mocked(launch.getTrialEligibility).mockResolvedValue(eligible);
 });
@@ -71,13 +68,12 @@ describe('StartPathChooser', () => {
     expect(screen.getByRole('button', { name: 'Request approval' })).toBeEnabled();
   });
 
-  it('an ineligible account sees path A disabled, with the reason, in Urdu too', async () => {
+  it('an ineligible account sees path A disabled, with the reason', async () => {
     vi.mocked(launch.getTrialEligibility).mockResolvedValue({
       ...eligible,
       eligible: false,
       reason: 'TRIAL_EMAIL_USED',
       message: 'This email has already been used for a free trial.',
-      messageUr: 'server urdu',
     });
     show();
     const reason = await screen.findByTestId('trial-reason');
@@ -86,9 +82,6 @@ describe('StartPathChooser', () => {
     expect(screen.getByRole('button', { name: 'Start my free trial' })).toBeDisabled();
     // Path B and Book a demo stay open.
     expect(screen.getByRole('button', { name: 'Request approval' })).toBeEnabled();
-
-    fireEvent.click(screen.getByRole('button', { name: 'اردو' }));
-    await waitFor(() => expect(screen.getByTestId('trial-reason').textContent).toMatch(/[؀-ۿ]/));
   });
 
   it('an unknown reason falls back to the server sentence', async () => {
@@ -97,7 +90,6 @@ describe('StartPathChooser', () => {
       eligible: false,
       reason: 'SOMETHING_NEW',
       message: 'A reason this build does not know.',
-      messageUr: null,
     });
     show();
     expect(await screen.findByTestId('trial-reason')).toHaveTextContent('A reason this build does not know.');

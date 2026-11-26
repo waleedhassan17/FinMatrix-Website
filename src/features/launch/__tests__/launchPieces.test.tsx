@@ -17,12 +17,11 @@ vi.mock('@/networks/auth/authNetwork', () => ({
   authMe: vi.fn(() => new Promise(() => undefined)),
 }));
 
-import { migrationErrorMessage, MIGRATION_ERROR_CODES, MIGRATION_ERRORS_UR } from '@/config/migrationErrors';
+import { migrationErrorMessage, MIGRATION_ERROR_CODES, MIGRATION_ERRORS_EN } from '@/config/migrationErrors';
 import { MigrationSetupCard } from '@/features/dashboard/MigrationSetupCard';
 import { PlanActivationCard } from '@/features/launch/PlanActivationCard';
 import { captureSignupPrefill, readSignupPrefill } from '@/features/launch/signupPrefill';
 import { TrialStrip, TRIAL_URGENT_DAYS } from '@/features/shell/TrialStrip';
-import { setLang } from '@/i18n/lang';
 import { planCardState } from '@/models/trial';
 import * as launch from '@/networks/launch/launchNetwork';
 import { renderScreen, signedInAuth, trialSubscription } from '@/test/launchHarness';
@@ -31,7 +30,6 @@ const DEMO_REF = 'demo_0b6f4c1e-7a2d-4c11-9d7e-3f5a2b8c9d10';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  setLang('en');
   window.sessionStorage.clear();
 });
 
@@ -167,18 +165,12 @@ describe('TrialStrip', () => {
 });
 
 describe('migration and trial error messages', () => {
-  it('every migration code has its own Urdu sentence', () => {
+  it('every migration code has a plain-English sentence', () => {
     for (const c of MIGRATION_ERROR_CODES) {
-      expect(MIGRATION_ERRORS_UR[c], c).toMatch(/[؀-ۿ]/);
-      expect(MIGRATION_ERRORS_UR[c]).not.toMatch(/TODO/);
+      expect(MIGRATION_ERRORS_EN[c], c).toBeTruthy();
+      expect(MIGRATION_ERRORS_EN[c]).not.toMatch(/TODO/);
     }
-  });
-
-  it('answers in the reader\'s chosen language by default', () => {
     expect(migrationErrorMessage('EXPORT_EXPIRED')).toBe('This backup has expired. Create a new one.');
-    setLang('ur');
-    expect(migrationErrorMessage('EXPORT_EXPIRED')).toMatch(/[؀-ۿ]/);
-    expect(migrationErrorMessage('EXPORT_EXPIRED', null, 'en')).toBe('This backup has expired. Create a new one.');
   });
 
   it('a trial that ended blocks the commit with the launch message, not a raw code', () => {

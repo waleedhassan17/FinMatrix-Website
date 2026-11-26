@@ -33,14 +33,12 @@ vi.mock('@/networks/settings/dataPortabilityNetwork', () => ({
   downloadExport: vi.fn(),
 }));
 
-import { setLang } from '@/i18n/lang';
 import { accountState } from '@/models/accountStatus';
 import AccountStatusPage from '@/pages/auth/AccountStatusPage';
 import { renderScreen, signedInAuth, trialSubscription } from '@/test/launchHarness';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  setLang('en');
 });
 
 describe('accountState', () => {
@@ -151,13 +149,5 @@ describe('AccountStatusPage', () => {
       'href',
       '/onboarding/company',
     );
-  });
-
-  it('reads in Urdu, right to left', async () => {
-    setLang('ur');
-    const { container } = show(signedInAuth({ companyStatus: 'inactive', subscription: ended }));
-    const body = await screen.findByTestId('status-body');
-    expect(body.textContent).toMatch(/[؀-ۿ]/);
-    expect(container.querySelector('[dir="rtl"]')).not.toBeNull();
   });
 });

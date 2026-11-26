@@ -2,8 +2,7 @@
 // FinMatrix Web — Session bootstrap, guards and event bridge
 // ═══════════════════════════════════════════════════════
 
-import { currentLang, pick } from '@/i18n/lang';
-import { LAUNCH_ERRORS } from '@/i18n/launchStrings';
+import { LAUNCH_ERRORS } from '@/config/launchStrings';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, type ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
@@ -72,7 +71,7 @@ export function SessionGate({ children }: { children: ReactNode }) {
       queryClient.clear();
       const known = reason ? LAUNCH_ERRORS[reason] : undefined;
       toast.error(
-        known ? pick(known, currentLang()) : 'Your session expired. Please sign in again.',
+        known ? known : 'Your session expired. Please sign in again.',
         reason === 'ACCOUNT_SUSPENDED' ? { duration: 10_000 } : undefined,
       );
     });

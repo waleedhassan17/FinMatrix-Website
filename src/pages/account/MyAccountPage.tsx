@@ -34,8 +34,7 @@ import { EditProfilePanel } from '@/features/account/EditProfilePanel';
 import { useSignOut } from '@/features/auth/useSignOut';
 import { PlanActivationCard } from '@/features/launch/PlanActivationCard';
 import { useFeature, useIsOwner } from '@/hooks/useCapability';
-import { pick, useLang } from '@/i18n/lang';
-import { LAUNCH } from '@/i18n/launchStrings';
+import { LAUNCH } from '@/config/launchStrings';
 // BILLING-DISABLED BUILD: subscriptionSummary and SubscriptionTone were
 // only used by the commented-out PlanDetails block.
 // import { subscriptionSummary, type SubscriptionTone } from '@/models/accountAccess';
@@ -72,7 +71,6 @@ export default function MyAccountPage() {
   const companyStatus = useAppSelector(selectCompanyStatus);
   const features = useAppSelector(selectFeatures);
   const isOwner = useIsOwner();
-  const lang = useLang();
   const multiUser = useFeature('multiUser');
   // BILLING-DISABLED BUILD: only fed PlanDetails' rider allowance row.
   // const delivery = useFeature('delivery');
@@ -332,7 +330,7 @@ export default function MyAccountPage() {
 
       {/* ── Plan (owner) — terms, and "Request activation" during or after a trial ── */}
       {isOwner && (
-        <AccountSection title={pick(LAUNCH.planSectionTitle, lang)} description={pick(LAUNCH.planSectionBody, lang)}>
+        <AccountSection title={LAUNCH.planSectionTitle} description={LAUNCH.planSectionBody}>
           <PlanActivationCard />
         </AccountSection>
       )}

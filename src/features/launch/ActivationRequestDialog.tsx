@@ -3,8 +3,7 @@ import { toast } from 'sonner';
 
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Textarea } from '@/components/ui/Field';
-import { dirProps, pick, useLang } from '@/i18n/lang';
-import { LAUNCH, LAUNCH_ERRORS } from '@/i18n/launchStrings';
+import { LAUNCH, LAUNCH_ERRORS } from '@/config/launchStrings';
 import { requestActivation } from '@/networks/launch/launchNetwork';
 import { ApiError } from '@/networks/network/apiHelpers';
 
@@ -26,7 +25,6 @@ export function ActivationRequestDialog({
   onOpenChange: (o: boolean) => void;
   onDone?: () => void;
 }) {
-  const lang = useLang();
   const [plan, setPlan] = useState(UNSURE_PLAN);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
@@ -38,13 +36,13 @@ export function ActivationRequestDialog({
         requestedPlan: plan,
         note: note.trim() || undefined,
       });
-      toast.success(pick(LAUNCH.activationSent, lang));
+      toast.success(LAUNCH.activationSent);
       onOpenChange(false);
       onDone?.();
     } catch (e) {
       const code = e instanceof ApiError ? e.code : undefined;
       const known = code ? LAUNCH_ERRORS[code] : undefined;
-      toast.error(known ? pick(known, lang) : e instanceof Error ? e.message : 'Something went wrong.');
+      toast.error(known ? known : e instanceof Error ? e.message : 'Something went wrong.');
     } finally {
       setBusy(false);
     }
@@ -54,16 +52,16 @@ export function ActivationRequestDialog({
     <ConfirmDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={pick(LAUNCH.activationTitle, lang)}
-      description={<span {...dirProps(lang)}>{pick(LAUNCH.activationBody, lang)}</span>}
-      confirmLabel={busy ? pick(LAUNCH.sending, lang) : pick(LAUNCH.requestActivation, lang)}
+      title={LAUNCH.activationTitle}
+      description={<span>{LAUNCH.activationBody}</span>}
+      confirmLabel={busy ? LAUNCH.sending : LAUNCH.requestActivation}
       busy={busy}
       onConfirm={submit}
     >
       <div className="flex flex-col gap-md">
         <PlanPicker value={plan} onChange={setPlan} />
         <Textarea
-          label={pick(LAUNCH.noteLabel, lang)}
+          label={LAUNCH.noteLabel}
           value={note}
           maxLength={1000}
           rows={3}

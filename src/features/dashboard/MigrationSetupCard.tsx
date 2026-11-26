@@ -11,14 +11,12 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { Button } from '@/components/ui/Button';
-import { dirProps, pick, useLang } from '@/i18n/lang';
-import { LAUNCH } from '@/i18n/launchStrings';
+import { LAUNCH } from '@/config/launchStrings';
 import { dismissMigrationPrompt } from '@/networks/launch/launchNetwork';
 import { selectCompanyId, selectIsOwner } from '@/store/authSlice';
 import { useAppSelector } from '@/store/store';
 
 export function MigrationSetupCard({ visible }: { visible: boolean }) {
-  const lang = useLang();
   const isOwner = useAppSelector(selectIsOwner);
   const companyId = useAppSelector(selectCompanyId);
   const queryClient = useQueryClient();
@@ -41,31 +39,31 @@ export function MigrationSetupCard({ visible }: { visible: boolean }) {
     <section
       data-testid="migration-card"
       className="relative flex flex-col gap-sm rounded-xl border border-primary bg-primary-tint p-lg sm:flex-row sm:items-center sm:gap-lg"
-      {...dirProps(lang)}
+     
     >
       <DatabaseZap className="size-8 shrink-0 text-primary" aria-hidden="true" />
       <div className="min-w-0 flex-1">
-        <h2 className="text-label-lg text-text-primary">{pick(LAUNCH.migrationCardTitle, lang)}</h2>
-        <p className="mt-xxs text-body-sm text-text-secondary">{pick(LAUNCH.migrationCardBody, lang)}</p>
+        <h2 className="text-label-lg text-text-primary">{LAUNCH.migrationCardTitle}</h2>
+        <p className="mt-xxs text-body-sm text-text-secondary">{LAUNCH.migrationCardBody}</p>
       </div>
       <div className="flex flex-wrap gap-xs">
         <Button asChild>
           <Link to="/settings/migration">
-            {pick(LAUNCH.migrationCardCta, lang)}
+            {LAUNCH.migrationCardCta}
             <ArrowRight className="size-4" aria-hidden="true" />
           </Link>
         </Button>
         <Button variant="text" asChild>
           <Link to="/settings/migration/guide">
             <BookOpen className="size-4" aria-hidden="true" />
-            {pick(LAUNCH.migrationCardGuide, lang)}
+            {LAUNCH.migrationCardGuide}
           </Link>
         </Button>
       </div>
       <button
         type="button"
         onClick={() => void dismiss()}
-        aria-label={pick(LAUNCH.dismiss, lang)}
+        aria-label={LAUNCH.dismiss}
         className="absolute right-sm top-sm rounded-sm p-xxs text-text-tertiary hover:text-text-primary"
       >
         <X className="size-4" />

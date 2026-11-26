@@ -20,8 +20,7 @@
 // forgot-password link, and no email-verification branch on this door. Adding one
 // would be offering a door that opens onto nothing.
 
-import { currentLang, pick } from '@/i18n/lang';
-import { LAUNCH } from '@/i18n/launchStrings';
+import { LAUNCH } from '@/config/launchStrings';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { AlertCircle, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -144,7 +143,7 @@ export default function LoginPage() {
         }
         // Suspended by FinMatrix: said plainly, in the reader's language.
         if (e.code === 'ACCOUNT_SUSPENDED') {
-          setFormError(pick(LAUNCH.accountSuspended, currentLang()));
+          setFormError(LAUNCH.accountSuspended);
           resetField('password');
           return;
         }

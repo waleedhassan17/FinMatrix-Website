@@ -45,7 +45,6 @@ export interface TrialEligibility {
   eligible: boolean;
   reason: string | null;
   message: string | null;
-  messageUr: string | null;
   signupMode: 'trial' | 'approval';
   trialDays: number;
 }
@@ -143,7 +142,6 @@ export interface DemoBooking {
   businessType: string;
   teamSize?: string;
   currentSystem?: string;
-  language: 'en' | 'ur';
   slot: string;
   message?: string;
   consent: boolean;

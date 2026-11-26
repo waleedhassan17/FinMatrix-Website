@@ -20,10 +20,8 @@ import { Button } from '@/components/ui/Button';
 import { AuthShell } from '@/features/auth/AuthShell';
 import { useSignOut } from '@/features/auth/useSignOut';
 import { ActivationRequestDialog } from '@/features/launch/ActivationRequestDialog';
-import { LangToggle } from '@/features/launch/LangToggle';
 import { usePublicConfig } from '@/hooks/usePublicConfig';
-import { dirProps, pick, useLang, type Bilingual } from '@/i18n/lang';
-import { LAUNCH } from '@/i18n/launchStrings';
+import { LAUNCH } from '@/config/launchStrings';
 import { authMe, authRefreshSession, type MeResponse } from '@/networks/auth/authNetwork';
 import { accountState, type AccountScreenState as State } from '@/models/accountStatus';
 import { BackupPanel } from '@/pages/settings/BackupExportPage';
@@ -53,8 +51,8 @@ import { useAppDispatch, useAppSelector } from '@/store/store';
 interface View {
   icon: ComponentType<{ className?: string }>;
   tone: string;
-  title: Bilingual;
-  body: Bilingual;
+  title: string;
+  body: string;
 }
 
 const VIEWS: Record<State, View> = {
@@ -64,11 +62,8 @@ const VIEWS: Record<State, View> = {
   draft: {
     icon: Clock,
     tone: 'text-warning',
-    title: { en: 'Setup not finished', ur: 'سیٹ اپ مکمل نہیں ہوا' },
-    body: {
-      en: 'Your company is set up. Choose how to start: your free trial, or account approval.',
-      ur: 'آپ کی کمپنی تیار ہے۔ شروع کرنے کا طریقہ منتخب کریں: مفت ٹرائل، یا اکاؤنٹ کی منظوری۔',
-    },
+    title: 'Setup not finished',
+    body: 'Your company is set up. Choose how to start: your free trial, or account approval.',
   },
   rejected: { icon: ShieldX, tone: 'text-danger', title: LAUNCH.rejectedTitle, body: LAUNCH.rejectedBody },
   trialEnded: { icon: XCircle, tone: 'text-danger', title: LAUNCH.trialEndedTitle, body: LAUNCH.trialEndedBody },
@@ -77,26 +72,20 @@ const VIEWS: Record<State, View> = {
   deactivated: {
     icon: PauseCircle,
     tone: 'text-warning',
-    title: { en: 'Account deactivated', ur: 'اکاؤنٹ غیر فعال' },
-    body: {
-      en: 'Access to this company has been paused by FinMatrix. Your data is safe and untouched — contact FinMatrix support to restore access.',
-      ur: 'FinMatrix نے اس کمپنی تک رسائی روک دی ہے۔ آپ کا ڈیٹا محفوظ ہے — رسائی بحال کروانے کے لیے FinMatrix سپورٹ سے رابطہ کریں۔',
-    },
+    title: 'Account deactivated',
+    body: 'Access to this company has been paused by FinMatrix. Your data is safe and untouched — contact FinMatrix support to restore access.',
   },
   active: {
     icon: ShieldCheck,
     tone: 'text-success',
-    title: { en: 'Account active', ur: 'اکاؤنٹ فعال' },
-    body: { en: 'Your company is active. If you are seeing this, try reloading.', ur: 'آپ کی کمپنی فعال ہے۔ اگر یہ صفحہ نظر آ رہا ہے تو دوبارہ لوڈ کریں۔' },
+    title: 'Account active',
+    body: 'Your company is active. If you are seeing this, try reloading.',
   },
   unknown: {
     icon: XCircle,
     tone: 'text-text-tertiary',
-    title: { en: 'Account unavailable', ur: 'اکاؤنٹ دستیاب نہیں' },
-    body: {
-      en: 'We could not determine your company’s status. Try again, or sign in with a different account.',
-      ur: 'ہم آپ کی کمپنی کی حیثیت معلوم نہیں کر سکے۔ دوبارہ کوشش کریں، یا کسی دوسرے اکاؤنٹ سے سائن اِن کریں۔',
-    },
+    title: 'Account unavailable',
+    body: 'We could not determine your company’s status. Try again, or sign in with a different account.',
   },
 };
 
@@ -115,7 +104,6 @@ export default function AccountStatusPage() {
   const queryClient = useQueryClient();
   const location = useLocation();
   const navigate = useNavigate();
-  const lang = useLang();
   const config = usePublicConfig();
   const user = useAppSelector(selectUser);
   const authStatus = useAppSelector(selectAuthStatus);
@@ -233,17 +221,16 @@ export default function AccountStatusPage() {
   const rejectionReason = gate?.rejectionReason ?? null;
 
   return (
-    <AuthShell title={pick(view.title, lang)} subtitle={company?.name}>
-      <div className="flex flex-col items-center gap-md text-center" {...dirProps(lang)}>
-        <LangToggle className="self-end" />
+    <AuthShell title={view.title} subtitle={company?.name}>
+      <div className="flex flex-col items-center gap-md text-center">
         <Icon className={`size-10 ${view.tone}`} />
         <p className="text-body-md text-text-secondary" data-testid="status-body">
-          {staffOnEnded ? pick(LAUNCH.staffEndedBody, lang) : pick(view.body, lang)}
+          {staffOnEnded ? LAUNCH.staffEndedBody : view.body}
         </p>
 
         {state === 'rejected' && rejectionReason && (
           <p className="rounded-md bg-danger-lighter p-sm text-body-sm text-text-primary">
-            <span className="text-label-md">{pick(LAUNCH.reasonLabel, lang)}: </span>
+            <span className="text-label-md">{LAUNCH.reasonLabel}: </span>
             {rejectionReason}
           </p>
         )}
@@ -254,7 +241,7 @@ export default function AccountStatusPage() {
 
         {activationPending && (
           <p className="rounded-md bg-primary-tint p-sm text-body-sm text-text-primary">
-            {pick(LAUNCH.activationPending, lang)}
+            {LAUNCH.activationPending}
           </p>
         )}
 
@@ -265,7 +252,7 @@ export default function AccountStatusPage() {
             <>
               {state === 'draft' && isOwner && (
                 <Button full asChild>
-                  <Link to="/onboarding/company">{pick(LAUNCH.chooseTitle, lang)}</Link>
+                  <Link to="/onboarding/company">{LAUNCH.chooseTitle}</Link>
                 </Button>
               )}
 
@@ -273,17 +260,17 @@ export default function AccountStatusPage() {
                 <>
                   <Button full onClick={() => setShowBackup((v) => !v)}>
                     <Download className="size-4" />
-                    {pick(LAUNCH.downloadData, lang)}
+                    {LAUNCH.downloadData}
                   </Button>
                   {!activationPending && (
                     <Button full variant="secondary" onClick={() => setActivationOpen(true)}>
-                      {pick(LAUNCH.requestActivation, lang)}
+                      {LAUNCH.requestActivation}
                     </Button>
                   )}
                   <Button full variant="secondary" asChild>
                     <Link to="/book-demo">
                       <CalendarClock className="size-4" />
-                      {pick(LAUNCH.bookCall, lang)}
+                      {LAUNCH.bookCall}
                     </Link>
                   </Button>
                 </>
@@ -291,15 +278,15 @@ export default function AccountStatusPage() {
 
               <Button variant={ended || state === 'draft' ? 'text' : 'primary'} full onClick={recheck} disabled={checking}>
                 <RefreshCw className={`size-4 ${checking ? 'animate-spin' : ''}`} />
-                {checking ? pick(LAUNCH.checking, lang) : pick(LAUNCH.checkAgain, lang)}
+                {checking ? LAUNCH.checking : LAUNCH.checkAgain}
               </Button>
               <Button variant="text" full onClick={signOut}>
-                {pick(LAUNCH.signOut, lang)}
+                {LAUNCH.signOut}
               </Button>
             </>
           ) : (
             <Button full asChild>
-              <Link to="/login">{pick(LAUNCH.backToSignIn, lang)}</Link>
+              <Link to="/login">{LAUNCH.backToSignIn}</Link>
             </Button>
           )}
         </div>

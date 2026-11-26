@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { MIGRATION_ERROR_CODES, MIGRATION_ERRORS_EN, migrationErrorMessage, MIGRATION_ERRORS_UR } from '@/config/migrationErrors';
+import { MIGRATION_ERROR_CODES, MIGRATION_ERRORS_EN, migrationErrorMessage } from '@/config/migrationErrors';
 import { anyInFlight, formatBytes } from '@/models/dataPortability';
 import { canImport, canSignOff, maxReachableStep, openingDateOf, stepFromStatus, type SpotCheck } from '@/models/migration';
 
@@ -48,9 +48,8 @@ describe('migrationErrorMessage', () => {
     }
   });
 
-  it('answers in Urdu when asked, then falls back to the server sentence, never a raw code', () => {
-    expect(migrationErrorMessage('EXPORT_EXPIRED', null, 'ur')).toBe(MIGRATION_ERRORS_UR.EXPORT_EXPIRED);
-    expect(migrationErrorMessage('EXPORT_EXPIRED', null, 'en')).toBe(MIGRATION_ERRORS_EN.EXPORT_EXPIRED);
+  it('gives the plain sentence, then falls back to the server sentence, never a raw code', () => {
+    expect(migrationErrorMessage('EXPORT_EXPIRED', null)).toBe(MIGRATION_ERRORS_EN.EXPORT_EXPIRED);
     expect(migrationErrorMessage('SOMETHING_NEW', 'The server says why.')).toBe('The server says why.');
     expect(migrationErrorMessage(undefined, '')).toBe('Something went wrong. Please try again.');
   });

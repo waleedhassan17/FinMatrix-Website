@@ -7,27 +7,20 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Textarea } from '@/components/ui/Field';
 import { migrationErrorMessage } from '@/config/migrationErrors';
 import { supportReference } from '@/config/migrationSources';
-import { type Bilingual, dirProps, pick, useLang } from '@/i18n/lang';
-import { fill } from '@/i18n/launchStrings';
+import { fill } from '@/config/launchStrings';
 import { ApiError } from '@/networks/network/apiHelpers';
 import { requestMigrationHelp } from '@/networks/settings/migrationNetwork';
 
-const T: Record<string, Bilingual> = {
-  button: { en: 'Ask for help', ur: 'مدد مانگیں' },
-  title: { en: 'Ask FinMatrix for help', ur: 'FinMatrix سے مدد مانگیں' },
-  body: {
-    en: 'We send our support team this migration’s reference ({ref}), its open problems and check results — not your figures or files. They reply by email, usually within one business day.',
-    ur: 'ہم اپنی سپورٹ ٹیم کو اس مائیگریشن کا حوالہ ({ref})، اس کے کھلے مسائل اور جانچ کے نتائج بھیجتے ہیں — آپ کے اعداد یا فائلیں نہیں۔ وہ عموماً ایک کاروباری دن میں ای میل پر جواب دیتے ہیں۔',
-  },
-  message: { en: 'What do you need help with? (optional)', ur: 'آپ کو کس چیز میں مدد چاہیے؟ (اختیاری)' },
-  send: { en: 'Send to support', ur: 'سپورٹ کو بھیجیں' },
-  sending: { en: 'Sending…', ur: 'بھیجا جا رہا ہے…' },
-  sent: { en: 'Sent — quote {ref} if you write to us.', ur: 'بھیج دیا گیا — ہمیں لکھیں تو {ref} کا حوالہ دیں۔' },
-  noInbox: {
-    en: 'Recorded. Our support inbox is not set up on this server — quote {ref} when you contact us.',
-    ur: 'درج کر لیا گیا۔ اس سرور پر سپورٹ ای میل ترتیب نہیں — رابطہ کریں تو {ref} کا حوالہ دیں۔',
-  },
-};
+const T = {
+  button: 'Ask for help',
+  title: 'Ask FinMatrix for help',
+  body: 'We send our support team this migration’s reference ({ref}), its open problems and check results — not your figures or files. They reply by email, usually within one business day.',
+  message: 'What do you need help with? (optional)',
+  send: 'Send to support',
+  sending: 'Sending…',
+  sent: 'Sent — quote {ref} if you write to us.',
+  noInbox: 'Recorded. Our support inbox is not set up on this server — quote {ref} when you contact us.',
+} as const;
 
 /**
  * Sends this migration to FinMatrix support (POST /migrations/:id/help-request):
@@ -36,7 +29,6 @@ const T: Record<string, Bilingual> = {
  * the facts it needs.
  */
 export function AskForHelpButton({ batchId }: { batchId: string }) {
-  const lang = useLang();
   const ref = supportReference(batchId);
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState('');
@@ -46,12 +38,12 @@ export function AskForHelpButton({ batchId }: { batchId: string }) {
     setBusy(true);
     try {
       const r = await requestMigrationHelp(batchId, message);
-      toast.success(fill(pick(r.sent ? T.sent : T.noInbox, lang), { ref: r.reference || ref }));
+      toast.success(fill(r.sent ? T.sent : T.noInbox, { ref: r.reference || ref }));
       setMessage('');
       setOpen(false);
     } catch (e) {
       const err = e instanceof ApiError ? e : null;
-      toast.error(migrationErrorMessage(err?.code, err?.message ?? (e instanceof Error ? e.message : null), lang));
+      toast.error(migrationErrorMessage(err?.code, err?.message ?? (e instanceof Error ? e.message : null)));
     } finally {
       setBusy(false);
     }
@@ -59,23 +51,22 @@ export function AskForHelpButton({ batchId }: { batchId: string }) {
 
   return (
     <>
-      <Button variant="text" size="sm" onClick={() => setOpen(true)} aria-label={pick(T.button, lang)}>
+      <Button variant="text" size="sm" onClick={() => setOpen(true)} aria-label={T.button}>
         <LifeBuoy className="h-4 w-4" aria-hidden />
-        {pick(T.button, lang)}
+        {T.button}
       </Button>
       <ConfirmDialog
         open={open}
         onOpenChange={setOpen}
-        title={pick(T.title, lang)}
-        description={<span {...dirProps(lang)}>{fill(pick(T.body, lang), { ref })}</span>}
-        confirmLabel={busy ? pick(T.sending, lang) : pick(T.send, lang)}
-        cancelLabel={lang === 'ur' ? 'منسوخ' : 'Cancel'}
+        title={T.title}
+        description={<span>{fill(T.body, { ref })}</span>}
+        confirmLabel={busy ? T.sending : T.send}
         busy={busy}
         onConfirm={() => void send()}
       >
-        <div {...dirProps(lang)}>
+        <div>
           <Textarea
-            label={pick(T.message, lang)}
+            label={T.message}
             value={message}
             maxLength={1000}
             rows={3}

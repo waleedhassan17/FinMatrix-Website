@@ -16,8 +16,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Textarea } from '@/components/ui/Field';
 import { usePublicConfig } from '@/hooks/usePublicConfig';
-import { dirProps, pick, useLang } from '@/i18n/lang';
-import { fill, LAUNCH, LAUNCH_ERRORS } from '@/i18n/launchStrings';
+import { fill, LAUNCH, LAUNCH_ERRORS } from '@/config/launchStrings';
 import { authMe, authRefreshSession } from '@/networks/auth/authNetwork';
 import {
   getTrialEligibility,
@@ -27,12 +26,10 @@ import {
 import { setIdentity } from '@/store/authSlice';
 import { useAppDispatch } from '@/store/store';
 
-import { LangToggle } from './LangToggle';
 import { PlanPicker, UNSURE_PLAN } from './PlanPicker';
 import { reasonOf } from './reasonOf';
 
 export function StartPathChooser({ companyId }: { companyId: string }) {
-  const lang = useLang();
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const queryClient = useQueryClient();
@@ -54,8 +51,8 @@ export function StartPathChooser({ companyId }: { companyId: string }) {
   const ineligibleReason = eligibility.data && !eligibility.data.eligible ? eligibility.data.reason : null;
   const ineligibleText = ineligibleReason
     ? LAUNCH_ERRORS[ineligibleReason]
-      ? pick(LAUNCH_ERRORS[ineligibleReason], lang)
-      : (lang === 'ur' ? eligibility.data?.messageUr : eligibility.data?.message) ?? ''
+      ? LAUNCH_ERRORS[ineligibleReason]
+      : eligibility.data?.message ?? ''
     : '';
 
   const refreshIdentity = async () => {
@@ -71,7 +68,7 @@ export function StartPathChooser({ companyId }: { companyId: string }) {
   const explain = (e: unknown) => {
     const code = reasonOf(e);
     const known = code ? LAUNCH_ERRORS[code] : undefined;
-    setError(known ? pick(known, lang) : e instanceof Error ? e.message : 'Something went wrong.');
+    setError(known ? known : e instanceof Error ? e.message : 'Something went wrong.');
   };
 
   const onTrial = async () => {
@@ -81,7 +78,7 @@ export function StartPathChooser({ companyId }: { companyId: string }) {
       const r = await startFreeTrial(companyId);
       await refreshIdentity();
       if (r.status === 'active') {
-        toast.success(pick(LAUNCH.welcomeTrial, lang));
+        toast.success(LAUNCH.welcomeTrial);
         navigate('/dashboard', { replace: true });
       } else {
         navigate('/account-status', { replace: true });
@@ -112,13 +109,12 @@ export function StartPathChooser({ companyId }: { companyId: string }) {
   };
 
   return (
-    <section className="flex flex-col gap-lg" {...dirProps(lang)}>
+    <section className="flex flex-col gap-lg">
       <div className="flex flex-wrap items-start justify-between gap-md">
         <div>
-          <h2 className="text-display-sm text-text-primary">{pick(LAUNCH.chooseTitle, lang)}</h2>
-          <p className="mt-xxs text-body-md text-text-secondary">{pick(LAUNCH.chooseSubtitle, lang)}</p>
+          <h2 className="text-display-sm text-text-primary">{LAUNCH.chooseTitle}</h2>
+          <p className="mt-xxs text-body-md text-text-secondary">{LAUNCH.chooseSubtitle}</p>
         </div>
-        <LangToggle />
       </div>
 
       {error && (
@@ -139,22 +135,22 @@ export function StartPathChooser({ companyId }: { companyId: string }) {
           >
             <Gift className={`size-6 ${eligible ? 'text-primary' : 'text-text-tertiary'}`} />
             <h3 className="text-label-lg text-text-primary">
-              {fill(pick(LAUNCH.trialCardTitle, lang), { days: config.trialDays })}
+              {fill(LAUNCH.trialCardTitle, { days: config.trialDays })}
             </h3>
-            <p className="text-body-sm text-text-secondary">{pick(LAUNCH.trialCardBody, lang)}</p>
+            <p className="text-body-sm text-text-secondary">{LAUNCH.trialCardBody}</p>
             {!eligible && ineligibleText && (
               <p role="status" data-testid="trial-reason" className="rounded-md bg-warning-lighter p-sm text-body-sm text-text-primary">
-                <span className="text-label-md">{pick(LAUNCH.trialUnavailable, lang)}: </span>
+                <span className="text-label-md">{LAUNCH.trialUnavailable}: </span>
                 {ineligibleText}
               </p>
             )}
-            <p className="text-caption text-text-tertiary">{pick(LAUNCH.trialCardNote, lang)}</p>
+            <p className="text-caption text-text-tertiary">{LAUNCH.trialCardNote}</p>
             <Button
               className="mt-auto"
               onClick={onTrial}
               disabled={!eligible || busy !== null}
             >
-              {busy === 'trial' ? pick(LAUNCH.starting, lang) : pick(LAUNCH.startTrial, lang)}
+              {busy === 'trial' ? LAUNCH.starting : LAUNCH.startTrial}
             </Button>
           </article>
         )}
@@ -164,11 +160,11 @@ export function StartPathChooser({ companyId }: { companyId: string }) {
           className="flex flex-col gap-sm rounded-xl border border-border-light bg-surface p-lg"
         >
           <ShieldCheck className="size-6 text-primary" />
-          <h3 className="text-label-lg text-text-primary">{pick(LAUNCH.approvalCardTitle, lang)}</h3>
-          <p className="text-body-sm text-text-secondary">{pick(LAUNCH.approvalCardBody, lang)}</p>
+          <h3 className="text-label-lg text-text-primary">{LAUNCH.approvalCardTitle}</h3>
+          <p className="text-body-sm text-text-secondary">{LAUNCH.approvalCardBody}</p>
           <PlanPicker value={plan} onChange={setPlan} />
           <Textarea
-            label={pick(LAUNCH.noteLabel, lang)}
+            label={LAUNCH.noteLabel}
             value={note}
             maxLength={1000}
             rows={2}
@@ -180,14 +176,14 @@ export function StartPathChooser({ companyId }: { companyId: string }) {
             onClick={onApproval}
             disabled={busy !== null}
           >
-            {busy === 'approval' ? pick(LAUNCH.sending, lang) : pick(LAUNCH.requestApproval, lang)}
+            {busy === 'approval' ? LAUNCH.sending : LAUNCH.requestApproval}
           </Button>
         </article>
       </div>
 
       <Link to="/book-demo" className="inline-flex items-center gap-xs text-label-md text-primary">
         <CalendarClock className="size-4" />
-        {pick(LAUNCH.orBookDemo, lang)}
+        {LAUNCH.orBookDemo}
       </Link>
     </section>
   );

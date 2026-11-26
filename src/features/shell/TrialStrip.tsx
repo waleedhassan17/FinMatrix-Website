@@ -17,8 +17,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { ActivationRequestDialog } from '@/features/launch/ActivationRequestDialog';
-import { dirProps, pick, useLang } from '@/i18n/lang';
-import { fill, LAUNCH } from '@/i18n/launchStrings';
+import { fill, LAUNCH } from '@/config/launchStrings';
 import { cn } from '@/lib/cn';
 import { trialDaysLeft } from '@/models/trial';
 import { authMe } from '@/networks/auth/authNetwork';
@@ -36,7 +35,6 @@ export const TRIAL_URGENT_DAYS = 3;
 
 export function TrialStrip() {
   const dispatch = useAppDispatch();
-  const lang = useLang();
   const subscription = useAppSelector(selectSubscription);
   const isOwner = useAppSelector(selectIsOwner);
   const companyId = useAppSelector(selectCompanyId);
@@ -71,10 +69,10 @@ export function TrialStrip() {
   const Icon = activationInReview ? Clock : Gift;
   const label =
     days <= 0
-      ? pick(LAUNCH.trialOneDayLeft, lang)
+      ? LAUNCH.trialOneDayLeft
       : days === 1
-        ? pick(LAUNCH.trialDayLeft, lang)
-        : fill(pick(LAUNCH.trialDaysLeft, lang), { n: days });
+        ? LAUNCH.trialDayLeft
+        : fill(LAUNCH.trialDaysLeft, { n: days });
 
   return (
     <div
@@ -84,14 +82,14 @@ export function TrialStrip() {
         'flex flex-wrap items-center gap-x-sm gap-y-xxs px-md py-xs text-body-sm lg:px-lg',
         urgent ? 'bg-warning-lighter text-text-primary' : 'bg-info-light text-text-primary',
       )}
-      {...dirProps(lang)}
+     
     >
       <Icon
         className={cn('size-4 shrink-0', urgent ? 'text-warning' : 'text-info')}
         aria-hidden="true"
       />
       <span className="text-label-md">
-        {activationInReview ? `${label} · ${pick(LAUNCH.activationPending, lang)}` : label}
+        {activationInReview ? `${label} · ${LAUNCH.activationPending}` : label}
       </span>
       {!activationInReview && companyId && (
         <button
@@ -99,7 +97,7 @@ export function TrialStrip() {
           onClick={() => setOpen(true)}
           className="text-label-md text-primary underline-offset-2 hover:underline"
         >
-          {pick(LAUNCH.requestActivation, lang)}
+          {LAUNCH.requestActivation}
         </button>
       )}
       <Link
@@ -107,7 +105,7 @@ export function TrialStrip() {
         className="inline-flex items-center gap-xxs text-label-md text-primary underline-offset-2 hover:underline"
       >
         <CalendarClock className="size-3.5" aria-hidden="true" />
-        {pick(LAUNCH.bookOnboarding, lang)}
+        {LAUNCH.bookOnboarding}
       </Link>
       {companyId && (
         <ActivationRequestDialog
