@@ -263,7 +263,8 @@ export const authRegister = async ({
   password,
   displayName,
   phone,
-}: RegisterPayload): Promise<Identity | null> => {
+  ref,
+}: RegisterPayload & { ref?: string }): Promise<Identity | null> => {
   try {
     const trimmedPhone = phone?.trim();
     const response = await api.post('/auth/signup', {
@@ -274,6 +275,8 @@ export const authRegister = async ({
       // Omitted entirely when blank: '' fails the server's @IsOptional check,
       // which is how the app learned to strip it rather than send an empty one.
       ...(trimmedPhone ? { phone: trimmedPhone } : {}),
+      // demo_<id> from a demo's trial invite: links the demo to this owner.
+      ...(ref ? { ref } : {}),
     });
     const data = unwrapEnvelope<RawAuthPayload & { tokens?: TokenPair }>(response.data);
     if (!data?.tokens?.accessToken) return null;

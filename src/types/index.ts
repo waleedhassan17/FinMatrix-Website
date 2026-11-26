@@ -72,6 +72,12 @@ export interface SubscriptionSummary {
   trialStartedAt: string | null;
   /** Set when a real payment was approved after the trial. */
   trialConvertedAt: string | null;
+  /** active | expiring | expired. Optional: older payloads lack it. */
+  subscriptionStatus?: string;
+  /** A free trial that is over (and was not converted). */
+  trialEnded?: boolean;
+  /** FinMatrix suspended this company. */
+  suspended?: boolean;
 }
 
 export interface CompanyRef {

@@ -41,6 +41,8 @@ export interface Identity {
   features: Features | null;
   /** Plan + trial summary. Optional so older payloads (and fixtures) still fit. */
   subscription?: SubscriptionSummary | null;
+  /** What a pending company waits on: a held trial, an approval, a payment. */
+  pendingKind?: 'trial' | 'approval' | 'payment' | null;
 }
 
 export interface AuthState {
@@ -51,6 +53,7 @@ export interface AuthState {
   companyType: CompanyType | null;
   features: Features | null;
   subscription: SubscriptionSummary | null;
+  pendingKind: 'trial' | 'approval' | 'payment' | null;
   isAuthenticated: boolean;
   /**
    * 'unknown' until the boot /auth/me settles. Route guards must not redirect
@@ -84,6 +87,7 @@ const initialState: AuthState = {
   companyType: null,
   features: null,
   subscription: null,
+  pendingKind: null,
   isAuthenticated: false,
   status: 'unknown',
   error: '',
@@ -122,6 +126,7 @@ export const authSlice = createSlice({
       state.companyType = companyType;
       state.features = features;
       state.subscription = subscription ?? null;
+      state.pendingKind = action.payload.pendingKind ?? null;
       state.isAuthenticated = true;
       state.status = 'authenticated';
       state.error = '';
@@ -179,6 +184,8 @@ export const selectCompanyStatus = (s: WithAuth): AccountStatus | null =>
 export const selectCompanyType = (s: WithAuth): CompanyType | null =>
   s.auth.companyType ?? null;
 export const selectFeatures = (s: WithAuth): Features | null => s.auth.features ?? null;
+export const selectPendingKind = (s: WithAuth): AuthState['pendingKind'] =>
+  s.auth.pendingKind ?? null;
 export const selectSubscription = (s: WithAuth): SubscriptionSummary | null =>
   s.auth.subscription ?? null;
 export const selectIsAuthenticated = (s: WithAuth): boolean => s.auth.isAuthenticated;

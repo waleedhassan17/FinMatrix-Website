@@ -2,6 +2,8 @@
 // FinMatrix Web — Session bootstrap, guards and event bridge
 // ═══════════════════════════════════════════════════════
 
+import { currentLang, pick } from '@/i18n/lang';
+import { LAUNCH_ERRORS } from '@/i18n/launchStrings';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, type ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
@@ -63,12 +65,16 @@ export function SessionGate({ children }: { children: ReactNode }) {
 
   // ── Session expired ─────────────────────────────────────────────────
   useEffect(() => {
-    setSessionExpiredHandler(() => {
+    setSessionExpiredHandler((reason) => {
       dispatch(signOutAction());
       // Drop every cached response as well. Without this the next user to sign
       // in on this machine sees the previous one's invoice list for a beat.
       queryClient.clear();
-      toast.error('Your session expired. Please sign in again.');
+      const known = reason ? LAUNCH_ERRORS[reason] : undefined;
+      toast.error(
+        known ? pick(known, currentLang()) : 'Your session expired. Please sign in again.',
+        reason === 'ACCOUNT_SUSPENDED' ? { duration: 10_000 } : undefined,
+      );
     });
     return () => setSessionExpiredHandler(null);
   }, [dispatch, queryClient]);
