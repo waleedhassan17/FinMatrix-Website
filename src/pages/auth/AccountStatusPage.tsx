@@ -1,135 +1,113 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Clock, Gift, PauseCircle, RefreshCw, ShieldX, XCircle } from 'lucide-react';
+import {
+  CalendarClock,
+  Clock,
+  Download,
+  Gift,
+  Mail,
+  MessageCircle,
+  PauseCircle,
+  RefreshCw,
+  ShieldCheck,
+  ShieldX,
+  XCircle,
+} from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type ComponentType } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/Button';
-import { BILLING_DISABLED_BUILD } from '@/config/featureFlags';
 import { AuthShell } from '@/features/auth/AuthShell';
 import { useSignOut } from '@/features/auth/useSignOut';
+import { ActivationRequestDialog } from '@/features/launch/ActivationRequestDialog';
+import { LangToggle } from '@/features/launch/LangToggle';
+import { usePublicConfig } from '@/hooks/usePublicConfig';
+import { dirProps, pick, useLang, type Bilingual } from '@/i18n/lang';
+import { LAUNCH } from '@/i18n/launchStrings';
 import { authMe, authRefreshSession, type MeResponse } from '@/networks/auth/authNetwork';
-import { getBillingStatus } from '@/networks/billing/billingNetwork';
-// BILLING-DISABLED BUILD: drives the draft branch's "Submit for approval".
-import { submitCompanyForApproval } from '@/networks/companies/companiesNetwork';
+import { accountState, type AccountScreenState as State } from '@/models/accountStatus';
+import { BackupPanel } from '@/pages/settings/BackupExportPage';
 import {
   selectAuthStatus,
   selectCompany,
   selectCompanyStatus,
   selectIsOwner,
+  selectPendingKind,
+  selectSubscription,
   selectUser,
   setIdentity,
 } from '@/store/authSlice';
 import { useAppDispatch, useAppSelector } from '@/store/store';
-import type { AccountStatus } from '@/types';
 
 /**
- * Where a user lands when their company will not serve business requests.
+ * Where a user lands when their company will not serve business requests:
+ * a trial held for review, an approval request waiting, a rejection, a trial
+ * or plan that ended, or a suspension. Reached from a blocked sign-in (the
+ * gate code arrives in route state), from a signed-in owner whose company is
+ * not active, or mid-session when a request comes back 403.
  *
- * Reached three ways: sign-in returned a gate code (pending / rejected — no
- * token is issued, so the login page hands the code over in route state), a
- * signed-in draft or expired owner was routed here, or a business request came
- * back 403 COMPANY_NOT_ACTIVE mid-session and the axios client re-read
- * /auth/me. From the user's side these are the same situation — the product is
- * closed and they need to know why.
- *
- * A FREE TRIAL request waits in the same review queue as a payment, so it is
- * `pending` too. Its copy is branched here rather than given another page: the
- * promise differs ("activated within 24 hours", "your 30 days start then") and
- * neither message may be shown to the other kind of owner.
+ * Every state says what happens next. An ended trial is never a dead end: the
+ * owner can download a full backup, request activation, or book a call.
  */
 
-interface Copy {
+interface View {
   icon: ComponentType<{ className?: string }>;
   tone: string;
-  title: string;
-  body: string;
+  title: Bilingual;
+  body: Bilingual;
 }
 
-const COPY: Record<AccountStatus | 'unknown', Copy> = {
-  pending: {
-    icon: Clock,
-    tone: 'text-warning',
-    title: 'Waiting for approval',
-    body: 'Your company is being reviewed by the FinMatrix team. You will be able to sign in as soon as it is approved.',
-  },
-  // These two used to send the user to the mobile app, because the web had no
-  // onboarding or renewal flow. It has both now, so they point at it.
+const VIEWS: Record<State, View> = {
+  held: { icon: Gift, tone: 'text-primary', title: LAUNCH.heldTitle, body: LAUNCH.heldBody },
+  approval: { icon: Clock, tone: 'text-warning', title: LAUNCH.approvalPendingTitle, body: LAUNCH.approvalPendingBody },
+  pending: { icon: Clock, tone: 'text-warning', title: LAUNCH.approvalPendingTitle, body: LAUNCH.approvalPendingBody },
   draft: {
     icon: Clock,
     tone: 'text-warning',
-    title: 'Setup not finished',
-    // BILLING-DISABLED BUILD: was "Start a free trial or choose a plan to
-    // finish." The only step left is the submit, which the button does.
-    body: 'Your company registration has not been submitted yet. Send it for approval to finish.',
+    title: { en: 'Setup not finished', ur: 'سیٹ اپ مکمل نہیں ہوا' },
+    body: {
+      en: 'Your company is set up. Choose how to start: your free trial, or account approval.',
+      ur: 'آپ کی کمپنی تیار ہے۔ شروع کرنے کا طریقہ منتخب کریں: مفت ٹرائل، یا اکاؤنٹ کی منظوری۔',
+    },
   },
-  inactive: {
-    icon: XCircle,
-    tone: 'text-danger',
-    title: 'Subscription expired',
-    body: 'This company’s subscription has lapsed, so the books are locked. Your data is untouched — renew to get straight back in.',
-  },
-  rejected: {
-    icon: ShieldX,
-    tone: 'text-danger',
-    title: 'Registration rejected',
-    body: 'This company’s registration was not approved. Contact FinMatrix support if you believe that is a mistake.',
+  rejected: { icon: ShieldX, tone: 'text-danger', title: LAUNCH.rejectedTitle, body: LAUNCH.rejectedBody },
+  trialEnded: { icon: XCircle, tone: 'text-danger', title: LAUNCH.trialEndedTitle, body: LAUNCH.trialEndedBody },
+  planEnded: { icon: XCircle, tone: 'text-danger', title: LAUNCH.planEndedTitle, body: LAUNCH.planEndedBody },
+  suspended: { icon: PauseCircle, tone: 'text-warning', title: LAUNCH.suspendedTitle, body: LAUNCH.suspendedBody },
+  deactivated: {
+    icon: PauseCircle,
+    tone: 'text-warning',
+    title: { en: 'Account deactivated', ur: 'اکاؤنٹ غیر فعال' },
+    body: {
+      en: 'Access to this company has been paused by FinMatrix. Your data is safe and untouched — contact FinMatrix support to restore access.',
+      ur: 'FinMatrix نے اس کمپنی تک رسائی روک دی ہے۔ آپ کا ڈیٹا محفوظ ہے — رسائی بحال کروانے کے لیے FinMatrix سپورٹ سے رابطہ کریں۔',
+    },
   },
   active: {
-    icon: Clock,
+    icon: ShieldCheck,
     tone: 'text-success',
-    title: 'Account active',
-    body: 'Your company is active. If you are seeing this, try reloading.',
+    title: { en: 'Account active', ur: 'اکاؤنٹ فعال' },
+    body: { en: 'Your company is active. If you are seeing this, try reloading.', ur: 'آپ کی کمپنی فعال ہے۔ اگر یہ صفحہ نظر آ رہا ہے تو دوبارہ لوڈ کریں۔' },
   },
   unknown: {
     icon: XCircle,
     tone: 'text-text-tertiary',
-    title: 'Account unavailable',
-    body: 'We could not determine your company’s status. Try again, or sign in with a different account.',
+    title: { en: 'Account unavailable', ur: 'اکاؤنٹ دستیاب نہیں' },
+    body: {
+      en: 'We could not determine your company’s status. Try again, or sign in with a different account.',
+      ur: 'ہم آپ کی کمپنی کی حیثیت معلوم نہیں کر سکے۔ دوبارہ کوشش کریں، یا کسی دوسرے اکاؤنٹ سے سائن اِن کریں۔',
+    },
   },
-};
-
-/**
- * BILLING-DISABLED BUILD: `inactive` no longer means a lapsed subscription —
- * there is nothing to renew. It means a FinMatrix administrator paused the
- * company, so saying "Subscription expired… renew" described something that
- * had not happened and offered a fix that does not exist.
- */
-const DEACTIVATED_COPY: Copy = {
-  icon: PauseCircle,
-  tone: 'text-warning',
-  title: 'Account deactivated',
-  body: 'Access to this company has been paused by FinMatrix. Your data is safe and untouched — contact FinMatrix support to restore access.',
 };
 
 /** How often a company awaiting review re-checks while this page is open. */
 const APPROVAL_POLL_MS = 30_000;
 
-const TRIAL_PENDING_COPY: Copy = {
-  icon: Gift,
-  tone: 'text-primary',
-  title: 'Your free trial is being activated',
-  body: 'We have received your request for a 30-day free trial — every feature, with one delivery rider. Our team activates it within 24 hours and a confirmation email is on its way. Your 30 days start when the trial is activated, so no time is lost while you wait.',
-};
-
-const TRIAL_ENDED_COPY: Copy = {
-  icon: XCircle,
-  tone: 'text-danger',
-  title: 'Your free trial has ended',
-  body: 'Subscribe to keep your data active. Everything you set up during the trial is exactly where you left it.',
-};
-
-/** Sign-in gate codes → the status they stand for. */
-const CODE_STATUS: Record<string, AccountStatus> = {
-  COMPANY_PENDING: 'pending',
-  COMPANY_REJECTED: 'rejected',
-  COMPANY_INACTIVE: 'inactive',
-};
-
 interface GateState {
   code?: string;
   message?: string;
-  pendingKind?: 'trial' | 'payment' | null;
+  pendingKind?: 'trial' | 'approval' | 'payment' | null;
+  rejectionReason?: string | null;
 }
 
 export default function AccountStatusPage() {
@@ -137,37 +115,35 @@ export default function AccountStatusPage() {
   const queryClient = useQueryClient();
   const location = useLocation();
   const navigate = useNavigate();
+  const lang = useLang();
+  const config = usePublicConfig();
   const user = useAppSelector(selectUser);
   const authStatus = useAppSelector(selectAuthStatus);
   const sessionStatus = useAppSelector(selectCompanyStatus);
   const company = useAppSelector(selectCompany);
   const isOwner = useAppSelector(selectIsOwner);
+  const pendingKind = useAppSelector(selectPendingKind);
+  const subscription = useAppSelector(selectSubscription);
   const { signOut } = useSignOut();
   const [checking, setChecking] = useState(false);
-  // BILLING-DISABLED BUILD: drives the draft branch's "Submit for approval".
-  const [submitting, setSubmitting] = useState(false);
+  const [activationOpen, setActivationOpen] = useState(false);
+  const [showBackup, setShowBackup] = useState(false);
 
   const gate = (location.state as GateState | null) ?? null;
-  const gateStatus = gate?.code ? CODE_STATUS[gate.code] : undefined;
   const signedIn = authStatus === 'authenticated';
 
-  // With a session we can ask what is in review and whether a trial lapsed.
-  // Without one (a blocked sign-in) there is no token to ask with.
-  const status: AccountStatus | null = signedIn ? sessionStatus : (gateStatus ?? null);
-  const billing = useQuery({
-    queryKey: ['billing', 'status'],
-    queryFn: getBillingStatus,
-    // BILLING-DISABLED BUILD: nothing can be in billing review, so do not ask.
-    enabled:
-      !BILLING_DISABLED_BUILD && signedIn && (status === 'pending' || status === 'inactive'),
-    retry: false,
+  const state = accountState({
+    signedIn,
+    status: sessionStatus,
+    pendingKind,
+    trialEnded: subscription?.trialEnded === true,
+    suspended: subscription?.suspended === true,
+    subscriptionStatus: subscription?.subscriptionStatus,
+    gateCode: gate?.code,
+    gatePendingKind: gate?.pendingKind,
   });
 
-  // Approved: the owner goes straight to their dashboard. The token is
-  // re-issued first — it was minted before the company existed and names none,
-  // so the dashboard's first request would otherwise fail. This used to be a
-  // "Check again" button and, on success, a dashboard that errored until the
-  // owner signed out and back in.
+  // Approved: straight to the dashboard (the token is re-issued first).
   const wentLive = useRef(false);
   const goLive = useCallback(
     async (me: MeResponse) => {
@@ -176,18 +152,22 @@ export default function AccountStatusPage() {
       await authRefreshSession();
       dispatch(setIdentity(me));
       queryClient.clear();
-      toast.success(`${me.company?.name ?? 'Your company'} is approved. Welcome to FinMatrix.`);
+      toast.success(`${me.company?.name ?? 'Your company'} is active. Welcome to FinMatrix.`);
       navigate('/dashboard', { replace: true });
     },
     [dispatch, navigate, queryClient],
   );
 
-  // While a review is pending, look again every 30 seconds and whenever the
-  // tab comes back into view, so approval takes effect without a click.
+  // While something is being reviewed, look again every 30 seconds and
+  // whenever the tab comes back, so approval takes effect without a click.
+  const waiting =
+    signedIn &&
+    (sessionStatus === 'pending' ||
+      ((state === 'trialEnded' || state === 'planEnded') && subscription?.paymentStatus === 'submitted'));
   const watch = useQuery({
     queryKey: ['auth', 'approval-watch'],
     queryFn: authMe,
-    enabled: signedIn && status === 'pending',
+    enabled: waiting,
     refetchInterval: APPROVAL_POLL_MS,
     refetchOnWindowFocus: 'always',
     retry: false,
@@ -198,33 +178,21 @@ export default function AccountStatusPage() {
     if (!me) return;
     if (me.companyStatus === 'active') {
       void goLive(me);
-    } else if (me.companyStatus !== status) {
-      // Rejected or sent back while waiting: show that state instead.
+    } else if (me.companyStatus !== sessionStatus) {
       dispatch(setIdentity(me));
     }
-  }, [watch.data, status, goLive, dispatch]);
+  }, [watch.data, sessionStatus, goLive, dispatch]);
 
-  if (authStatus === 'anonymous' && !gateStatus) {
+  if (authStatus === 'anonymous' && !gate?.code) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
-  const trialPending =
-    status === 'pending' && (gate?.pendingKind === 'trial' || billing.data?.trialPending === true);
-  const trialEnded =
-    status === 'inactive' && billing.data?.isTrial === true && !billing.data.trialConvertedAt;
+  const view = VIEWS[state];
+  const Icon = view.icon;
+  const ended = state === 'trialEnded' || state === 'planEnded';
+  const activationPending = ended && subscription?.paymentStatus === 'submitted';
+  const staffOnEnded = ended && !isOwner;
 
-  const copy = trialPending
-    ? TRIAL_PENDING_COPY
-    : trialEnded
-      ? TRIAL_ENDED_COPY
-      : BILLING_DISABLED_BUILD && status === 'inactive'
-        ? DEACTIVATED_COPY
-        : COPY[status ?? 'unknown'];
-  const Icon = copy.icon;
-
-  // Re-checking is worth offering: `inactive` is computed live from the
-  // subscription expiry date, so a renewal completed on the phone takes effect
-  // here the moment /auth/me is asked again — no waiting for the nightly cron.
   const recheck = async () => {
     setChecking(true);
     try {
@@ -236,124 +204,121 @@ export default function AccountStatusPage() {
       dispatch(setIdentity(me));
       queryClient.clear();
     } catch {
-      /* leave the user on this screen; the message already explains why */
+      /* the message already explains why */
     } finally {
       setChecking(false);
     }
   };
 
-  // BILLING-DISABLED BUILD: hand a stuck draft to an administrator. Reached
-  // when CompanySetupPage's submit failed, or when an owner abandoned
-  // onboarding and signed back in (the server does not block `draft` at
-  // sign-in). Until this runs, nobody is looking at their company.
-  const submitForApproval = async () => {
-    if (!company?.id) return;
-    setSubmitting(true);
-    try {
-      await submitCompanyForApproval(company.id);
-      dispatch(setIdentity(await authMe()));
-      queryClient.clear();
-    } catch {
-      /* the button stays; the copy already explains the state */
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  const supportLinks = (config.supportEmail || config.supportWhatsapp) && (
+    <div className="flex flex-wrap justify-center gap-md text-body-sm">
+      {config.supportEmail && (
+        <a className="inline-flex items-center gap-xxs text-primary" href={`mailto:${config.supportEmail}`}>
+          <Mail className="size-4" /> {config.supportEmail}
+        </a>
+      )}
+      {config.supportWhatsapp && (
+        <a
+          className="inline-flex items-center gap-xxs text-primary"
+          href={`https://wa.me/${config.supportWhatsapp.replace(/\D/g, '')}`}
+          target="_blank"
+          rel="noreferrer"
+        >
+          <MessageCircle className="size-4" /> WhatsApp
+        </a>
+      )}
+    </div>
+  );
+
+  const rejectionReason = gate?.rejectionReason ?? null;
 
   return (
-    <AuthShell title={copy.title} subtitle={company?.name}>
-      <div className="flex flex-col items-center gap-md text-center">
-        <Icon className={`size-10 ${copy.tone}`} />
-        <p className="text-body-md text-text-secondary">
-          {/* Signed in, the page itself moves on — "you will be able to sign
-              in" would describe a step they will not have to take. */}
-          {signedIn && status === 'pending' && !trialPending
-            ? 'Your company is being reviewed by the FinMatrix team. Reviews usually finish within one business day.'
-            : copy.body}
+    <AuthShell title={pick(view.title, lang)} subtitle={company?.name}>
+      <div className="flex flex-col items-center gap-md text-center" {...dirProps(lang)}>
+        <LangToggle className="self-end" />
+        <Icon className={`size-10 ${view.tone}`} />
+        <p className="text-body-md text-text-secondary" data-testid="status-body">
+          {staffOnEnded ? pick(LAUNCH.staffEndedBody, lang) : pick(view.body, lang)}
         </p>
 
-        {trialPending && (
-          <p className="text-body-sm text-text-tertiary">
-            Free trials are usually activated within 24 hours.
+        {state === 'rejected' && rejectionReason && (
+          <p className="rounded-md bg-danger-lighter p-sm text-body-sm text-text-primary">
+            <span className="text-label-md">{pick(LAUNCH.reasonLabel, lang)}: </span>
+            {rejectionReason}
           </p>
         )}
 
-        {/* Say where the answer will arrive, and that this page will not need
-            refreshing to see it. */}
-        {signedIn && status === 'pending' && !trialPending && (
-          <p className="text-body-sm text-text-tertiary">
-            {user?.email ? (
-              <>
-                We&rsquo;ll email <span className="text-label-md text-text-secondary">{user.email}</span>{' '}
-                as soon as it&rsquo;s approved.{' '}
-              </>
-            ) : null}
-            You can leave this page open — it moves on by itself.
+        {signedIn && (state === 'approval' || state === 'pending') && user?.email && (
+          <p className="text-body-sm text-text-tertiary">{user.email}</p>
+        )}
+
+        {activationPending && (
+          <p className="rounded-md bg-primary-tint p-sm text-body-sm text-text-primary">
+            {pick(LAUNCH.activationPending, lang)}
           </p>
         )}
+
+        {(state === 'rejected' || state === 'suspended' || state === 'deactivated' || ended) && supportLinks}
 
         <div className="mt-sm flex w-full flex-col gap-xs">
           {signedIn ? (
             <>
-              {/* A way forward, not just an explanation. `inactive` means the
-                  subscription lapsed, which the owner can fix right now; `draft`
-                  means onboarding was abandoned part-way. Both were previously
-                  dead ends with nothing but "Check again". */}
-              {/* BILLING-DISABLED BUILD: `inactive` can no longer be fixed by
-                  the owner — there is nothing to renew — so the renew button
-                  is hidden. A deactivated account is an administrator's
-                  decision now, which the copy already says. */}
-              {!BILLING_DISABLED_BUILD && status === 'inactive' && isOwner && (
+              {state === 'draft' && isOwner && (
                 <Button full asChild>
-                  <Link to="/account/renew">
-                    {trialEnded ? 'Subscribe to a plan' : 'Renew subscription'}
-                  </Link>
+                  <Link to="/onboarding/company">{pick(LAUNCH.chooseTitle, lang)}</Link>
                 </Button>
               )}
 
-              {/* BILLING-DISABLED BUILD: a draft's remaining work used to be
-                  "choose a plan", so this linked to /onboarding/plan — a route
-                  that no longer exists. The only step left is the submit
-                  itself, so the button does it. This is the web twin of the
-                  app's PendingApprovalScreen auto-submit, and the retry path
-                  for a failed submit in CompanySetupPage. */}
-              {status === 'draft' &&
-                isOwner &&
-                (BILLING_DISABLED_BUILD ? (
-                  <Button full onClick={submitForApproval} disabled={submitting}>
-                    {submitting ? 'Submitting…' : 'Submit for approval'}
+              {ended && isOwner && company?.id && (
+                <>
+                  <Button full onClick={() => setShowBackup((v) => !v)}>
+                    <Download className="size-4" />
+                    {pick(LAUNCH.downloadData, lang)}
                   </Button>
-                ) : (
-                  <Button full asChild>
-                    <Link to="/onboarding/plan">Finish setting up</Link>
+                  {!activationPending && (
+                    <Button full variant="secondary" onClick={() => setActivationOpen(true)}>
+                      {pick(LAUNCH.requestActivation, lang)}
+                    </Button>
+                  )}
+                  <Button full variant="secondary" asChild>
+                    <Link to="/book-demo">
+                      <CalendarClock className="size-4" />
+                      {pick(LAUNCH.bookCall, lang)}
+                    </Link>
                   </Button>
-                ))}
+                </>
+              )}
 
-              <Button
-                variant={
-                  isOwner && (status === 'inactive' || status === 'draft')
-                    ? 'secondary'
-                    : 'primary'
-                }
-                full
-                onClick={recheck}
-                disabled={checking}
-              >
+              <Button variant={ended || state === 'draft' ? 'text' : 'primary'} full onClick={recheck} disabled={checking}>
                 <RefreshCw className={`size-4 ${checking ? 'animate-spin' : ''}`} />
-                {checking ? 'Checking…' : 'Check again'}
+                {checking ? pick(LAUNCH.checking, lang) : pick(LAUNCH.checkAgain, lang)}
               </Button>
               <Button variant="text" full onClick={signOut}>
-                Sign out
+                {pick(LAUNCH.signOut, lang)}
               </Button>
             </>
           ) : (
-            // No session: the only thing to do is try signing in again later.
             <Button full asChild>
-              <Link to="/login">Back to sign in</Link>
+              <Link to="/login">{pick(LAUNCH.backToSignIn, lang)}</Link>
             </Button>
           )}
         </div>
+
+        {ended && isOwner && showBackup && (
+          <div className="mt-md w-full" data-testid="backup-panel">
+            <BackupPanel compact />
+          </div>
+        )}
       </div>
+
+      {company?.id && (
+        <ActivationRequestDialog
+          companyId={company.id}
+          open={activationOpen}
+          onOpenChange={setActivationOpen}
+          onDone={() => void recheck()}
+        />
+      )}
     </AuthShell>
   );
 }
